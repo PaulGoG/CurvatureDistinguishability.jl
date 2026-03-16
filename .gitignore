@@ -1,0 +1,9 @@
+*.csv
+*.h5
+*.jld2
+*.pdf
+*.png
+.DS_Store
+Manifest.toml
+data/inputs/
+data/outputs/
