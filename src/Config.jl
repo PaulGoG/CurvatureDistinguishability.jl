@@ -26,6 +26,8 @@ struct PipelineSettings
     sweep_rho_thresh::Float64
     g_uu_degenerate::Float64
     n_starts::Int
+    g_tol::Float64
+    max_iterations::Int
     # grid
     T_obs::Float64
     f_min::Float64
@@ -41,6 +43,7 @@ struct PipelineSettings
     force_cpu::Bool
     gpu_backend::Symbol
     max_threads::Int
+    hessian_chunk::Int
     # safety
     max_ram_gb::Float64
     bytes_per_bin_per_task_gpu::Int
@@ -58,7 +61,8 @@ const KNOWN_KEYS = Dict(
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
                    "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
-                                  "rho_thresh", "g_uu_degenerate", "n_starts"],
+                                  "rho_thresh", "g_uu_degenerate", "n_starts",
+                                  "g_tol", "max_iterations"],
     "grid" => ["T_obs", "f_min", "f_max"],
     "physics" => ["mass_scale", "time_scale", "amp_scale", "eta", "amp_33_factor",
                   "sky_theta", "sky_phi", "inclination", "polarization",
@@ -67,7 +71,7 @@ const KNOWN_KEYS = Dict(
                 "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk"],
     "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels"],
     "hardware" => ["force_cpu", "gpu_backend", "max_threads", "max_vram_gb",
-                   "os_vram_overhead_gb"],
+                   "os_vram_overhead_gb", "hessian_chunk"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu"],
     "parameter_bounds" => collect(PARAM_KEYS),
     "sweeps[]" => ["name", "theta_0", "u_dir", "rho_thresh", "amp_ratio"],
@@ -156,6 +160,10 @@ function load_and_validate_config(config_path::AbstractString)
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
+    g_tol = getnum(ss, "g_tol", 1e-12, "pipeline.sweep_settings")
+    g_tol > 0 || error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
+    max_iterations = getint(ss, "max_iterations", 1000, "pipeline.sweep_settings")
+    max_iterations >= 1 || error("[pipeline.sweep_settings].max_iterations must be >= 1")
 
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
@@ -234,6 +242,10 @@ function load_and_validate_config(config_path::AbstractString)
     max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
     max_vram_gb = getnum(hardware, "max_vram_gb", 8.0, "hardware")
     os_vram_gb = getnum(hardware, "os_vram_overhead_gb", 1.0, "hardware")
+    hessian_chunk = getint(hardware, "hessian_chunk", 0, "hardware")
+    0 <= hessian_chunk <= 6 ||
+        error("[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
+              "got $hessian_chunk")
 
     safety = get(config, "safety", Dict{String,Any}())
     warn_unknown_keys(safety, "safety")
@@ -304,9 +316,10 @@ function load_and_validate_config(config_path::AbstractString)
 
     return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
                             n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
+                            g_tol, max_iterations,
                             T_obs, f_min, f_max, wp, noise,
                             map_n_angles, ratio_tol, refine_levels,
-                            force_cpu, gpu_backend, max_threads,
+                            force_cpu, gpu_backend, max_threads, hessian_chunk,
                             max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
                             bounds, sweeps, maps)
 end

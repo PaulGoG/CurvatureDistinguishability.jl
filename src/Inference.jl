@@ -206,12 +206,19 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
                                       backend = get_best_backend(),
                                       optimizer::Symbol = :ipnewton,
                                       bounds::Union{Nothing,ParameterBounds} = default_bounds(),
+                                      hessian_chunk::Int = 0,
                                       kwargs...)
     wp = waveform_params(; kwargs...)
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
     g!(G, x) = ForwardDiff.gradient!(G, loss, x)
-    h!(H, x) = ForwardDiff.hessian!(H, loss, x)
+    # hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes per
+    # kernel launch instead of 49 — the escape hatch for GPU compilers whose
+    # module build fails on the full nested-dual kernel (see docs/roadmap).
+    h!(H, x) = hessian_chunk > 0 ?
+        ForwardDiff.hessian!(H, loss, x,
+                             ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk(min(hessian_chunk, length(x))))) :
+        ForwardDiff.hessian!(H, loss, x)
 
     opts = Optim.Options(g_tol = g_tol, iterations = iterations, show_trace = false)
 
