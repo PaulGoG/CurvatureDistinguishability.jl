@@ -89,6 +89,12 @@ function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::Abstr
     length(data_stream) == 2 ||
         error("GPU path supports the 2-channel (A, E) configuration only; " *
               "set include_t_channel = false (the T channel is identically zero).")
+    if freqs isa Array || Sn_vals isa Array || any(a -> a isa Array, data_stream)
+        error("Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
+              "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
+              "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
+              "backend explicitly when your arrays live on the host.)")
+    end
     return p -> device_loss(p, freqs, Sn_vals, data_stream[1], data_stream[2], df, wp, backend)
 end
 

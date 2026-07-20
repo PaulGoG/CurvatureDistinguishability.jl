@@ -189,6 +189,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                                                   iterations = 50, FIX_PHYS...)
         @test d0 < 1e-5
 
+        # guardrail: a GPU backend with host Arrays must fail loudly, not crash
+        # deep inside a kernel launch (get_best_backend() returns a GPU whenever
+        # one is functional, so the mismatch is easy to hit from the REPL)
+        struct FakeGPU <: KernelAbstractions.GPU end
+        @test_throws ErrorException loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
+                                                  FIX_WP, FakeGPU())
+
         # A/B against the legacy LBFGS fixtures on the clean separations
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
         u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
