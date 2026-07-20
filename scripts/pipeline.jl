@@ -1,58 +1,53 @@
 using Pkg
-# Dynamically resolve project root relative to this script
 const PROJECT_ROOT = dirname(@__DIR__)
-Pkg.activate(PROJECT_ROOT; io=devnull)
+Pkg.activate(PROJECT_ROOT; io = devnull)
+Pkg.instantiate(; io = devnull)
 
-ENV["GKSwstype"] = "100" # Headless mode for Plots.jl to prevent windows from popping up
-
-using Distributed
 using ArgParse
+using TOML
 
 function parse_commandline()
-    s = ArgParseSettings(description="Two-Waveform Distinguishability Unified Pipeline")
+    s = ArgParseSettings(description = "Two-Waveform Distinguishability Unified Pipeline")
     @add_arg_table! s begin
         "--config"
-            help = "Path to a TOML configuration file"
+            help = "Path to a TOML configuration file (relative to project root)"
             default = "config.toml"
         "--output-dir"
             help = "Directory to save outputs (relative to project root)"
             default = "data/outputs"
-        "--workers"
-            help = "Number of distributed worker processes to spawn (0 for local multi-threading only)"
-            arg_type = Int
-            default = 0
     end
     return parse_args(s)
 end
 
 args = parse_commandline()
+config_path = joinpath(PROJECT_ROOT, args["config"])
+isfile(config_path) || error("Configuration file not found: $config_path")
 
-if args["workers"] > 0
-    println("Spawning $(args["workers"]) distributed worker processes...")
-    addprocs(args["workers"]; exeflags="--project=$PROJECT_ROOT")
+# Load a GPU package only when the configuration asks for one AND it is
+# installed in this environment — no blind try/catch, loud diagnostics.
+const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
+                          "metal" => "Metal", "oneapi" => "oneAPI")
+let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
+    force_cpu = get(hw, "force_cpu", false) === true
+    requested = lowercase(String(get(hw, "gpu_backend", "auto")))
+    wanted = requested == "auto" ? collect(keys(GPU_PACKAGES)) :
+             haskey(GPU_PACKAGES, requested) ? [requested] : String[]
+    if !force_cpu
+        for key in wanted
+            pkgname = GPU_PACKAGES[key]
+            if Base.find_package(pkgname) === nothing
+                requested == key &&
+                    @warn "Requested GPU backend '$key' but package $pkgname is not installed " *
+                          "in this environment. Install it with: julia --project -e " *
+                          "'using Pkg; Pkg.add(\"$pkgname\")'"
+                continue
+            end
+            @info "Loading GPU package $pkgname (activates the $pkgname extension)…"
+            Base.require(Main, Symbol(pkgname))
+        end
+    end
 end
 
-@everywhere begin
-    using Pkg
-    Pkg.activate($PROJECT_ROOT; io=devnull)
-    
-    # Attempt to load GPU packages if available to enable Hardware.jl detection
-    try using CUDA catch end
-    try using AMDGPU catch end
-    try using Metal catch end
-    try using oneAPI catch end
-    
-    using TwoWaveformDistinguishability
-end
+using TwoWaveformDistinguishability
 
-# -----------------------------------------------------------------------------
-# MAIN ORCHESTRATOR ENTRY POINT
-# -----------------------------------------------------------------------------
-function main()
-    # The entire pipeline logic has been modularized and shifted into src/Orchestrator.jl
-    # for strict adherence to Julian software engineering best practices.
-    config_path = joinpath(PROJECT_ROOT, args["config"])
-    run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])
-end
-
-main()
+run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])
