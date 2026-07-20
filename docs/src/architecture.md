@@ -1,63 +1,127 @@
-# TwoWaveformDistinguishability: Complete Architectural Context for AI Agents
+# System Architecture
 
-**Target Audience:** Future AI Agents and Human Collaborators
-**Purpose:** This document provides a comprehensive, high-level structural breakdown of the `TwoWaveformDistinguishability` codebase. It serves as an exact state-of-the-union context file to immediately onboard any future AI agent or developer contributing to this project.
+**Purpose:** exact structural map of the `TwoWaveformDistinguishability`
+codebase for collaborators and AI agents. Statements here are kept in sync
+with the code; when they disagree, the code wins and this page is the bug.
 
----
+## 1. Objective and theoretical foundation
 
-## 1. Project Objective and Theoretical Foundation
-This pipeline computationally proves a fundamental theorem in gravitational wave (GW) data analysis: The squared distance ($D^2$) between a true two-source GW signal and the best-fitting single-source model scales **quartically** ($\delta^4$) with respect to the parameter separation ($\delta$) between the two sources, rather than quadratically ($\delta^2$) as a linear Fisher Information Matrix would suggest.
+The pipeline computationally proves that the squared distance ``D^2`` between
+a two-source GW signal and the best-fitting single-source model scales
+quartically with the parameter separation ``\delta`` — not quadratically as a
+linear Fisher analysis suggests — because the single-source manifold flexes
+to absorb the ``\mathcal{O}(\delta)`` and ``\mathcal{O}(\delta^2)``
+differences. The unabsorbable residual lives in the normal space and is
+governed by the extrinsic curvature ``K(u)``:
 
-This happens because the single-source manifold "flexes" to absorb the linear and quadratic differences. The unabsorbable residual lies entirely in the orthogonal normal space, and its magnitude is strictly governed by the **Extrinsic Curvature ($K(u)$)** of the signal manifold in the direction $u$.
+```math
+D^2 \approx \frac{1}{16} K(u) \delta^4 .
+```
 
-**The Primary Formula:**
-$$ D^2 \approx \frac{1}{16} K(u) \delta^4 $$
-From this, the pipeline calculates the absolute **Fundamental Discernibility Limit ($\delta_{\mathrm{min}}$)**—the exact parameter boundary forming the "Zone of Confusion."
+## 2. Modules
 
----
+- **`Config.jl`** — parses and validates `config.toml` into an immutable
+  `PipelineSettings`. Guardrails: descriptive hard errors for unusable input
+  (bad ranges, duplicate names, base points outside the physical bounds),
+  warnings for suspicious values, and warnings on **unknown keys** (typo
+  protection; historically a silently ignored `[mapping].n_angles` cost a
+  campaign its configured resolution). Physical parameters live *only* in the
+  TOML; the source carries physical constants (arm length, AU, year) and
+  published-fit defaults.
+- **`Physics.jl`** — the Robson et al. (2019) noise model: instrumental
+  Eq. 12 plus the Eq. 14 galactic-confusion fit with Table-1 coefficients
+  selected by observation time (all overridable in `[noise]`); and the scalar
+  waveform core `strain_bin` (2,2 mode with 1.5PN spin–orbit phasing + 3,3
+  harmonic), which is the **single implementation** shared by the broadcast
+  model, the CPU inference loop and the GPU kernel.
+- **`Detector.jl`** — scalar TDI modulation `tdi_modulation_bin` (orbital
+  Doppler + low-frequency antenna patterns) and a fused single-pass
+  `project_to_tdi`. Channels A and E by default; the identically zero null
+  channel T is opt-in (`[physics].include_t_channel`) and exists only for
+  legacy comparisons — it adds dead compute.
+- **`Bounds.jl`** — hard physical parameter bounds (`[parameter_bounds]`),
+  deviation-space boxes around a base point (phase treated topologically,
+  ``\pm\pi``), ray–box crossing distances for the polar capping, and
+  interior clamping for the constrained optimizer.
+- **`Geometry.jl`** — the differential-geometry engine. One ForwardDiff
+  Jacobian of the flattened response + modified Gram–Schmidt gives the
+  noise-weighted orthonormal tangent basis (exactly degenerate directions,
+  e.g. the equal-mass spin difference ``\chi_a``, are dropped — the basis has
+  rank 5 in this model). Directional value/first/second derivatives come
+  from a **single fused nested-dual evaluation**. Geometry always runs on
+  CPU arrays: `ForwardDiff.jacobian` is incompatible with device arrays, and
+  the map stage costs minutes, not days.
+- **`Inference.jl`** — ``D^2`` minimization within the physical bounds.
+  Optimizers: `IPNewton` (default; interior-point Newton using the exact
+  ForwardDiff Hessian — fast convergence, low convergence floor),
+  `Fminbox(LBFGS)`, and the legacy unconstrained `lbfgs` for regression
+  comparisons. The loss has two equivalent implementations, tested against
+  each other: an allocation-free scalar CPU loop (avoids GC lock contention
+  under 20+ threads) and a single KernelAbstractions kernel.
+- **`Hardware.jl`** — a backend probe registry populated by **package
+  extensions** (`ext/TWD{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
+  `isdefined(Main, …)` reflection. Loading e.g. `CUDA` in the session
+  registers the probe; `get_best_backend()` returns the first functional
+  device or the multi-threaded `CPU()` fallback. `scripts/pipeline.jl` loads
+  the GPU package requested by `[hardware].gpu_backend` only if it is
+  actually installed, with loud diagnostics.
+- **`Provenance.jl`** — run IDs from the SHA-256 of the configuration
+  contents (reruns of identical configs are recognizable; never
+  wall-clock-derived), config snapshots into the run directory,
+  `metadata.toml` (git state via DrWatson, Julia version, backend, threads,
+  timings), and `safesave`-semantics backups for all output formats.
+- **`Plotting.jl`** — CairoMakie figures under one publication theme
+  (Computer Modern, boxed axes, no titles, no minor ticks) and one
+  family-wide tick policy: integer power-of-10 log ticks restricted to the
+  data range with anchors congruent mod the step; a single per-axis exponent
+  for small linear values (never mixed exponents); single-denominator π
+  ticks on phase axes.
+- **`Orchestrator.jl`** — the driver. Pre-flight memory estimate against
+  `[safety].max_ram_gb` (refuses or downscales concurrency; the GPU branch
+  additionally enforces the VRAM budget), bounded-concurrency task pools,
+  TTY-gated progress bars (detached runs produce ANSI-free logs), a
+  structured `run.log` via LoggingExtras, and **per-stage try/catch**: a
+  failing sweep or map is logged with its backtrace and the remaining stages
+  continue; failures are listed in `metadata.toml`.
 
-## 2. Directory Structure and Modules
-The project follows strict Julian `PkgTemplates` standards.
+## 3. The workflows
 
-*   **`config.toml`:** The absolute source of truth. Contains `[hardware]`, `[grid]`, `[physics]`, `[[sweeps]]` (1D tests), and `[[maps]]` (2D contours). **There are zero hardcoded physical parameters in the Julia source code.**
-*   **`scripts/pipeline.jl`:** The unified CLI orchestrator. It parses the TOML, initializes the simulation grid, and routes to the modules. Use this for live, interactive terminal runs.
-*   **`scripts/launch_campaign.jl`:** A robust background runner. It spawns `pipeline.jl` asynchronously (`run(..., wait=false)`), instantly returning terminal control to the user while dynamically tracking and vaulting standard output logs directly into `data/logs/` to prevent buffering issues.
-*   **`src/TwoWaveformDistinguishability.jl`:** The primary module file that includes and exports the submodules.
-*   **`docs/`:** A complete, locally-built `Documenter.jl` website containing the external markdown notes and automatically-scraped API references. (The HTML builds are stored in `docs/build/index.html` and are `.gitignore`d).
+### 1D sweeps (`[[sweeps]]`)
+Two identical-amplitude sources separated by ``\delta`` along a
+Fisher-normalized direction; a box-constrained single-source fit yields
+``D^2_{\mathrm{num}}``. Persisted per ``\delta``: best-fit parameters,
+convergence flag, iterations, gradient norm, active-bound flag. The log-log
+slope is fitted over an automatically detected clean window and stored in
+`sweep_meta.toml` together with the optimizer floor level. Guardrails warn
+when the sweep direction has an amplitude component (violating the
+equal-amplitude assumption of the law) or when the second source exits the
+physical bounds before ``\delta_{\mathrm{max}}``.
 
-### The 5 Core Sub-Modules
-1.  **`Hardware.jl` (The Abstraction Layer):** Uses `KernelAbstractions.jl` to dynamically probe the environment. It detects `CUDA`, `AMDGPU`, `Metal`, or `oneAPI` GPUs. If `force_cpu = true` is set in the TOML, it safely falls back to CPU threading.
-2.  **`Physics.jl`:** Contains the Robson et al. (2019) analytic noise PSD (`analytic_noise_psd`) and the core `scaled_waveform_model`. 
-    *   *Note on Scaling:* The 6 parameters (Amp, Mass, Time, Phase, Spin1, Spin2) are internally scaled to $\mathcal{O}(1)$ to prevent the LBFGS optimizer from crashing due to an ill-conditioned Fisher matrix.
-    *   *Physics:* Includes the 1.5PN Spin-Orbit coupling "hang-up" effect and injects the asymmetric higher harmonic ($l=3, m=3$) mode.
-3.  **`Detector.jl`:** Implements Time Delay Interferometry (TDI). Projects the source strain into noise-orthogonal `A`, `E`, and `T` channels. It dynamically applies Doppler phase shifts and Antenna Pattern amplitude modulations based on the detector's orbit.
-4.  **`Geometry.jl`:** The mathematical heart. Uses `ForwardDiff.jl` Dual numbers to compute exact analytical derivatives.
-    *   `compute_tangent_basis`: Generates the massive Jacobian and orthonormalizes the tangent vectors via multi-channel Gram-Schmidt.
-    *   `compute_extrinsic_curvature_from_basis`: Takes the pre-computed basis and calculates the Directional Hessian to find the normal projection ($K(u)$). *This decoupling prevents massive Out-Of-Memory (OOM) crashes.*
-5.  **`Inference.jl`:** Uses `Optim.jl` (LBFGS) to numerically find the best-fit single source. Features a highly-optimized, allocation-free `sum(1:N) do i` loop for CPU execution to completely bypass Garbage Collection lock contention across 20+ threads.
-6.  **`Orchestrator.jl`:** Houses the execution loops (`run_1d_sweeps_module`, `run_2d_mapping_module`) and the **Dynamic Memory Manager**. It reads the physical RAM from the TOML, estimates the Dual Number memory overhead ($\approx 1000$ bytes/bin), and intelligently throttles `asyncmap` concurrency to protect the system.
+### 2D confusion maps (`[[maps]]`)
+In raw parameter coordinates the boundary radius is
+``r(\varphi) = (16\rho^2/K_{\mathrm{raw}})^{1/4}`` — the Fisher-norm
+rescaling cancels exactly, so no division by ``g(u,u)`` occurs. ``K`` is
+evaluated on ``[0, \pi)`` only and mirrored (it is exactly even in ``u``),
+halving the cost and enforcing the theorem-level symmetry. Near-singular
+spikes (quasi-degenerate directions) are handled by **polar prior-capping**:
+``r_{\mathrm{plot}} = \min(r_{\mathrm{math}}, r_{\mathrm{box}})`` against the
+deviation-space physical box, with `R_Math`, `R_Box`, `Prior_Limited` and
+`Degenerate` all persisted, plus **adaptive angular refinement** where the
+capped radius jumps more than `[mapping].neighbor_ratio_tol` between
+neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
 
----
+## 4. Notes for future development
 
-## 3. The Workflows (1D vs 2D)
-
-### 1D Parameter Sweeps (`[[sweeps]]`)
-*   **Purpose:** Mathematically validates the $\delta^4$ theory.
-*   **Process:** Injects two identical sources, separates them along a multi-dimensional vector $u$ by a distance $\delta$, and numerically optimizes a single-source template to fit them. 
-*   **Output:** Generates a log-log scatter plot (`scaling_plot.png`) proving the numerical $D^2$ perfectly tracks the theoretical Extrinsic Curvature line. It also generates a smooth-envelope `residual_plot.png` visualizing the unabsorbed energy in the frequency domain.
-
-### 2D Confusion Mapping (`[[maps]]`)
-*   **Purpose:** Draws the continuous physical boundary of the "Zone of Confusion."
-*   **Process:** Sweeps an angle $\phi$ across a 2D parameter plane (e.g., Mass vs. Time). It uses the pre-computed Tangent Basis to evaluate the Directional Hessian $K(u)$ instantly for thousands of angles.
-*   **Output:** Generates a continuous, filled red ellipse (`confusion_zone.png`). Any secondary source whose parameters fall inside that ellipse is operationally indistinguishable from the primary source.
-
----
-
-## 4. Best Practices for Future AI Development
-If you are an AI agent tasked with modifying this codebase:
-1.  **Do not touch `Inference.jl`'s CPU loop unless absolutely necessary.** It is deliberately un-vectorized (`sum(...) do i`) because allocating arrays inside a 22-thread `ForwardDiff` AD loop will instantly choke the Julia Garbage Collector.
-2.  **Respect the Dynamic Memory Manager:** If you add more channels or physics, increase the `bytes_per_bin_per_thread` in `config.toml` so the orchestrator knows to throttle the active threads further to prevent `OOM Killed` OS crashes.
-3.  **No Hardcoding:** If you add a new physical parameter (e.g., symmetric mass ratio $\eta$), expose it in `config.toml`, parse it in `pipeline.jl`, and pass it down via `phys_kwargs...`. 
-4.  **GPU Compiler Warnings (`oneAPI.jl`):** There is a known bug in experimental GPU compilers (like Intel's `oneAPI.jl`) where passing `ForwardDiff.Dual` arrays via `Ref(p)` throws an `InvalidIRError` (passing non-bitstype argument) because the GPU compiler fails to statically infer the deeply nested derivatives. Until `oneAPI.jl` matures, massive AD runs should rely on the allocation-free CPU loop (`force_cpu = true`). Mature compilers like NVIDIA's `CUDA.jl` should handle the AD broadcasting natively.
-
-This pipeline is currently highly-optimized, 100% thread-safe, mathematically rigorous, and ready for publication-level data generation.
+1. Keep the scalar cores (`strain_bin`, `tdi_modulation_bin`) the single
+   source of physics truth — the loop, broadcast and kernel paths all call
+   them, and the test suite asserts their equivalence.
+2. New physical parameters go: `config.toml` → `Config.jl` validation →
+   `WaveformParams` field → scalar core. Never a bare kwarg default
+   duplicated across modules.
+3. The GPU path supports the 2-channel (A, E) configuration; parameters
+   cross the kernel boundary as isbits `NTuple`s so `ForwardDiff.Dual`
+   gradients compile to device code. The legacy failure mode (broadcasting
+   with `Ref(p)` over a heap `Vector{Dual}`) is designed out.
+4. Changing `[noise]`, the optimizer, or the mapping algorithm invalidates
+   comparisons with earlier runs — the config snapshot plus `metadata.toml`
+   in every run directory is the provenance chain; rely on it.

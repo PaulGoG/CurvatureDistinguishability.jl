@@ -1,51 +1,102 @@
 # API Reference & Module Documentation
 
-This page details the core functionalities exported by the `TwoWaveformDistinguishability.jl` pipeline. The mathematical engine is meticulously decoupled into four primary domains: **Physics**, **Detector**, **Geometry**, and **Inference**.
+Core functionality exported by `TwoWaveformDistinguishability.jl`, decoupled
+into physics, detector response, bounds, geometry, inference, hardware,
+configuration, provenance, plotting and orchestration.
 
-## Physics Module
-The `Physics` module manages the generation of frequency-domain waveforms and the analytic Power Spectral Density (PSD) models for space-based interferometry.
+## Physics
 
 ```@docs
+TwoWaveformDistinguishability.Physics.NoiseParams
+TwoWaveformDistinguishability.Physics.robson_confusion_params
 TwoWaveformDistinguishability.Physics.analytic_noise_psd
+TwoWaveformDistinguishability.Physics.WaveformParams
+TwoWaveformDistinguishability.Physics.waveform_params
+TwoWaveformDistinguishability.Physics.spin_beta
+TwoWaveformDistinguishability.Physics.strain_bin
 TwoWaveformDistinguishability.Physics.scaled_waveform_model
 ```
 
-## Detector Module
-The `Detector` module is responsible for Time Delay Interferometry (TDI). It translates the raw astrophysical strain into the noise-orthogonal A, E, and T channels, applying the necessary orbital Doppler phase shifts and antenna pattern amplitude modulations.
+## Detector
 
 ```@docs
+TwoWaveformDistinguishability.Detector.tdi_modulation_bin
 TwoWaveformDistinguishability.Detector.tdi_modulation
 TwoWaveformDistinguishability.Detector.project_to_tdi
+TwoWaveformDistinguishability.Detector.n_channels
 ```
 
-## Geometry Module
-The `Geometry` module is the differential geometry heart of the pipeline. It uses high-precision Automatic Differentiation (`ForwardDiff.jl`) to compute exact analytical gradients, Jacobians, and Extrinsic Curvatures on the signal manifold. It features a decoupled architecture to prevent memory (VRAM/RAM) overflow.
+## Bounds
+
+```@docs
+TwoWaveformDistinguishability.Bounds.ParameterBounds
+TwoWaveformDistinguishability.Bounds.default_bounds
+TwoWaveformDistinguishability.Bounds.bounds_from_config
+TwoWaveformDistinguishability.Bounds.deviation_box
+TwoWaveformDistinguishability.Bounds.ray_box_crossing
+TwoWaveformDistinguishability.Bounds.clamp_interior
+```
+
+## Geometry
 
 ```@docs
 TwoWaveformDistinguishability.Geometry.inner_product
 TwoWaveformDistinguishability.Geometry.multi_channel_inner_product
+TwoWaveformDistinguishability.Geometry.flat_response
 TwoWaveformDistinguishability.Geometry.compute_tangent_basis
+TwoWaveformDistinguishability.Geometry.value_and_directional_derivs
 TwoWaveformDistinguishability.Geometry.compute_extrinsic_curvature_from_basis
 TwoWaveformDistinguishability.Geometry.compute_extrinsic_curvature
 ```
 
-## Inference Module
-The `Inference` module leverages `Optim.jl` to numerically search the single-source parameter space to find the minimum distance ($D^2$) to a composite two-source signal.
+## Inference
 
 ```@docs
+TwoWaveformDistinguishability.Inference.loss_function
 TwoWaveformDistinguishability.Inference.calculate_numerical_distance
+TwoWaveformDistinguishability.Inference.optimization_diagnostics
 ```
 
-## Hardware Abstraction Layer
-The `Hardware` module provides dynamic detection of available computational backends (CPU threads, CUDA, AMDGPU, Metal, oneAPI) to automatically route array broadcasts.
+## Hardware
 
 ```@docs
 TwoWaveformDistinguishability.Hardware.get_best_backend
 TwoWaveformDistinguishability.Hardware.to_backend
+TwoWaveformDistinguishability.Hardware.backend_name
+TwoWaveformDistinguishability.Hardware.register_backend!
+```
+
+## Configuration
+
+```@docs
+TwoWaveformDistinguishability.Config.PipelineSettings
+TwoWaveformDistinguishability.Config.load_and_validate_config
+```
+
+## Provenance
+
+```@docs
+TwoWaveformDistinguishability.Provenance.run_id_from_config
+TwoWaveformDistinguishability.Provenance.unique_run_dir
+TwoWaveformDistinguishability.Provenance.snapshot_config
+TwoWaveformDistinguishability.Provenance.backup_existing!
+TwoWaveformDistinguishability.Provenance.write_run_metadata
+TwoWaveformDistinguishability.Provenance.git_state
+```
+
+## Plotting
+
+```@docs
+TwoWaveformDistinguishability.Plotting.twd_theme
+TwoWaveformDistinguishability.Plotting.save_figure
+TwoWaveformDistinguishability.Plotting.decade_ticks
+TwoWaveformDistinguishability.Plotting.pi_ticks
+TwoWaveformDistinguishability.Plotting.scaling_figure
+TwoWaveformDistinguishability.Plotting.residual_figure
+TwoWaveformDistinguishability.Plotting.zone_figure
 ```
 
 ## Orchestrator
-The `Orchestrator` manages the high-level Execution loops and the **Dynamic Memory Manager**.
 
 ```@docs
 TwoWaveformDistinguishability.Orchestrator.run_pipeline

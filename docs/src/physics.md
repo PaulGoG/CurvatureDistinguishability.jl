@@ -91,11 +91,17 @@ $$ \tilde{h}_T(f) \approx 0 $$
 ---
 
 ## 6. The Noise Profile (Robson et al. 2019)
-The inner products computing the Extrinsic Curvature $K(u)$ are weighted by the Power Spectral Density (PSD) of the detector, $S_n(f)$. 
+The inner products computing the Extrinsic Curvature $K(u)$ are weighted by the one-sided PSD $S_n(f)$, implemented exactly from Robson, Cornish & Liu (2019), arXiv:1803.01944:
 
-The pipeline uses the analytic space-based PSD which models:
-1. **Optical Metrology Noise:** Dominates at high frequencies ($f > 10^{-2}$ Hz), tracking laser shot noise and path length errors.
-2. **Acceleration Noise:** Dominates at low frequencies ($f < 10^{-3}$ Hz), tracking test-mass spurious accelerations.
-3. **Galactic Binary Confusion Noise:** An empirical fit representing the unresolvable hum of millions of white dwarf binaries in the Milky Way, forming a "bump" in the noise floor around $1$ mHz.
+**Instrumental noise (Eq. 12)** — the Michelson-channel PSD (the sky-averaged $10/3$ response factor of their Eq. 13 is *not* applied, because this pipeline models the antenna response explicitly in `Detector.jl`):
+$$ P_n(f) = \frac{P_{\mathrm{OMS}}}{L^2} + 2\left(1 + \cos^2(f/f_*)\right)\frac{P_{\mathrm{acc}}}{(2\pi f)^4 L^2} $$
+with $P_{\mathrm{OMS}}$ (Eq. 10) the optical-metrology noise and $P_{\mathrm{acc}}$ (Eq. 11) the test-mass acceleration noise.
 
-By utilizing this comprehensive physical framework, the `TwoWaveformDistinguishability` pipeline ensures that the geometric mappings of the "Zone of Confusion" are directly applicable to genuine space-based gravitational wave astronomy.
+**Galactic confusion noise (Eq. 14)** — the unresolved white-dwarf foreground:
+$$ S_c(f) = A\, f^{-7/3}\, e^{-f^{\alpha} + \beta f \sin(\kappa f)} \left[ 1 + \tanh\!\big(\gamma (f_k - f)\big) \right], \qquad A = 9\times 10^{-45}, $$
+with $(\alpha, \beta, \kappa, \gamma, f_k)$ from Table 1, selected by the observation time (1 yr: $\alpha=0.171$, $\beta=292$, $\kappa=1020$, $\gamma=1680$, $f_k=2.15$ mHz) and overridable via the `[noise]` config section.
+
+!!! warning "Historical bug"
+    Before the 2026-07 remediation, the confusion term was transcribed incorrectly — the 1-yr coefficient $\beta = 292$ was used as an *exponent*, $e^{-(f/f_k)^{292}}$, which underflows to zero across the entire band. Every result produced by the original campaign (`run_12645ac2`) is therefore an **instrumental-noise-only** result; `[noise].confusion_enabled = false` reproduces that behavior explicitly.
+
+By utilizing this framework, the pipeline ensures the "Zone of Confusion" mappings are directly applicable to genuine space-based gravitational wave astronomy.

@@ -1,79 +1,113 @@
-# Two-Waveform Distinguishability 🌊
+# TwoWaveformDistinguishability.jl
 
-## 📂 Project Structure
+Computational proof of the **quartic distinguishability law** for space-based
+gravitational-wave interferometry: the squared noise-weighted distance between
+a two-source signal and the best-fit *single*-source template scales as
+
+**D² ≈ (1/16) · K(u) · δ⁴**,
+
+where δ is the parameter separation and K(u) the extrinsic curvature of the
+signal manifold. The discernibility boundary follows as
+δ_min(u) = (16 ρ²_thr / K(u))^{1/4}, and the 2D "zone of confusion" maps are
+the exact intersection of that boundary with the hard physical parameter
+bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
+
+## File structure
+
 ```text
-.
-├── config.toml           # The absolute orchestrator configurations
-├── benchmarks/
-│   └── run_benchmarks.jl # Profilers and timing suite
-├── scripts/
-│   ├── pipeline.jl       # Unified CLI orchestrator entry point
-│   └── launch_campaign.jl # Background runner and log vaulter
+TwoWaveformDistinguishability/
+├── Project.toml            # deps, GPU weakdeps + extensions, compat
+├── Manifest.toml           # version-controlled — portability guarantee
+├── config.toml             # the single source of all run parameters
 ├── src/
-│   ├── Detector.jl       # TDI projection & dynamic orbital/antenna modulations
-│   ├── Geometry.jl       # Core tensor mathematics (Jacobian, Gram-Schmidt)
-│   ├── Hardware.jl       # Dynamic GPU/CPU backend detection
-│   ├── Inference.jl      # High-precision optimization (LBFGS)
-│   ├── Orchestrator.jl   # Execution and dynamic memory manager
-│   ├── Physics.jl        # Analytic PSD and scaled 6-parameter waveform model
-│   └── TwoWaveformDistinguishability.jl # Main package module
-└── test/
-    └── runtests.jl       # Comprehensive test suite
+│   ├── TwoWaveformDistinguishability.jl  # top module, exports
+│   ├── Hardware.jl         # backend registry; CPU fallback; GPU via extensions
+│   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
+│   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
+│   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
+│   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
+│   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel
+│   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
+│   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata
+│   ├── Plotting.jl         # CairoMakie figures; family-wide tick policy
+│   └── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
+├── ext/                    # TWDCUDAExt, TWDAMDGPUExt, TWDMetalExt, TWDoneAPIExt
+├── scripts/
+│   ├── pipeline.jl         # CLI entry point (loads GPU package per config)
+│   ├── launch_campaign.jl  # detached launcher via Base.julia_cmd()
+│   ├── replot.jl           # regenerate all figures from a run's CSVs
+│   └── audit_bounds.jl     # audit a run's maps against the physical bounds
+├── test/
+│   ├── runtests.jl         # physics validation + A/B regression + E2E
+│   ├── Project.toml
+│   └── fixtures/legacy/    # committed regression fixtures (legacy-code outputs)
+├── benchmarks/             # BenchmarkTools scripts (own environment)
+├── docs/                   # Documenter.jl sources
+└── data/{logs,outputs}/    # run artifacts (git-ignored)
 ```
 
-This project contains a high-performance Julia simulation pipeline to validate the theoretical quartic scaling law ($\delta^4$) for two-waveform distinguishability and geometrically map the "Zone of Confusion" for the LISA mission.
+## Environment setup
 
-## 📖 Theoretical Intent
+```julia
+using Pkg
+Pkg.activate(".")           # from this directory
+Pkg.instantiate()
+```
 
-When observing data containing two closely overlapping gravitational wave signals with a small parameter separation $\delta$, a standard approach might try to fit them with a single-source model. A key theoretical result dictates that the squared distance $D^2$ (residual power) between the two-source signal and the best-fit single-source manifold scales **quartically**:
+`Project.toml` + `Manifest.toml` are authoritative and version-controlled.
+GPU support is optional: install the package matching your hardware
+(`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`) and the corresponding
+package extension activates automatically; without one, the pipeline runs on
+the multi-threaded CPU backend (`[hardware].force_cpu = true` forces this).
 
-$$ D^2 \approx \frac{A^2}{16} K(u) \delta^4 $$
+## Usage
 
-Where $K(u)$ is the **extrinsic curvature** of the signal manifold in the direction $u$. This project proves this mathematically and Maps the absolute limit of distinguishability ($\delta_{\mathrm{min}}$). 
-*For full technical details, see `scientific_context.md`.*
-
-## 🚀 Architecture
-
-The pipeline avoids numerical precision floors (underflow) that plague standard parameter estimation by:
-1.  **Operating on an $\mathcal{O}(1)$ Scaled Manifold:** Ensures the Fisher Matrix is perfectly well-conditioned.
-2.  **High-Precision AD:** Uses `ForwardDiff.jl` to compute exact analytical gradients and Hessians.
-3.  **Hardware Abstraction (HAL):** Uses `KernelAbstractions.jl` to target GPUs (CUDA, AMD, Metal) or fall back to an ultra-fast, allocation-free multi-threaded CPU loop to avoid GC lock contention.
-4.  **Realistic Physics:** Includes Spin-Orbit coupling, Higher Harmonics ($33$ mode), and full Time Delay Interferometry (TDI) with Orbital Doppler shifts.
-
-## ⚙️ Usage
-
-The entire project is controlled via the `config.toml` file. You define your physical parameters, the 1D parameter sweeps you want to run, and the 2D contour maps you want to draw.
-
-Because the path resolution is fully dynamic, you can execute the unified pipeline from anywhere:
-
-**1. Live Interactive Run:**
 ```bash
-julia --threads auto TwoWaveformDistinguishability/scripts/pipeline.jl
+# foreground run (progress bars on a TTY)
+julia --project --threads=auto scripts/pipeline.jl --config config.toml
+
+# detached campaign with ANSI-free logs
+julia --project scripts/launch_campaign.jl
+
+# regenerate every figure of a finished run from its CSVs (no recomputation)
+julia --project scripts/replot.jl data/outputs/run_<hash>
+
+# audit a run's confusion maps against the physical bounds
+julia --project scripts/audit_bounds.jl data/outputs/run_<hash>
 ```
-*(Note: The pipeline automatically suppresses package activation logs and provides a beautiful, aesthetic real-time wall-clock in your terminal).*
 
-**2. Background Campaign (Overnight/HPC Runs):**
-```bash
-julia TwoWaveformDistinguishability/scripts/launch_campaign.jl
-```
-*(Spawns the orchestrator in the background, instantly returns terminal control, and dynamically vaults all terminal logs into a timestamped file in `data/logs/`).*
+Everything tunable lives in `config.toml` (grid, physics, Robson-2019 noise
+coefficients, mapping resolution/refinement, `[parameter_bounds]`, optimizer,
+`[safety]` memory budgets). The configuration is validated up front: unusable
+values abort with a descriptive error, suspicious ones warn, and **unknown
+keys warn** (typo protection). Each run lands in
+`data/outputs/run_<confighash>/` with a config snapshot, `metadata.toml`
+(git commit, backend, timings) and a structured, ANSI-free `run.log`; reruns
+get suffixed directories and `safesave`-style backups — results are never
+overwritten.
 
-### 📚 Local Documentation
-This project uses `Documenter.jl` for rigorous, offline scientific documentation. To view the mathematical models and the API reference locally, open the following file in your web browser:
-`TwoWaveformDistinguishability/docs/build/index.html`
+## Outputs
 
-### Options:
-*   `--config`: Path to your TOML configuration file (default: `config.toml`).
-*   `--workers`: Number of distributed cluster nodes to spawn (default: `0` for local multi-threading).
+- **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
+  parameters, convergence diagnostics, active-bound flags),
+  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
+  optimizer floor level, δ*), `scaling_plot.{pdf,png}` (log–log panel plus a
+  D²_num/D²_theo ratio panel), `residual_plot.{pdf,png}` (d(SNR²)/df and
+  d(D²)/df densities for channels A and E; the bottom panel integrates to D²).
+- **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
+  boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
+  `confusion_zone.{pdf,png}` with the physical prior box drawn and
+  prior-limited boundary segments visually distinct from curvature-limited
+  ones. K is computed on [0, π) only and mirrored (K(u) is exactly even),
+  with adaptive angular refinement near boundary spikes.
 
-## 📊 Visual Outputs
+## Status of components
 
-Outputs are cleanly vaulted into unique `data/outputs/run_<ID>` directories, separated into `/sweeps/` and `/maps/`.
-
-1.  **`scaling_plot.png` (1D Sweep):**
-    *   A log-log plot proving the residual signal energy shrinks quartically, perfectly tracking the theoretical $\delta^4$ curve.
-2.  **`residual_plot.png` (1D Sweep):**
-    *   A 2-layered plot showing the true two-source signal vs. the best-fit single source, and isolating the unabsorbable Extrinsic Curvature residual on its own linear scale.
-3.  **`confusion_zone.png` (2D Map):**
-    *   A continuous, filled ellipse showing the Fundamental Discernibility boundary ($\delta_{\mathrm{min}}$) for a given parameter plane (e.g., Mass vs. Time). Any secondary source inside this red zone is operationally indistinguishable from the primary source.
-ous, filled ellipse showing the Fundamental Discernibility boundary ($\delta_{\mathrm{min}}$) for a given parameter plane (e.g., Mass vs. Time). Any secondary source inside this red zone is operationally indistinguishable from the primary source.
+| Component | Status |
+|---|---|
+| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed legacy fixtures |
+| Robson (2019) confusion noise (Eq. 14, Table 1) | **fixed** — the pre-2026 campaign ran with an inert confusion term (coefficient transcription bug), i.e. instrumental noise only |
+| Box-constrained optimization (`IPNewton`; `lbfgs_box`/`lbfgs` fallbacks) | tested, physical bounds enforced |
+| 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
+| GPU path (KernelAbstractions kernel + package extensions) | kernel verified ≡ CPU loop (value and gradient) on the CPU backend; device execution requires supported GPU hardware |
+| Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
