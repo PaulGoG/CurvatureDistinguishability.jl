@@ -55,7 +55,7 @@ if isdir(sweeps_dir)
                                               d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
                 save_figure(rfig, joinpath(dir, "residual_plot"))
             end
-            replotted += 1
+            global replotted += 1
             println("replotted sweep: $name")
         catch err
             @warn "Failed to replot sweep '$name'" exception = (err, catch_backtrace())
@@ -87,7 +87,7 @@ if isdir(maps_dir)
                               prior_frac = count(prior) / max(1, length(prior)),
                               degenerate_frac = count(degen) / max(1, length(degen)))
             save_figure(fig, joinpath(dir, "confusion_zone"))
-            replotted += 1
+            global replotted += 1
             println("replotted map: $name")
         catch err
             @warn "Failed to replot map '$name'" exception = (err, catch_backtrace())
