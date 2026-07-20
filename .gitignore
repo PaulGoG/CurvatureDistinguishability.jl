@@ -1,12 +1,15 @@
+# run outputs and logs (never version-controlled)
+data/inputs/
+data/outputs/
+data/logs/
+*.log
+# generated data/figure formats — EXCEPT committed regression fixtures
 *.csv
 *.h5
 *.jld2
 *.pdf
 *.png
+!test/fixtures/**
 .DS_Store
-Manifest.toml
-data/inputs/
-data/outputs/
 docs/build/
-data/logs/
-*.log
+# Manifest.toml IS version-controlled (portability guarantee across machines)

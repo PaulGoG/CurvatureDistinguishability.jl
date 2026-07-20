@@ -1,68 +1,104 @@
 module Detector
 
-export project_to_tdi, tdi_modulation
+using ..Physics: WaveformParams, waveform_params, SECONDS_PER_YEAR
+
+export tdi_modulation_bin, tdi_modulation, project_to_tdi, n_channels
+
+const R_ORBIT_SEC = 499.00478383615643 # 1 AU in light-seconds
 
 """
-    tdi_modulation(f, p; kwargs...)
+    n_channels(wp::WaveformParams)
 
-Computes the frequency-dependent complex modulation factors for A, E, and T channels
-due to the orbital motion of the detector (Doppler phase and antenna pattern amplitude).
+Number of active TDI channels: 2 (A, E) by default, 3 when the identically
+zero null channel T is explicitly requested via `wp.include_t_channel`.
 """
-function tdi_modulation(f::Real, p::AbstractVector; 
-                        mass_scale::Real=10.0, time_scale::Real=1000.0, 
-                        sky_theta::Real=1.047, sky_phi::Real=0.0, 
-                        inclination::Real=0.523, polarization::Real=0.0, kwargs...)
-    Mc = p[2] * mass_scale
-    tc = p[3] * time_scale
-    
-    R_sec = 499.00478383615643 # 1 AU in seconds
-    omega_orbit = 2 * π / 3.15576e7 # 1 year orbital angular velocity
-    
-    # Stationary Phase Approximation (SPA) time-frequency relation
-    v = (π * Mc * f)^(1/3)
+n_channels(wp::WaveformParams) = wp.include_t_channel ? 3 : 2
+
+"""
+    tdi_modulation_bin(f, Mc, tc, wp) -> (mod_A, mod_E)
+
+Scalar per-bin complex modulation of the A and E TDI channels: orbital
+Doppler phase (via the SPA time-frequency map `t(f) = t_c − 5M_c/(256 v⁸)`)
+and low-frequency antenna patterns. `Mc`, `tc` in physical units. Generic
+over `Real` (including `ForwardDiff.Dual`); safe inside GPU kernels.
+"""
+@inline function tdi_modulation_bin(f::Real, Mc, tc, wp::WaveformParams)
+    omega_orbit = 2 * π / SECONDS_PER_YEAR
+
+    v = (π * Mc * f)^(1 / 3)
     t_f = tc - 5.0 * Mc / (256.0 * v^8)
-    
+
     phi_orb = omega_orbit * t_f
-    doppler_phase = 2 * π * f * R_sec * sin(sky_theta) * cos(phi_orb - sky_phi)
-    
-    # Simplified low-frequency antenna patterns for A and E
-    F_plus = 0.5 * (1 + cos(sky_theta)^2) * cos(2 * phi_orb) * cos(2 * polarization) - cos(sky_theta) * sin(2 * phi_orb) * sin(2 * polarization)
-    F_cross = 0.5 * (1 + cos(sky_theta)^2) * cos(2 * phi_orb) * sin(2 * polarization) + cos(sky_theta) * sin(2 * phi_orb) * cos(2 * polarization)
-    
-    h_plus_amp = 0.5 * (1 + cos(inclination)^2)
-    h_cross_amp = cos(inclination)
-    
-    phase_shift = exp(1im * doppler_phase)
-    
-    mod_A = sqrt(3/4) * (F_plus * h_plus_amp - 1im * F_cross * h_cross_amp) * phase_shift
-    mod_E = sqrt(1/4) * (F_cross * h_plus_amp + 1im * F_plus * h_cross_amp) * phase_shift
-    mod_T = zero(mod_A) # Null channel at low frequencies
-    
-    return mod_A, mod_E, mod_T
+    doppler_phase = 2 * π * f * R_ORBIT_SEC * sin(wp.sky_theta) * cos(phi_orb - wp.sky_phi)
+
+    F_plus = 0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * cos(2 * wp.polarization) -
+             cos(wp.sky_theta) * sin(2 * phi_orb) * sin(2 * wp.polarization)
+    F_cross = 0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * sin(2 * wp.polarization) +
+              cos(wp.sky_theta) * sin(2 * phi_orb) * cos(2 * wp.polarization)
+
+    h_plus_amp = 0.5 * (1 + cos(wp.inclination)^2)
+    h_cross_amp = cos(wp.inclination)
+
+    phase_shift = cis(doppler_phase)
+
+    mod_A = sqrt(3 / 4) * (F_plus * h_plus_amp - 1im * F_cross * h_cross_amp) * phase_shift
+    mod_E = sqrt(1 / 4) * (F_cross * h_plus_amp + 1im * F_plus * h_cross_amp) * phase_shift
+
+    return mod_A, mod_E
 end
 
 """
-    project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector; kwargs...) -> Tuple{AbstractVector, AbstractVector, AbstractVector}
+    tdi_modulation(f, p; kwargs...) -> (mod_A, mod_E, mod_T)
 
-Projects a raw, frequency-domain astrophysical strain \$h(f)\$ into the orthogonal `A`, `E`, and `T` Time Delay Interferometry (TDI) response channels.
+Legacy-compatible wrapper around [`tdi_modulation_bin`](@ref) taking the
+scaled parameter vector `p`; `mod_T` is identically zero (null channel).
+"""
+function tdi_modulation(f::Real, p::AbstractVector; kwargs...)
+    wp = waveform_params(; kwargs...)
+    mod_A, mod_E = tdi_modulation_bin(f, p[2] * wp.mass_scale, p[3] * wp.time_scale, wp)
+    return mod_A, mod_E, zero(mod_A)
+end
 
-It dynamically applies orbital modulation across the entire frequency grid by broadcasting `tdi_modulation`. This is mathematically equivalent to taking the raw signal and "flying" it through the detector's orbital path.
+"""
+    project_to_tdi(h_strain, freqs, p, wp::WaveformParams)
 
-# Arguments
-- `h_strain`: The raw complex astrophysical waveform array.
-- `freqs`: The frequency grid.
-- `p`: The 6-parameter source vector.
+Project a frequency-domain strain into the TDI response channels in a single
+fused pass (one loop, one allocation per channel — replaces the legacy
+four-broadcast tuple-unpacking implementation). Returns `(A, E)` or
+`(A, E, T)` depending on `wp.include_t_channel`; `T` is identically zero.
+"""
+function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector, wp::WaveformParams)
+    Mc = p[2] * wp.mass_scale
+    tc = p[3] * wp.time_scale
 
-# Returns
-- A tuple `(A_channel, E_channel, T_channel)` of the modulated complex response arrays.
+    mA1, _ = tdi_modulation_bin(freqs[1], Mc, tc, wp)
+    CT = typeof(mA1 * h_strain[1])
+    A = Vector{CT}(undef, length(freqs))
+    E = Vector{CT}(undef, length(freqs))
+    @inbounds for i in eachindex(freqs, h_strain)
+        mod_A, mod_E = tdi_modulation_bin(freqs[i], Mc, tc, wp)
+        A[i] = mod_A * h_strain[i]
+        E[i] = mod_E * h_strain[i]
+    end
+
+    if wp.include_t_channel
+        return A, E, zeros(CT, length(freqs))
+    end
+    return A, E
+end
+
+"""
+    project_to_tdi(h_strain, freqs, p; kwargs...) -> (A, E, T)
+
+Legacy-compatible keyword variant; always returns the full 3-channel tuple
+with an identically zero `T`.
 """
 function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector; kwargs...)
-    mods = tdi_modulation.(freqs, Ref(p); kwargs...)
-    mod_A = first.(mods)
-    mod_E = getindex.(mods, 2)
-    mod_T = last.(mods)
-    
-    return mod_A .* h_strain, mod_E .* h_strain, mod_T .* h_strain
+    wp0 = waveform_params(; kwargs...)
+    wp = WaveformParams(wp0.mass_scale, wp0.time_scale, wp0.amp_scale, wp0.eta,
+                        wp0.amp_33_factor, wp0.sky_theta, wp0.sky_phi,
+                        wp0.inclination, wp0.polarization, true)
+    return project_to_tdi(h_strain, freqs, p, wp)
 end
 
 end # module
