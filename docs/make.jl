@@ -19,6 +19,7 @@ makedocs(
         "Scientific Context" => "science.md",
         "Waveform Physics" => "physics.md",
         "Complex Run Parameters" => "parameters.md",
+        "Roadmap" => "roadmap.md",
         "API Reference" => "api.md"
     ]
 )

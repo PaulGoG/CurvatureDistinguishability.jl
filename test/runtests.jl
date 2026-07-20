@@ -178,10 +178,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                                          FIX_DF, FIX_WP, CPU())
         @test kern ≈ loop(p) rtol = 1e-12
         g_loop = ForwardDiff.gradient(loop, p)
-        g_kern = ForwardDiff.gradient(
-            q -> TWD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data[1], data[2],
-                                           FIX_DF, FIX_WP, CPU()), p)
-        @test g_kern ≈ g_loop rtol = 1e-10
+        dl = q -> TWD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data[1], data[2],
+                                            FIX_DF, FIX_WP, CPU())
+        @test ForwardDiff.gradient(dl, p) ≈ g_loop rtol = 1e-12
+        # lanes path: nested (Hessian) duals through the same kernel layout
+        @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
+        # flatten/rebuild round-trip on a nested dual (lane-order contract)
+        nd = ForwardDiff.Dual{:o}(ForwardDiff.Dual{:i}(1.0, 2.0, 3.0),
+                                  ForwardDiff.Dual{:i}(4.0, 5.0, 6.0))
+        fl = TWD.Inference.flatten_dual(nd)
+        @test fl == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+        rb, _ = TWD.Inference.rebuild_dual(typeof(nd), collect(fl), 1)
+        @test rb === nd
 
         # perfect match → (near-)zero distance
         d0, bf0, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
@@ -276,7 +284,29 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             cfg_odd = @test_logs (:warn, r"odd; rounding up") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[mapping]\nn_angles = 33\n"))
             @test cfg_odd.map_n_angles == 34
+
+            # amp_ratio and multi-start guardrails
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[[sweeps]]\nname = \"s\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0,1,0,0,0,0]\namp_ratio = -1.0\n"))
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[[sweeps]]\nname = \"s\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0.5,1,0,0,0,0]\namp_ratio = 0.5\n"))
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[pipeline.sweep_settings]\nn_starts = 0\n"))
+            cfg_ms = load_and_validate_config(
+                write_cfg(dir, "[pipeline]\nrng_seed = 7\n[pipeline.sweep_settings]\nn_starts = 3\n"))
+            @test cfg_ms.n_starts == 3 && cfg_ms.rng_seed == 7
         end
+    end
+
+    @testset "Ratio-correction fit (O(δ⁵) quantification)" begin
+        d = [0.01, 0.05, 0.1, 0.2, 0.3]
+        r = 1.0 .+ 0.3 .* d .- 0.1 .* d .^ 2
+        c1, c1_err, c2 = TWD.Orchestrator.ratio_correction_fit(d, r)
+        @test c1 ≈ 0.3 atol = 1e-6
+        @test c2 ≈ -0.1 atol = 1e-6
+        @test c1_err < 1e-10 # exact model → zero residual
+        c1n, _, _ = TWD.Orchestrator.ratio_correction_fit(d[1:2], r[1:2])
+        @test isnan(c1n) # too few points
     end
 
     @testset "Plotting utilities" begin
@@ -304,10 +334,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             write(cfg_path, """
             [pipeline]
             optimizer = "ipnewton"
+            rng_seed = 11
             [pipeline.sweep_settings]
             n_deltas = 6
             min_log_delta = -3.0
             max_log_delta = -0.5
+            n_starts = 2
             [grid]
             T_obs = 1.0e5
             f_min = 1.0e-3
@@ -325,6 +357,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             name = "mini_sweep"
             theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             u_dir = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
+            [[sweeps]]
+            name = "mini_unequal"
+            theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
+            u_dir = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
+            amp_ratio = 0.5
             [[maps]]
             name = "mini_spin_map"
             param_x = 5
@@ -351,10 +388,26 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test nrow(res) == 6
             @test all(hasproperty.(Ref(res), [:BestFit_Spin1, :Converged, :Iterations, :AtBound]))
             @test all(res.D2_Numerical .>= 0)
+            # multi-start bookkeeping (n_starts = 2): best-of never worse than canonical
+            @test all(res.Starts .== 2)
+            @test all(res.MultiStartGain .>= 1.0 - 1e-12)
             for f in ("scaling_plot.pdf", "scaling_plot.png", "residual_plot.pdf",
                       "residual_plot.png", "residual_spectrum.csv", "sweep_meta.toml")
                 @test isfile(joinpath(sdir, f))
             end
+            meta_s = TOML.parsefile(joinpath(sdir, "sweep_meta.toml"))
+            @test haskey(meta_s, "c1") && haskey(meta_s, "delta_valid")
+
+            # unequal-amplitude sweep: in the perturbative (small-δ) regime the
+            # A_harm prefactor (2q/(1+q))² must make the ratio ≈ 1 — a missing
+            # prefactor would show as ratio ≈ 2.25. (Only the small-δ rows: for
+            # q ≠ 1 the midpoint symmetry that suppresses the odd O(δ⁵) term is
+            # absent, so the higher-order departure sets in much earlier.)
+            res_u = CSV.read(joinpath(out_base, "sweeps", "mini_unequal", "results.csv"), DataFrame)
+            ratio_u = res_u.D2_Numerical[1:3] ./ res_u.D2_Theoretical[1:3]
+            @test all(0.85 .< ratio_u .< 1.15)
+            meta_u = TOML.parsefile(joinpath(out_base, "sweeps", "mini_unequal", "sweep_meta.toml"))
+            @test meta_u["amp_ratio"] == 0.5
 
             for map_name in ("mini_spin_map", "mini_mass_time")
                 mdir = joinpath(out_base, "maps", map_name)
@@ -379,6 +432,28 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test all(-1.8 - 1e-9 .<= cm.Y_Bound .<= 0.2 + 1e-9)
             @test count(cm.Prior_Limited) > 0 # χ_a degeneracy → prior-limited directions
             @test all(cm.R_Capped .<= cm.R_Box .+ 1e-12)
+            @test hasproperty(cm, :Dir_Cos) && hasproperty(cm, :Dir_Sin)
+
+            # threshold-rescaled replot from persisted K (no recomputation).
+            # Plain binary (not julia_cmd(): --check-bounds would recompile the
+            # plotting stack) and a scrubbed environment (Pkg.test exports its
+            # sandbox via JULIA_LOAD_PATH/JULIA_PROJECT, which would poison the
+            # child's package resolution).
+            replot_script = joinpath(dirname(@__DIR__), "scripts", "replot.jl")
+            jlbin = Base.julia_cmd().exec[1]
+            cmd = addenv(`$jlbin --startup-file=no $replot_script $out_base --rho 2.0`,
+                         "JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing)
+            run(pipeline(cmd, stdout = devnull, stderr = devnull))
+            rcsv = joinpath(out_base, "maps", "mini_spin_map", "confusion_contour_rho2p0.csv")
+            @test isfile(rcsv)
+            cm2 = CSV.read(rcsv, DataFrame)
+            @test all(cm2.R_Capped .<= cm2.R_Box .+ 1e-12)
+            # where neither threshold is box-capped, radii scale exactly by √2
+            free = .!cm.Prior_Limited .& .!cm2.Prior_Limited
+            if any(free)
+                @test all(isapprox.(cm2.R_Capped[free], sqrt(2.0) .* cm.R_Capped[free]; rtol = 1e-10))
+            end
+            @test isfile(joinpath(out_base, "maps", "mini_spin_map", "confusion_zone_rho2p0.png"))
 
             # rerun with the same config must NOT overwrite: suffixed run dir
             out2 = run_pipeline(cfg_path, dir, "outputs")
