@@ -121,7 +121,13 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
 3. The GPU path supports the 2-channel (A, E) configuration; parameters
    cross the kernel boundary as isbits `NTuple`s so `ForwardDiff.Dual`
    gradients compile to device code. The legacy failure mode (broadcasting
-   with `Ref(p)` over a heap `Vector{Dual}`) is designed out.
+   with `Ref(p)` over a heap `Vector{Dual}`) is designed out. Under AD the
+   kernel uses the **lanes layout**: Dual arithmetic runs inside the kernel,
+   but each scalar lane (value + partials, recursively — 7 for gradients,
+   49 for Hessians) is stored directly into a plain `Float64` matrix and
+   reduced with standard per-column sums; device arrays never carry Dual
+   eltypes (some GPU runtimes reject them), and no intermediate lane tuple
+   is materialized (large tuples trip `gpu_malloc` on some compilers).
 4. Changing `[noise]`, the optimizer, or the mapping algorithm invalidates
    comparisons with earlier runs — the config snapshot plus `metadata.toml`
    in every run directory is the provenance chain; rely on it.

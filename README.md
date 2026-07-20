@@ -69,8 +69,10 @@ julia --project --threads=auto scripts/pipeline.jl --config config.toml
 # detached campaign with ANSI-free logs
 julia --project scripts/launch_campaign.jl
 
-# regenerate every figure of a finished run from its CSVs (no recomputation)
-julia --project scripts/replot.jl data/outputs/run_<hash>
+# regenerate every figure of a finished run from its CSVs (no recomputation);
+# --rho R additionally rescales all maps/threshold markers to a new
+# discernibility threshold using the persisted per-direction curvature
+julia --project scripts/replot.jl data/outputs/run_<hash> [--rho R]
 
 # audit a run's confusion maps against the physical bounds
 julia --project scripts/audit_bounds.jl data/outputs/run_<hash>
@@ -89,11 +91,15 @@ overwritten.
 ## Outputs
 
 - **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
-  parameters, convergence diagnostics, active-bound flags),
+  parameters, convergence diagnostics, active-bound flags, multi-start gain),
   `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
-  optimizer floor level, δ*), `scaling_plot.{pdf,png}` (log–log panel plus a
-  D²_num/D²_theo ratio panel), `residual_plot.{pdf,png}` (d(SNR²)/df and
-  d(D²)/df densities for channels A and E; the bottom panel integrates to D²).
+  the O(δ⁵) correction coefficients c₁/c₂ with a 10%-validity radius,
+  optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log
+  panel plus a D²_num/D²_theo ratio panel with the correction-fit overlay),
+  `residual_plot.{pdf,png}` (d(SNR²)/df and d(D²)/df densities for channels
+  A and E; the bottom panel integrates to D²). Sweeps support unequal
+  amplitudes (`amp_ratio`, the A_harm law) and opt-in multi-start seeding
+  (`n_starts`, seeded by `[pipeline].rng_seed`).
 - **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
   boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
   `confusion_zone.{pdf,png}` with the physical prior box drawn and

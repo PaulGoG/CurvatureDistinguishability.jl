@@ -30,6 +30,11 @@ The pipeline validates the fundamental geometric distance $D^2 \propto \delta^4$
 *   **Rationale:** The base state features maximal, anti-aligned spins ($\chi_1 = 0.95, \chi_2 = -0.95$). The separation sweeps the absolute phase and spin dimensions.
 *   **Significance:** Maximizes the non-linear 1.5PN "hang-up" effect. It visually demonstrates how spin twists the signal manifold, generally breaking classical degeneracies.
 
+### Scenario B': Unequal-Amplitude Radler Pair
+*   **Base Source ($\theta_0$):** as Scenario B; **Direction ($u$):** as Scenario B; **`amp_ratio` $q = 1/2$.**
+*   **Rationale:** the second source carries half the amplitude of the first. The theoretical prediction acquires the harmonic-mean amplitude prefactor, $D^2 = \tfrac{1}{16}K_{\rm num}\delta^4\,(2q/(1+q))^2$, and the optimizer is initialized at the weighted midpoint with effective amplitude $(1+q)A$.
+*   **Significance:** validates the unequal-amplitude branch of the distinguishability law ($A_{\rm eff}=A_{\rm harm}$) at the level of the prefactor — with $q=1/2$, using the equal-amplitude law instead would misplace the ratio panel by a factor $9/4$.
+
 ### Scenario D: EMRI Analog Time-Shift
 *   **Base Source ($\theta_0$):** `[0.5, 0.1, 500.0, 0.0, 0.9, 0.0]`
 *   **Direction ($u$):** `[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]`
