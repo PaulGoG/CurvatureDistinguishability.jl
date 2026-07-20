@@ -5,9 +5,9 @@ This document outlines the theoretical rationale and parameter choices for the u
 
 ## 1. Global Simulation Grid
 To push the theory to its limits and validate the code's computational capacity, the grid was vastly expanded:
-*   **Observation Time ($T_{\mathrm{obs}}$):** $3.15 \times 10^7$ seconds (1 year).
+*   **Observation Time ($T_{\mathrm{obs}}$):** $3.15576 \times 10^7$ seconds (1 Julian year — the same constant that drives the orbital Doppler modulation).
 *   **Frequency Range ($f_{\mathrm{min}}$ to $f_{\mathrm{max}}$):** $10^{-4}$ Hz to $0.05$ Hz.
-*   **Resolution:** At a spacing of $1/T_{\mathrm{obs}}$, this grid spans exactly **1,577,880 frequency bins**. This dense array forces the Automatic Differentiation (AD) engine to process massive Dual Number arrays, rigorously testing the system's memory allocation and multi-threading safety.
+*   **Resolution:** at a spacing of $1/T_{\mathrm{obs}}$ this grid spans $\approx 1.57$ million frequency bins. The `[safety].max_ram_gb` budget is checked against this size before anything is allocated.
 
 ## 2. 1D Parameter Separation Sweeps
 
@@ -38,11 +38,10 @@ The pipeline validates the fundamental geometric distance $D^2 \propto \delta^4$
 
 ## 3. 2D Zone of Confusion Mappings
 
-These configurations evaluate the Extrinsic Curvature across an entire 2D plane to draw the continuous $\delta_{\mathrm{min}}$ boundary contour.
+These configurations evaluate the extrinsic curvature over a 2D plane to draw the $\delta_{\mathrm{min}}$ boundary. The angular resolution comes from the global `[mapping].n_angles` (per-map override allowed); the solver computes half the directions and mirrors ($K$ is exactly even), refining adaptively near boundary spikes, and caps every direction at the physical prior box (`Prior_Limited` flags in the CSV).
 
-1.  **Mass vs. Phase (`param_x = 2, param_y = 4`)**
-    *   Maps the notorious degeneracy between the overall chirp rate and the absolute orbital phase. 
-2.  **Spin 1 vs. Spin 2 (`param_x = 5, param_y = 6`)**
-    *   Maps the spin-orbit coupling plane. Because the waveform relies heavily on the *effective spin* $\chi_{\mathrm{eff}} = \frac{1}{2}(\chi_1 + \chi_2)$, this maps exactly how indistinguishable two sources are if one black hole speeds up its spin while the other slows down.
-3.  **Time vs. Phase (`param_x = 3, param_y = 4`)**
-    *   Maps the geometry of absolute time-translation versus orbital phase. This is the ultimate test of the orbital Doppler effect, as purely shifting the time alters the geometric arrival of the signal on the LISA cartwheel.
+1.  **Mass vs. Time (`mass_vs_time_degeneracy`, 2 vs 3)** — the classic chirp-rate / arrival-time degeneracy; base $\theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]$.
+2.  **Spin 1 vs. Spin 2 (`spin1_vs_spin2_coupling`, 5 vs 6)** — the waveform sees only $\chi_{\mathrm{eff}} = \frac{1}{2}(\chi_1 + \chi_2)$, so the anti-symmetric direction is exactly flat: the mathematical zone diverges there and the published zone is limited by the spin prior $[-1, 1]$ (a wedge, not an ellipse).
+3.  **Mass vs. Spin 1 (`mass_vs_spin1_twist`, 2 vs 5)** — mass/spin phasing trade-off; the zone crosses the $\chi_1 \le 1$ bound and is capped there.
+4.  **Time vs. Phase (`time_vs_phase_doppler`, 3 vs 4)** — absolute time translation vs orbital phase; the ultimate Doppler test. The pure-phase direction is quasi-degenerate ($\partial^2_\varphi h \parallel$ tangent space), producing a near-singular boundary spike that the adaptive refinement resolves.
+5.  **Mass vs. Phase, EMRI analog (`mass_vs_phase_emri_analog`, 2 vs 4)** — the chirp-rate/phase degeneracy at the low-mass base $\theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]$.

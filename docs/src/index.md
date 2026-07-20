@@ -1,67 +1,83 @@
-# Two-Waveform Distinguishability 🌊
+# Two-Waveform Distinguishability
 
-## 📂 Project Structure
+## Project structure
+
 ```text
-.
-├── config.toml           # The absolute orchestrator configurations
-├── benchmarks/
-│   └── run_benchmarks.jl # Profilers and timing suite
-├── scripts/
-│   └── pipeline.jl       # Unified CLI orchestrator entry point
+TwoWaveformDistinguishability/
+├── config.toml             # single source of all run parameters (validated)
 ├── src/
-│   ├── Detector.jl       # TDI projection & dynamic orbital/antenna modulations
-│   ├── Geometry.jl       # Core tensor mathematics (Jacobian, Gram-Schmidt)
-│   ├── Hardware.jl       # Dynamic GPU/CPU backend detection
-│   ├── Inference.jl      # High-precision optimization (LBFGS)
-│   ├── Orchestrator.jl   # Execution and dynamic memory manager
-│   ├── Physics.jl        # Analytic PSD and scaled 6-parameter waveform model
-│   └── TwoWaveformDistinguishability.jl # Main package module
-└── test/
-    └── runtests.jl       # Comprehensive test suite
+│   ├── Hardware.jl         # backend registry; CPU fallback; GPU via extensions
+│   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
+│   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
+│   ├── Bounds.jl           # physical parameter bounds and polar capping
+│   ├── Geometry.jl         # tangent basis, fused directional derivatives
+│   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel
+│   ├── Config.jl           # validated TOML configuration
+│   ├── Provenance.jl       # config-hash run IDs, snapshots, metadata
+│   ├── Plotting.jl         # CairoMakie figures, family tick policy
+│   └── Orchestrator.jl     # sweeps + capped mirrored mapping driver
+├── ext/                    # CUDA / AMDGPU / Metal / oneAPI extensions
+├── scripts/                # pipeline.jl, launch_campaign.jl, replot.jl,
+│                           #   audit_bounds.jl
+├── test/                   # physics validation, A/B fixtures, E2E
+├── benchmarks/             # BenchmarkTools suite (own environment)
+└── data/{logs,outputs}/    # run artifacts (git-ignored)
 ```
 
-This project contains a high-performance Julia simulation pipeline to validate the theoretical quartic scaling law ($\delta^4$) for two-waveform distinguishability and geometrically map the "Zone of Confusion" for the LISA mission.
+This project is a Julia simulation pipeline that validates the theoretical
+quartic scaling law (``\delta^4``) for two-waveform distinguishability and
+maps the physically capped "zone of confusion" for the LISA mission.
 
-## 📖 Theoretical Intent
+## Theoretical intent
 
-When observing data containing two closely overlapping gravitational wave signals with a small parameter separation $\delta$, a standard approach might try to fit them with a single-source model. A key theoretical result dictates that the squared distance $D^2$ (residual power) between the two-source signal and the best-fit single-source manifold scales **quartically**:
+When data contain two closely overlapping gravitational-wave signals with a
+small parameter separation ``\delta``, a single-source fit absorbs the linear
+and quadratic differences; the unabsorbable residual is governed by the
+extrinsic curvature ``K(u)`` of the signal manifold:
 
-$$ D^2 \approx \frac{A^2}{16} K(u) \delta^4 $$
+```math
+D^2 \approx \frac{1}{16} K(u)\, \delta^4,
+\qquad
+\delta_{\mathrm{min}}(u) = \left(\frac{16\,\rho_{\mathrm{thr}}^2}{K(u)}\right)^{1/4}.
+```
 
-Where $K(u)$ is the **extrinsic curvature** of the signal manifold in the direction $u$. This project proves this mathematically and Maps the absolute limit of distinguishability ($\delta_{\mathrm{min}}$). 
-*For full technical details, see `scientific_context.md`.*
+The published zone-of-confusion maps are the **exact intersection** of this
+mathematical boundary with the hard physical parameter bounds
+(``A, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase topology ``\pm\pi``) —
+along degenerate directions (e.g. the equal-mass spin difference, which the
+waveform cannot see) the zone is limited by the prior, not by curvature, and
+the figures mark those boundary segments distinctly.
 
-## 🚀 Architecture
-
-The pipeline avoids numerical precision floors (underflow) that plague standard parameter estimation by:
-1.  **Operating on an $\mathcal{O}(1)$ Scaled Manifold:** Ensures the Fisher Matrix is perfectly well-conditioned.
-2.  **High-Precision AD:** Uses `ForwardDiff.jl` to compute exact analytical gradients and Hessians.
-3.  **Hardware Abstraction (HAL):** Uses `KernelAbstractions.jl` to target GPUs (CUDA, AMD, Metal) or fall back to an ultra-fast, allocation-free multi-threaded CPU loop to avoid GC lock contention.
-4.  **Realistic Physics:** Includes Spin-Orbit coupling, Higher Harmonics ($33$ mode), and full Time Delay Interferometry (TDI) with Orbital Doppler shifts.
-
-## ⚙️ Usage
-
-The entire project is controlled via the `config.toml` file. You define your physical parameters, the 1D parameter sweeps you want to run, and the 2D contour maps you want to draw.
-
-Because the path resolution is fully dynamic, you can execute the unified pipeline from anywhere:
+## Usage
 
 ```bash
-julia --threads auto TwoWaveformDistinguishability/scripts/pipeline.jl
+julia --project --threads=auto scripts/pipeline.jl --config config.toml   # foreground
+julia --project scripts/launch_campaign.jl                                # detached
+julia --project scripts/replot.jl data/outputs/run_<hash>                 # figures from CSVs
+julia --project scripts/audit_bounds.jl data/outputs/run_<hash>           # bound audit
 ```
 
-*(Note: The pipeline automatically suppresses package activation logs and provides a beautiful, aesthetic real-time wall-clock in your terminal).*
+Every physical and numerical parameter comes from `config.toml`, which is
+validated up front (descriptive hard errors, warnings for suspicious values,
+unknown-key typo protection). Runs land in `data/outputs/run_<confighash>/`
+with a configuration snapshot, provenance metadata (git commit, backend,
+timings), a structured ANSI-free `run.log`, and `safesave`-style collision
+handling — results are never overwritten.
 
-### Options:
-*   `--config`: Path to your TOML configuration file (default: `config.toml`).
-*   `--workers`: Number of distributed cluster nodes to spawn (default: `0` for local multi-threading).
+## Outputs
 
-## 📊 Visual Outputs
+1. **`scaling_plot.{pdf,png}`** — log–log ``D^2(\delta)`` against the
+   ``(1/16)K\delta^4`` prediction with the ``\rho^2`` threshold and
+   ``\delta_{\mathrm{min}}`` marked, a shaded optimizer-floor band, the fitted
+   log–log slope, and a ``D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}`` ratio panel
+   that exposes prefactor agreement and higher-order departures.
+2. **`residual_plot.{pdf,png}`** — true density panels
+   (``d(\mathrm{SNR}^2)/df`` and ``d(D^2)/df``, channels A and E, log–log)
+   whose bottom-panel integral is the ``D^2`` of the scaling law; the per-bin
+   noise level is drawn so the sub-noise residual is visible at a glance.
+3. **`confusion_zone.{pdf,png}`** — the prior-capped discernibility zone with
+   the physical bound box dashed and prior-limited boundary segments drawn
+   distinctly from curvature-limited ones.
 
-Outputs are cleanly vaulted into unique `data/outputs/run_<ID>` directories, separated into `/sweeps/` and `/maps/`.
-
-1.  **`scaling_plot.png` (1D Sweep):**
-    *   A log-log plot proving the residual signal energy shrinks quartically, perfectly tracking the theoretical $\delta^4$ curve.
-2.  **`residual_plot.png` (1D Sweep):**
-    *   A 2-layered plot showing the true two-source signal vs. the best-fit single source, and isolating the unabsorbable Extrinsic Curvature residual on its own linear scale.
-3.  **`confusion_zone.png` (2D Map):**
-    *   A continuous, filled ellipse showing the Fundamental Discernibility boundary ($\delta_{\mathrm{min}}$) for a given parameter plane (e.g., Mass vs. Time). Any secondary source inside this red zone is operationally indistinguishable from the primary source.
+All figures are regenerable from the persisted CSVs via `scripts/replot.jl`
+without recomputing any geometry.

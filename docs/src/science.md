@@ -54,12 +54,19 @@ The `Detector.jl` module moves the simulation from a stationary microphone to a 
 *   **Antenna Patterns:** It evaluates the dynamic, time-dependent sensitivity to the "plus" ($F_+$) and "cross" ($F_\times$) polarizations as the detector cartwheels.
 *   **Multi-Channel Projection:** The raw source-frame strain is projected into the orthogonal, noise-independent A, E, and T TDI channels. The Extrinsic Curvature is computed by summing the inner products across all active channels.
 
-## 5. Computational Architecture (Software Engineering)
+## 5. Physical Bounds and the Capped Zone of Confusion
 
-To resolve the $D^2 \approx 10^{-20}$ distances required to validate the quartic scaling law without hitting catastrophic machine-precision underflow, the pipeline utilizes advanced High-Performance Computing (HPC) techniques:
+The local differential geometry is blind to global parameter bounds, and along quasi-degenerate directions the mathematical boundary legitimately diverges: the waveform depends on the spins only through $\chi_{\mathrm{eff}} = (\chi_1+\chi_2)/2$ (exactly, at equal mass), so along the anti-symmetric combination $\chi_a$ the manifold is flat and $\delta_{\mathrm{min}} \to \infty$. Physically, however, $|\chi| \le 1$, amplitudes/masses/times are non-negative, and phase deviations live on $[-\pi, \pi]$.
 
-1.  **$\mathcal{O}(1)$ Scaled Manifolds:** All physical parameters (Mass $\sim 10^6 M_\odot$, Time $\sim 10^6$ s, Amplitude $\sim 10^{-21}$) are dynamically scaled to $\mathcal{O}(1)$ internally. This guarantees the Fisher Information Matrix remains perfectly well-conditioned.
-2.  **Exact Automatic Differentiation (AD):** `Geometry.jl` utilizes `ForwardDiff.jl` to compute the exact analytical Jacobian and Directional Hessians using Dual numbers, safely interleaving complex arithmetic to avoid `reinterpret` memory corruption.
-3.  **Hardware Abstraction Layer (HAL):** `Hardware.jl` uses `KernelAbstractions.jl` to dynamically probe the environment. It can natively offload the complex array broadcasting to NVIDIA, AMD, Apple Metal, or Intel GPUs.
-4.  **Allocation-Free CPU Fallback:** When running on CPUs, `Inference.jl` bypasses vectorized arrays (`@.`) and streams the waveform calculation element-by-element directly into CPU registers. This prevents Garbage Collection (GC) lock contention, allowing linear scaling across massive multi-threaded architectures (e.g., 22+ threads).
-5.  **Distributed Orchestration:** The unified `pipeline.jl` orchestrator reads from a centralized `config.toml`, allowing researchers to orchestrate dozens of 1D sweeps and 2D Multi-dimensional Ellipse Mappings across local threads or distributed Slurm cluster nodes simultaneously without modifying the source code.
+The pipeline therefore computes, per direction $\varphi$, both the mathematical radius $r_{\mathrm{math}} = (16\rho^2/K_{\mathrm{raw}})^{1/4}$ and the distance to the physical prior box $r_{\mathrm{box}}$, and publishes the **capped** boundary $\min(r_{\mathrm{math}}, r_{\mathrm{box}})$ — the exact intersection of the mathematical zone with the prior. Directions where the prior takes over are flagged (`Prior_Limited`) and drawn distinctly in the figures. Both radii are persisted, so the raw mathematical zone remains fully recoverable from the data.
+
+## 6. Computational Architecture (Software Engineering)
+
+To resolve the $D^2 \approx 10^{-20}$ distances required to validate the quartic scaling law without catastrophic precision loss:
+
+1.  **$\mathcal{O}(1)$ Scaled Manifolds:** All physical parameters are internally scaled to $\mathcal{O}(1)$, keeping the Fisher Information Matrix well-conditioned.
+2.  **Exact Automatic Differentiation:** `Geometry.jl` uses `ForwardDiff.jl` dual numbers; the directional value, first and second derivatives come from a single fused nested-dual evaluation.
+3.  **Mirrored, refined mapping:** $K(u)$ is exactly even in $u$, so the angular sweep computes only $[0, \pi)$ and mirrors — the boundary symmetry is enforced by construction — with adaptive refinement where the capped radius varies rapidly.
+4.  **Box-constrained inference:** the best-fit template is found with an interior-point Newton method (exact AD Hessian) inside the physical bounds; the optimizer can no longer wander to negative masses or $|\chi|>1$ (the historical unconstrained L-BFGS is retained as an option for comparisons).
+5.  **Allocation-free CPU loop + one GPU kernel:** the loss exists as an allocation-free scalar loop (no GC contention at 20+ threads) and as a single KernelAbstractions kernel with isbits parameters (ForwardDiff-compatible on device); the two are tested to agree to machine precision. GPU backends activate via package extensions (CUDA, AMDGPU, Metal, oneAPI) with a mandatory CPU fallback.
+6.  **Validated configuration & provenance:** everything tunable lives in `config.toml` (hard-fail validation, unknown-key warnings); every run snapshots its config and records git state, backend, and timings, with `safesave`-style collision handling.
