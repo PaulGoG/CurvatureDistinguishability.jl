@@ -1,409 +1,607 @@
 module Orchestrator
 
 using Printf
-using Plots
-using ProgressMeter
+using Dates
+using TOML
 using CSV
 using DataFrames
-using Dates
-using Random
-using LaTeXStrings
-using SHA
-using TOML
-using KernelAbstractions
 using Statistics
+using ProgressMeter
+using Logging
+using LoggingExtras
+using KernelAbstractions
 
 using ..Hardware
 using ..Physics
 using ..Detector
 using ..Geometry
 using ..Inference
+using ..Bounds
+using ..Config
+using ..Provenance
+using ..Plotting
 
 export run_pipeline
 
 # -----------------------------------------------------------------------------
-# HELPER FUNCTIONS
+# Helpers
 # -----------------------------------------------------------------------------
-function format_time(seconds)
-    m, s = divrem(seconds, 60)
-    h, m = divrem(m, 60)
-    return @sprintf("%02d:%02d:%02d", h, m, s)
-end
 
-function log_and_print(msg, logfile)
-    println(msg)
+format_time(seconds) = @sprintf("%02d:%02d:%02d", divrem(divrem(floor(Int, seconds), 60)[1], 60)..., mod(floor(Int, seconds), 60))
+
+"""
+Timestamped, ANSI-free line to a stage log file, mirrored to the console.
+"""
+function logline(io::IO, msg::AbstractString)
+    stamped = "[" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * "] " * msg
+    println(stdout, msg)
     flush(stdout)
-    write(logfile, msg * "\n")
-    flush(logfile)
+    println(io, stamped)
+    flush(io)
+    return nothing
 end
 
-# -----------------------------------------------------------------------------
-# MODULE 1: 1D Parameter Sweeps (Delta^4 Validation)
-# -----------------------------------------------------------------------------
-function run_1d_sweeps_module(sweeps, out_base_dir, freqs, Sn_vals, df, phys_kwargs, sweep_settings, start_time_total, active_threads, backend)
-    n_deltas = get(sweep_settings, "n_deltas", 20)
-    min_log_delta = get(sweep_settings, "min_log_delta", -4.5)
-    max_log_delta = get(sweep_settings, "max_log_delta", -0.5)
-    
-    println("\n>>> INITIATING 1D PARAMETER SWEEPS ($(length(sweeps)) configurations)")
-    
-    for (s_idx, sweep) in enumerate(sweeps)
-        sweep_name = sweep["name"]
-        theta_0 = Float64.(sweep["theta_0"])
-        raw_dir = Float64.(sweep["u_dir"])
-        
-        out_dir = joinpath(out_base_dir, "sweeps", sweep_name)
-        mkpath(out_dir)
-        
-        log_io = open(joinpath(out_dir, "sweep.log"), "w")
-        start_time_sweep = time()
-        
-        log_and_print("\n" * "─"^80, log_io)
-        log_and_print("  🚀 [Sweep $s_idx/$(length(sweeps))] : $sweep_name", log_io)
-        log_and_print("  ▶ Base Parameters : $theta_0", log_io)
-        log_and_print("  ▶ Direction Vector: $raw_dir", log_io)
-        log_and_print("─"^80, log_io)
-        
-        log_and_print("\n  [1/3] Computing Manifold Geometry (Theoretical K(u))...", log_io)
-        K_u, g_uu = compute_extrinsic_curvature(theta_0, raw_dir, freqs, Sn_vals, df; phys_kwargs...)
-        
-        if g_uu < 1e-12
-            log_and_print("  [⚠ WARNING] The chosen direction is completely degenerate (Fisher Norm ≈ 0).", log_io)
-            log_and_print("  [⚠ WARNING] The sources cannot be separated in this direction. Skipping sweep.", log_io)
-            close(log_io)
-            continue
+progress_enabled() = stderr isa Base.TTY
+
+"""
+Bounded-concurrency parallel foreach: at most `ntasks` of the spawned tasks
+run simultaneously. Exceptions propagate to the caller (per-stage guardrails
+catch them there).
+"""
+function parallel_foreach(f, n::Int, ntasks::Int)
+    sem = Base.Semaphore(max(1, ntasks))
+    @sync for i in 1:n
+        Threads.@spawn begin
+            Base.acquire(sem)
+            try
+                f(i)
+            finally
+                Base.release(sem)
+            end
         end
-        scale_factor = 1.0 / sqrt(g_uu)
-        u_norm = raw_dir .* scale_factor
-        K_u_norm = K_u * (scale_factor^4)
-        
-        log_and_print(@sprintf("        Fisher Norm g(u,u)                 : %.5f", 1.0), log_io)
-        log_and_print(@sprintf("        Extrinsic Curvature K(u)           : %.5e", K_u_norm), log_io)
-        
-        rho_sq_thresh = 1.0 
-        delta_min = ( (16.0 * rho_sq_thresh) / K_u_norm )^(1/4)
-        log_and_print(@sprintf("        Fundamental Discernibility (δ_min) : %.5e", delta_min), log_io)
-        
-        deltas = 10 .^ range(min_log_delta, stop=max_log_delta, length=n_deltas)
-        D2_num = zeros(n_deltas)
-        D2_theo = zeros(n_deltas)
-        max_idx = n_deltas
-        
-        log_and_print("\n  [2/3] Running Optimization Sweep across parameter separation...", log_io)
-        
-        p = Progress(n_deltas; desc="        Optimizing: ", showspeed=false, barlen=40)
-        
-        best_fit_largest_delta = zeros(length(theta_0))
-        data_stream_largest_delta_A = zeros(ComplexF64, length(freqs))
-
-        # Memory Throttling: Use asyncmap with ntasks limit to smoothly cap concurrency.
-        asyncmap(1:n_deltas; ntasks=active_threads) do i
-            fetch(Threads.@spawn begin
-                d = deltas[i]
-                p1 = theta_0
-                p2 = theta_0 .+ d .* u_norm
-                h1 = scaled_waveform_model(p1, freqs; phys_kwargs...)
-                h2 = scaled_waveform_model(p2, freqs; phys_kwargs...)
-                A1, E1, T1 = project_to_tdi(h1, freqs, p1; phys_kwargs...)
-                A2, E2, T2 = project_to_tdi(h2, freqs, p2; phys_kwargs...)
-                data_stream_A = A1 .+ A2
-                data_stream_E = E1 .+ E2
-                data_stream_T = T1 .+ T2
-                data_stream = (data_stream_A, data_stream_E, data_stream_T)
-                
-                p_guess = theta_0 .+ (0.5 * d) .* u_norm
-                p_guess[1] *= 2.0 
-                
-                dist, best_fit, _ = calculate_numerical_distance(data_stream, p_guess, freqs, Sn_vals, df; g_tol=1e-12, backend=backend, phys_kwargs...)
-                
-                D2_num[i] = dist
-                D2_theo[i] = (1.0 / 16.0) * K_u_norm * (d^4)
-                
-                if i == max_idx
-                    best_fit_largest_delta .= best_fit
-                    data_stream_largest_delta_A .= data_stream_A
-                end
-
-                current_total_time = format_time(floor(Int, time() - start_time_total))
-                msg1 = @sprintf("δ = %.2e | Num D²: %.2e | Theo D²: %.2e", d, dist, D2_theo[i])
-                msg2 = "$current_total_time"
-                next!(p; showvalues=[(:Latest, msg1), (:Uptime, msg2)])
-            end)
-        end
-        
-        log_and_print("\n  [3/3] Saving outputs and generating publication-grade plots...", log_io)
-        
-        df_results = DataFrame(Delta = deltas, D2_Numerical = D2_num, D2_Theoretical = D2_theo, K_u_Norm = fill(K_u_norm, n_deltas))
-        CSV.write(joinpath(out_dir, "results.csv"), df_results)
-        
-        min_x_pow = floor(Int, log10(minimum(deltas)))
-        max_x_pow = ceil(Int, log10(maximum(deltas)))
-        x_ticks = 10.0 .^ (min_x_pow:max_x_pow)
-        x_labels = [latexstring("10^{$(Int(log10(v)))}") for v in x_ticks]
-
-        min_y_pow = floor(Int, log10(minimum(vcat(D2_num, D2_theo))))
-        max_y_pow = ceil(Int, log10(maximum(vcat(D2_num, D2_theo))))
-        y_step = max(1, round(Int, (max_y_pow - min_y_pow) / 6))
-        y_ticks = 10.0 .^ (min_y_pow:y_step:max_y_pow)
-        y_labels = [latexstring("10^{$(Int(log10(v)))}") for v in y_ticks]
-
-        plt1 = plot(deltas, D2_num, xscale=:log10, yscale=:log10, seriestype=:scatter, label="Numerical Optimization", marker=:circle, markersize=5, color=:blue, legend=:topleft, xlabel=latexstring("\\mathrm{Parameter\\ Separation}\\ \\mathrm{\\delta}"), ylabel=latexstring("\\mathrm{Squared\\ Distance}\\ \\mathrm{D}^2"), title="Quartic Scaling: $(replace(sweep_name, "_" => " "))", dpi=300, framestyle=:box, grid=:both, gridstyle=:dash, gridalpha=0.3, gridcolor=:gray, xticks=(x_ticks, x_labels), yticks=(y_ticks, y_labels), minorticks=false, fontfamily="Computer Modern", tickfontsize=10, guidefontsize=12, legendfontsize=10, titlefontsize=14, margin=8Plots.mm)
-        plot!(plt1, deltas, D2_theo, label=latexstring("\\mathrm{Theoretical\\ Prediction}\\ \\propto \\mathrm{\\delta}^4"), linestyle=:dash, color=:red, lw=2.5)
-        savefig(plt1, joinpath(out_dir, "scaling_plot.png"))
-
-        h_best_fit = scaled_waveform_model(best_fit_largest_delta, freqs; phys_kwargs...)
-        A_best_fit, _, _ = project_to_tdi(h_best_fit, freqs, best_fit_largest_delta; phys_kwargs...)
-        residual_A = abs.(data_stream_largest_delta_A .- A_best_fit)
-        
-        noise_amplitude = sqrt.(Sn_vals ./ (4.0 * df))
-        sig_mag = abs.(data_stream_largest_delta_A) ./ noise_amplitude
-        bf_mag = abs.(A_best_fit) ./ noise_amplitude
-        res_mag = residual_A ./ noise_amplitude
-        
-        # Calculate smooth plotting envelope to prevent GR backend ribbon-aliasing
-        window = max(1, length(freqs) ÷ 1500)
-        n_windows = length(freqs) ÷ window
-        f_plot = [mean(freqs[((i-1)*window + 1):(i*window)]) for i in 1:n_windows]
-        
-        function get_envelope(arr)
-            e_mean = [mean(arr[((i-1)*window + 1):(i*window)]) for i in 1:n_windows]
-            e_min = [minimum(arr[((i-1)*window + 1):(i*window)]) for i in 1:n_windows]
-            e_max = [maximum(arr[((i-1)*window + 1):(i*window)]) for i in 1:n_windows]
-            return e_mean, e_mean .- e_min, e_max .- e_mean
-        end
-        
-        sig_m, sig_l, sig_u = get_envelope(sig_mag)
-        bf_m, bf_l, bf_u = get_envelope(bf_mag)
-        res_m, res_l, res_u = get_envelope(res_mag)
-        
-        p2_top = plot(f_plot, sig_m, ribbon=(sig_l, sig_u), fillalpha=0.3, label="Two-Source Superposition", lw=2.0, color=:black, ylabel=latexstring("\\mathrm{SNR\\ Density}"), title="Largest Separation: Signal vs Best-Fit", framestyle=:box, grid=:both, gridstyle=:dash, gridalpha=0.3, gridcolor=:gray, minorticks=false, fontfamily="Computer Modern", legend=:topright, tickfontsize=10, guidefontsize=12, legendfontsize=10, titlefontsize=14, margin=8Plots.mm)
-        plot!(p2_top, f_plot, bf_m, ribbon=(bf_l, bf_u), fillalpha=0.3, label="Best-Fit Single Source", lw=2.0, linestyle=:dash, color=:dodgerblue)
-
-        p2_bottom = plot(f_plot, res_m, ribbon=(res_l, res_u), fillalpha=0.4, label="Unabsorbed Residual", lw=2.0, color=:crimson, xlabel=latexstring("\\mathrm{Frequency\\ [Hz]}"), ylabel=latexstring("\\mathrm{Residual\\ SNR}"), framestyle=:box, grid=:both, gridstyle=:dash, gridalpha=0.3, gridcolor=:gray, minorticks=false, fontfamily="Computer Modern", legend=:topright, tickfontsize=10, guidefontsize=12, legendfontsize=10, margin=8Plots.mm)
-
-        plt2 = plot(p2_top, p2_bottom, layout=(2, 1), size=(800, 600), dpi=300)
-        savefig(plt2, joinpath(out_dir, "residual_plot.png"))
-        
-        elapsed_sweep = time() - start_time_sweep
-        log_and_print("\n  [✓] Sweep '$sweep_name' completed successfully in $(format_time(floor(Int, elapsed_sweep))).", log_io)
-        close(log_io)
     end
+    return nothing
 end
 
-# -----------------------------------------------------------------------------
-# MODULE 2: 2D Confusion Mapping (Discernibility Ellipses)
-# -----------------------------------------------------------------------------
-function run_2d_mapping_module(maps, out_base_dir, freqs, Sn_vals, df, phys_kwargs, start_time_total, active_threads, backend)
-    println("\n>>> INITIATING 2D CONFUSION MAPPING ($(length(maps)) configurations)")
-    flush(stdout)
-    
-    for (m_idx, map_cfg) in enumerate(maps)
-        map_name = map_cfg["name"]
-        px = map_cfg["param_x"]
-        py = map_cfg["param_y"]
-        n_angles = get(map_cfg, "n_angles", 2000)
-        rho_thresh = get(map_cfg, "rho_thresh", 1.0)
-        rho_sq_thresh = rho_thresh^2
-        base_theta = Float64.(map_cfg["theta_0"])
-        
-        out_dir = joinpath(out_base_dir, "maps", map_name)
-        mkpath(out_dir)
-        
-        log_io = open(joinpath(out_dir, "mapping.log"), "w")
-        start_time_map = time()
-        
-        param_names_raw = ["Amplitude", "Chirp Mass", "Time", "Phase", "Spin 1", "Spin 2"]
-        param_names_latex = ["Amplitude", "Chirp\\ Mass", "Time", "Phase", "Spin\\ 1", "Spin\\ 2"]
-        
-        log_and_print("\n" * "─"^80, log_io)
-        log_and_print("  🌐 [Map $m_idx/$(length(maps))] : $map_name", log_io)
-        log_and_print("  ▶ Plane     : $(param_names_raw[px]) vs $(param_names_raw[py])", log_io)
-        log_and_print("  ▶ Threshold : SNR = $rho_thresh", log_io)
-        log_and_print("─"^80, log_io)
-        
-        angles = range(0, 2π, length=n_angles)
-        x_bounds = zeros(n_angles)
-        y_bounds = zeros(n_angles)
-        K_vals = zeros(n_angles)
-        
-        log_and_print("\n  [1/2] Computing Orthogonal Tangent Basis (Jacobian)...", log_io)
-        tangent_basis = compute_tangent_basis(base_theta, freqs, Sn_vals, df; phys_kwargs...)
-        
-        log_and_print("\n  [2/2] Starting angular sweep ($n_angles directions)...", log_io)
-        
-        p = Progress(n_angles; desc="        Mapping: ", showspeed=false, barlen=40)
-        
-        # Memory Throttling: Smooth asynchronous execution capping concurrency
-        asyncmap(1:n_angles; ntasks=active_threads) do i
-            fetch(Threads.@spawn begin
-                phi = angles[i]
-                raw_dir = zeros(6)
-                raw_dir[px] = cos(phi)
-                raw_dir[py] = sin(phi)
-                
-                K_u, g_uu = compute_extrinsic_curvature_from_basis(base_theta, raw_dir, tangent_basis, freqs, Sn_vals, df; phys_kwargs...)
-                
-                if g_uu < 1e-12
-                    K_vals[i] = NaN
-                    x_bounds[i] = NaN
-                    y_bounds[i] = NaN
-                else
-                    scale_factor = 1.0 / sqrt(g_uu)
-                    K_u_norm = K_u * (scale_factor^4)
-                    K_vals[i] = K_u_norm
-                    delta_min = ( (16.0 * rho_sq_thresh) / K_u_norm )^(1/4)
-                    x_bounds[i] = delta_min * raw_dir[px] * scale_factor
-                    y_bounds[i] = delta_min * raw_dir[py] * scale_factor
-                end
-                
-                current_total_time = format_time(floor(Int, time() - start_time_total))
-                msg2 = "$current_total_time"
-                next!(p; showvalues=[(:Uptime, msg2)])
-            end)
-        end
-        
-        log_and_print("\n  Saving numerical outputs to CSV...", log_io)
-        df_results = DataFrame(Angle=angles, X_Bound=x_bounds, Y_Bound=y_bounds, K=K_vals)
-        CSV.write(joinpath(out_dir, "confusion_contour.csv"), df_results)
-        
-        push!(x_bounds, x_bounds[1])
-        push!(y_bounds, y_bounds[1])
-        
-        log_and_print("  Generating publication-grade contour plot...", log_io)
-        plt = plot(x_bounds, y_bounds, seriestype=:shape, fillalpha=0.3, color=:dodgerblue, lw=0, label="Zone of Confusion (Indistinguishable)", xlabel=latexstring("\\mathrm{\\Delta\\ $(param_names_latex[px])}"), ylabel=latexstring("\\mathrm{\\Delta\\ $(param_names_latex[py])}"), title="Fundamental Discernibility Ellipse: $(replace(map_name, "_" => " "))", dpi=300, framestyle=:box, grid=:both, gridstyle=:dash, gridalpha=0.3, gridcolor=:gray, fontfamily="Computer Modern", aspect_ratio=:equal, margin=8Plots.mm)
-        savefig(plt, joinpath(out_dir, "confusion_zone.png"))
-        
-        elapsed_map = time() - start_time_map
-        log_and_print("\n  [✓] Map '$map_name' completed successfully in $(format_time(floor(Int, elapsed_map))).", log_io)
-        close(log_io)
-    end
+physics_kwargs(wp::WaveformParams) = (
+    mass_scale = wp.mass_scale, time_scale = wp.time_scale, amp_scale = wp.amp_scale,
+    eta = wp.eta, amp_33_factor = wp.amp_33_factor, sky_theta = wp.sky_theta,
+    sky_phi = wp.sky_phi, inclination = wp.inclination, polarization = wp.polarization,
+    include_t_channel = wp.include_t_channel)
+
+function loglog_slope(x::AbstractVector, y::AbstractVector)
+    lx, ly = log10.(x), log10.(y)
+    mx, my = mean(lx), mean(ly)
+    sxx = sum(abs2, lx .- mx)
+    slope = sum((lx .- mx) .* (ly .- my)) / sxx
+    n = length(lx)
+    se = n > 2 ? sqrt(sum(abs2, ly .- my .- slope .* (lx .- mx)) / ((n - 2) * sxx)) : NaN
+    return slope, se
 end
 
 """
-    run_pipeline(config_path::String, project_root::String, output_dir::String)
+    plan_resources(cfg, n_bins, nch, backend) -> (active_threads, est_gb)
 
-The unified orchestrator function. Reads the TOML configuration, allocates hardware, 
-generates the physics grid, and safely routes processing to the 1D Sweep or 2D Mapping 
-modules while enforcing memory safety.
+Pre-flight memory estimate against the `[safety]` budget: refuses to start
+when even a single task exceeds it, downscales concurrency otherwise, and
+applies the VRAM budget on GPU backends.
+"""
+function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
+    flatlen = 2 * nch * n_bins
+    fixed = flatlen * 6 * 8 +      # tangent-basis Jacobian
+            flatlen * 8 * 7 * 3 +  # nested-dual evaluation buffers
+            6 * nch * n_bins * 16 + # orthonormal basis storage
+            4 * n_bins * 8          # grid + PSD
+    per_task = (2 + 3 * nch) * n_bins * 16 # per-δ data streams and temporaries
+    budget = cfg.max_ram_gb * 2^30
+
+    if fixed + per_task > budget
+        error("Estimated memory for a single task ($(round(fixed / 2^30, digits = 2)) GB fixed + " *
+              "$(round(per_task / 2^30, digits = 2)) GB/task) exceeds [safety].max_ram_gb = " *
+              "$(cfg.max_ram_gb) GB. Reduce the frequency grid ([grid]) or raise the budget explicitly.")
+    end
+
+    threads = min(Threads.nthreads(), cfg.max_threads)
+    while threads > 1 && fixed + threads * per_task > budget
+        threads -= 1
+    end
+    threads < min(Threads.nthreads(), cfg.max_threads) &&
+        @warn "Concurrency downscaled to $threads tasks to respect [safety].max_ram_gb = $(cfg.max_ram_gb) GB."
+
+    if !(backend isa KernelAbstractions.CPU)
+        vram_budget = max(0.0, cfg.max_vram_gb - cfg.os_vram_overhead_gb) * 2^30
+        safe = floor(Int, vram_budget / (n_bins * cfg.bytes_per_bin_per_task_gpu))
+        safe >= 1 || error("VRAM budget ($(round(vram_budget / 2^30, digits = 2)) GB usable) is below " *
+                           "the footprint of one GPU task " *
+                           "($(round(n_bins * cfg.bytes_per_bin_per_task_gpu / 2^30, digits = 2)) GB at " *
+                           "$(cfg.bytes_per_bin_per_task_gpu) bytes/bin). Reduce the grid or raise " *
+                           "[hardware].max_vram_gb.")
+        threads = min(threads, safe)
+    end
+
+    return threads, (fixed + threads * per_task) / 2^30
+end
+
+struct RunContext
+    cfg::PipelineSettings
+    out_base::String
+    freqs::Vector{Float64}
+    Sn::Vector{Float64}
+    freqs_dev::Any
+    Sn_dev::Any
+    df::Float64
+    backend::Any
+    active_threads::Int
+    start_time::Float64
+end
+
+# -----------------------------------------------------------------------------
+# Module 1: 1D parameter sweeps (δ⁴ validation)
+# -----------------------------------------------------------------------------
+
+function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
+    cfg = ctx.cfg
+    wp = cfg.wp
+    phys = physics_kwargs(wp)
+    name = String(sweep["name"])
+    theta0 = Float64.(sweep["theta_0"])
+    u_raw = Float64.(sweep["u_dir"])
+    rho_sq = Float64(get(sweep, "rho_thresh", cfg.sweep_rho_thresh))^2
+
+    out_dir = joinpath(ctx.out_base, "sweeps", name)
+    mkpath(out_dir)
+    log_io = open(joinpath(out_dir, "sweep.log"), "w")
+    t0 = time()
+    try
+        logline(log_io, "─"^78)
+        logline(log_io, "[Sweep $idx/$total] $name")
+        logline(log_io, "  base parameters : $theta0")
+        logline(log_io, "  direction       : $u_raw")
+        logline(log_io, "  rho^2 threshold : $rho_sq")
+
+        logline(log_io, "  [1/3] manifold geometry (K(u), g(u,u))")
+        K_u, g_uu = compute_extrinsic_curvature(theta0, u_raw, ctx.freqs, ctx.Sn, ctx.df, wp)
+        logline(log_io, @sprintf("        raw Fisher norm g(u,u)   : %.6e", g_uu))
+        if g_uu < cfg.g_uu_degenerate
+            logline(log_io, "  [WARN] direction is degenerate (g(u,u) below " *
+                            "$(cfg.g_uu_degenerate)); the sources cannot be separated " *
+                            "along it. Skipping sweep.")
+            return nothing
+        end
+        s = 1.0 / sqrt(g_uu)
+        u_norm = u_raw .* s
+        K_norm = K_u * s^4
+        delta_min = (16.0 * rho_sq / K_norm)^(1 / 4)
+        logline(log_io, @sprintf("        normalized K(u)          : %.6e", K_norm))
+        logline(log_io, @sprintf("        delta_min                : %.6e", delta_min))
+
+        deltas = 10 .^ range(cfg.min_log_delta, cfg.max_log_delta, length = cfg.n_deltas)
+
+        # guardrail: does the second source stay physical over the sweep range?
+        far = theta0 .+ maximum(deltas) .* u_norm
+        for i in 1:6
+            cfg.bounds.periodic[i] && continue
+            if !(cfg.bounds.lower[i] <= far[i] <= cfg.bounds.upper[i])
+                @warn "Sweep '$name': the second source leaves the physical bounds along " *
+                      "component $i before δ_max (θ₂[$i] reaches $(far[i])). Large-δ points " *
+                      "describe an unphysical companion."
+                break
+            end
+        end
+
+        n = cfg.n_deltas
+        D2_num = zeros(n)
+        best_fits = zeros(n, 6)
+        conv = falses(n)
+        iters = zeros(Int, n)
+        gnorm = zeros(n)
+        atbound = falses(n)
+
+        logline(log_io, "  [2/3] optimization sweep ($(n) separations, " *
+                        "$(ctx.active_threads) concurrent, optimizer = $(cfg.optimizer))")
+        prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
+        parallel_foreach(n, ctx.active_threads) do i
+            d = deltas[i]
+            p2 = theta0 .+ d .* u_norm
+            h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
+            h2 = scaled_waveform_model(p2, ctx.freqs, wp)
+            ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
+            ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
+            data = map((a, b) -> a .+ b, ch1, ch2)
+            if !(ctx.backend isa KernelAbstractions.CPU)
+                data = map(a -> to_backend(a, ctx.backend), data)
+            end
+            guess = theta0 .+ (0.5 * d) .* u_norm
+            guess[1] *= 2.0 # two equal-amplitude sources superpose to ~2A
+
+            fr = ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
+            sn = ctx.backend isa KernelAbstractions.CPU ? ctx.Sn : ctx.Sn_dev
+            dist, best, res = calculate_numerical_distance(data, guess, fr, sn, ctx.df;
+                                                           g_tol = 1e-12, iterations = 1000,
+                                                           backend = ctx.backend,
+                                                           optimizer = cfg.optimizer,
+                                                           bounds = cfg.bounds, phys...)
+            diag = optimization_diagnostics(res, best, cfg.bounds)
+            D2_num[i] = dist
+            best_fits[i, :] .= best
+            conv[i] = diag.converged
+            iters[i] = diag.iterations
+            gnorm[i] = diag.g_norm
+            atbound[i] = diag.at_bound
+            next!(prog)
+        end
+        finish!(prog)
+
+        D2_theo = (1.0 / 16.0) .* K_norm .* deltas .^ 4
+        ratio = D2_num ./ D2_theo
+        clean = (ratio .> 0.5) .& (ratio .< 2.0)
+        floor_pts = findall(i -> !clean[i] && ratio[i] >= 2.0, 1:n)
+        floor_level = isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
+        slope, slope_err = count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
+        logline(log_io, @sprintf("        clean points %d/%d; fitted log-log slope %.4f ± %.4f",
+                                 count(clean), n, slope, slope_err))
+        any(atbound) &&
+            @warn "Sweep '$name': the best fit sits on a physical bound for " *
+                  "$(count(atbound))/$n separations (see AtBound column)."
+        all(conv) || @warn "Sweep '$name': optimizer did not converge for " *
+                           "$(count(!, conv))/$n separations (see Converged column)."
+
+        logline(log_io, "  [3/3] persisting results and figures")
+        df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
+                           D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
+                           BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
+                           BestFit_Time = best_fits[:, 3], BestFit_Phase = best_fits[:, 4],
+                           BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],
+                           Converged = collect(conv), Iterations = iters,
+                           GradNorm = gnorm, AtBound = collect(atbound))
+        CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
+
+        # residual spectrum at the separation nearest the discernibility threshold
+        pos = findall(>(0), D2_num)
+        idx_star = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
+        d_star = deltas[idx_star]
+        spec, meta = residual_spectrum(theta0, u_norm, d_star, best_fits[idx_star, :],
+                                       D2_num[idx_star], D2_theo[idx_star], ctx, wp)
+        CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
+        open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
+            TOML.print(io, Dict(
+                "name" => name, "delta_star" => d_star,
+                "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
+                "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
+                "df" => ctx.df, "delta_min" => delta_min,
+                "slope" => slope, "slope_err" => slope_err,
+                "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
+                "residual_d2_integral_A" => meta.int_A,
+                "residual_d2_integral_E" => meta.int_E))
+        end
+
+        try
+            fig = scaling_figure(collect(deltas), D2_num, D2_theo;
+                                 rho_sq = rho_sq, delta_min = delta_min, slope = slope,
+                                 slope_err = slope_err, clean = collect(clean),
+                                 floor_level = floor_level)
+            save_figure(fig, joinpath(out_dir, "scaling_plot"))
+            rfig = residual_figure(spec, (delta_star = d_star, df = ctx.df,
+                                          d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]))
+            save_figure(rfig, joinpath(out_dir, "residual_plot"))
+        catch err
+            @warn "Sweep '$name': figure generation failed; numerical results are saved." exception = (err, catch_backtrace())
+        end
+
+        logline(log_io, "  [done] sweep '$name' completed in $(format_time(time() - t0))")
+    finally
+        close(log_io)
+    end
+    return nothing
+end
+
+"""
+Decimated residual spectrum (density units, `d(SNR²)/df = 4|x|²/Sn`) of the
+two-source data, the best-fit single source and the unabsorbed residual, for
+channels A and E.
+"""
+function residual_spectrum(theta0, u_norm, d_star, best_fit, d2_num, d2_theo,
+                           ctx::RunContext, wp::WaveformParams)
+    p2 = theta0 .+ d_star .* u_norm
+    h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
+    h2 = scaled_waveform_model(p2, ctx.freqs, wp)
+    ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
+    ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
+    data = map((a, b) -> a .+ b, ch1, ch2)
+    hb = scaled_waveform_model(best_fit, ctx.freqs, wp)
+    bf = project_to_tdi(hb, ctx.freqs, best_fit, wp)
+
+    dens(x, i) = 4 * abs2(x) / ctx.Sn[i]
+    n = length(ctx.freqs)
+    w = max(1, n ÷ 600)
+    m = n ÷ w
+    win(i) = ((i - 1) * w + 1):(i * w)
+    agg(v, f) = [f(view(v, win(i))) for i in 1:m]
+    rms(v) = sqrt(mean(abs2, v))
+
+    cols = Dict{Symbol,Vector{Float64}}(:f => agg(ctx.freqs, mean))
+    for (tag, cA, cE) in (("sig", data[1], data[2]), ("bf", bf[1], bf[2]),
+                          ("res", data[1] .- bf[1], data[2] .- bf[2]))
+        for (ch, arr) in (("A", cA), ("E", cE))
+            d = [dens(arr[i], i) for i in 1:n]
+            cols[Symbol("$(tag)_rms_$ch")] = agg(d, rms)
+            cols[Symbol("$(tag)_min_$ch")] = agg(d, minimum)
+            cols[Symbol("$(tag)_max_$ch")] = agg(d, maximum)
+        end
+    end
+    int_A = sum(dens(data[1][i] - bf[1][i], i) for i in 1:n) * ctx.df
+    int_E = sum(dens(data[2][i] - bf[2][i], i) for i in 1:n) * ctx.df
+    order = [:f; sort(collect(keys(delete!(copy(cols), :f))))]
+    return DataFrame([c => cols[c] for c in order]), (int_A = int_A, int_E = int_E)
+end
+
+# -----------------------------------------------------------------------------
+# Module 2: 2D confusion mapping (mirrored polar sampling, prior capping)
+# -----------------------------------------------------------------------------
+
+function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
+    cfg = ctx.cfg
+    wp = cfg.wp
+    name = String(map_cfg["name"])
+    px = Int(map_cfg["param_x"])
+    py = Int(map_cfg["param_y"])
+    rho_sq = Float64(get(map_cfg, "rho_thresh", 1.0))^2
+    theta0 = Float64.(map_cfg["theta_0"])
+    n_angles = Int(get(map_cfg, "n_angles", cfg.map_n_angles))
+    isodd(n_angles) && (n_angles += 1)
+
+    out_dir = joinpath(ctx.out_base, "maps", name)
+    mkpath(out_dir)
+    log_io = open(joinpath(out_dir, "mapping.log"), "w")
+    t0 = time()
+    try
+        box = deviation_box(cfg.bounds, theta0, px, py)
+        logline(log_io, "─"^78)
+        logline(log_io, "[Map $idx/$total] $name")
+        logline(log_io, "  plane      : parameter $px vs parameter $py")
+        logline(log_io, "  rho^2      : $rho_sq")
+        logline(log_io, "  prior box  : Δx ∈ [$(box[1]), $(box[2])], Δy ∈ [$(box[3]), $(box[4])]")
+        logline(log_io, "  [1/2] tangent basis (Jacobian at base point)")
+        basis = compute_tangent_basis(theta0, ctx.freqs, ctx.Sn, ctx.df, wp)
+        logline(log_io, "        basis rank: $(length(basis)) of $(length(theta0))")
+
+        function eval_angles(phis::Vector{Float64}, prog)
+            out = Vector{NTuple{2,Float64}}(undef, length(phis))
+            parallel_foreach(length(phis), ctx.active_threads) do i
+                dir = zeros(6)
+                dir[px] = cos(phis[i])
+                dir[py] = sin(phis[i])
+                K, g = compute_extrinsic_curvature_from_basis(theta0, dir, basis,
+                                                              ctx.freqs, ctx.Sn, ctx.df, wp)
+                out[i] = (K, g)
+                next!(prog)
+            end
+            return out
+        end
+
+        M = n_angles ÷ 2
+        logline(log_io, "  [2/2] mirrored angular sweep ($M base directions on [0, π), " *
+                        "adaptive refinement tol $(cfg.neighbor_ratio_tol), " *
+                        "$(cfg.max_refine_levels) levels)")
+        prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
+        phis = [(k - 1) * π / M for k in 1:M]
+        Kg = eval_angles(phis, prog)
+        entries = [(phi = phis[i], K = Kg[i][1], g = Kg[i][2]) for i in 1:M]
+
+        r_math_of(K) = K > 1e-300 ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+        r_box_of(phi) = ray_box_crossing(cos(phi), sin(phi), box...)
+        r_cap_of(e) = min(r_math_of(e.K), r_box_of(e.phi))
+
+        added = 0
+        for _ in 1:cfg.max_refine_levels
+            sort!(entries, by = e -> e.phi)
+            rcaps = [r_cap_of(e) for e in entries]
+            mids = Float64[]
+            for i in 1:length(entries)
+                j = mod1(i + 1, length(entries))
+                gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
+                r1, r2 = rcaps[i], rcaps[j]
+                (isfinite(r1) && isfinite(r2)) || continue
+                ratio = max(r1, r2) / max(min(r1, r2), 1e-300)
+                ratio > cfg.neighbor_ratio_tol && push!(mids, entries[i].phi + gap / 2)
+            end
+            isempty(mids) && break
+            Kg_new = eval_angles(mids, prog)
+            append!(entries, [(phi = mids[i], K = Kg_new[i][1], g = Kg_new[i][2])
+                              for i in 1:length(mids)])
+            added += length(mids)
+        end
+        finish!(prog)
+        sort!(entries, by = e -> e.phi)
+        logline(log_io, "        refinement added $added directions " *
+                        "($(length(entries)) on the half-circle)")
+
+        # Mirror to the full circle: K and g are exactly even in the direction,
+        # so r_math is mirrored bitwise; r_box is re-evaluated with the exactly
+        # negated direction components (the prior box need not be symmetric).
+        half = length(entries)
+        angle = Vector{Float64}(undef, 2half)
+        K_raw = similar(angle); g_arr = similar(angle)
+        r_math = similar(angle); r_boxv = similar(angle); r_cap = similar(angle)
+        dircos = similar(angle); dirsin = similar(angle)
+        prior_lim = falses(2half); degen = falses(2half)
+        for (i, e) in enumerate(entries), half_idx in (0, 1)
+            k = i + half_idx * half
+            c, s = cos(e.phi), sin(e.phi)
+            half_idx == 1 && ((c, s) = (-c, -s))
+            angle[k] = e.phi + half_idx * π
+            dircos[k] = c
+            dirsin[k] = s
+            K_raw[k] = e.K
+            g_arr[k] = e.g
+            r_math[k] = r_math_of(e.K)
+            r_boxv[k] = ray_box_crossing(c, s, box...)
+            r_cap[k] = min(r_math[k], r_boxv[k])
+            prior_lim[k] = isfinite(r_boxv[k]) && r_math[k] >= r_boxv[k]
+            degen[k] = e.g < cfg.g_uu_degenerate
+        end
+
+        if any(!isfinite, r_cap)
+            biggest = maximum(filter(isfinite, r_cap); init = 1.0)
+            @warn "Map '$name': $(count(!isfinite, r_cap)) directions are unbounded " *
+                  "(no curvature limit and no finite physical bound); capping them at " *
+                  "$(5biggest) for the polygon. Consider adding [parameter_bounds]."
+            r_cap[.!isfinite.(r_cap)] .= 5biggest
+        end
+
+        X = r_cap .* dircos
+        Y = r_cap .* dirsin
+        prior_frac = count(prior_lim) / length(prior_lim)
+        degen_frac = count(degen) / length(degen)
+        logline(log_io, @sprintf("        prior-limited directions : %.1f%%", 100prior_frac))
+        degen_frac > 0 &&
+            logline(log_io, @sprintf("        degenerate directions    : %.1f%%", 100degen_frac))
+        if px in (5, 6) && py in (5, 6) && prior_frac > 0.25
+            logline(log_io, "  [note] the waveform depends on the spins only through " *
+                            "χ_eff = (χ₁+χ₂)/2; along the anti-symmetric combination the " *
+                            "manifold is flat, so the zone there is limited by the physical " *
+                            "spin prior [-1, 1], not by curvature.")
+        end
+
+        df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
+                           R_Capped = r_cap, R_Math = r_math, R_Box = r_boxv,
+                           Prior_Limited = collect(prior_lim), Degenerate = collect(degen),
+                           K_Raw = K_raw, G_uu = g_arr)
+        CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
+
+        try
+            fig = zone_figure(angle, X, Y, collect(prior_lim);
+                              px = px, py = py, box = box,
+                              prior_frac = prior_frac, degenerate_frac = degen_frac)
+            save_figure(fig, joinpath(out_dir, "confusion_zone"))
+        catch err
+            @warn "Map '$name': figure generation failed; numerical results are saved." exception = (err, catch_backtrace())
+        end
+
+        logline(log_io, "  [done] map '$name' completed in $(format_time(time() - t0))")
+    finally
+        close(log_io)
+    end
+    return nothing
+end
+
+# -----------------------------------------------------------------------------
+# Pipeline entry point
+# -----------------------------------------------------------------------------
+
+"""
+    run_pipeline(config_path, project_root, output_dir)
+
+Unified orchestrator: validates the TOML configuration (hard errors on
+unusable input), allocates hardware within the `[safety]` memory budget,
+snapshots the configuration and provenance metadata into a
+configuration-hashed run directory, then executes the 1D sweep and 2D
+mapping modules. Each sweep/map is guarded individually — a failing stage is
+logged with its backtrace and the remaining stages continue.
 """
 function run_pipeline(config_path::String, project_root::String, output_dir::String)
-    if !isfile(config_path)
-        error("Configuration file not found: $config_path")
+    cfg = load_and_validate_config(config_path)
+    run_id = run_id_from_config(config_path)
+    out_base = unique_run_dir(joinpath(project_root, output_dir), run_id)
+    snapshot_config(config_path, out_base)
+
+    log_stream = open(joinpath(out_base, "run.log"), "w")
+    file_logger = FormatLogger(log_stream) do io, args
+        println(io, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
+                uppercase(string(args.level)), " ", args.message)
     end
-    config = TOML.parsefile(config_path)
-    
-    # Extract blocks
-    pipeline_cfg = get(config, "pipeline", Dict())
-    run_1d_sweeps = get(pipeline_cfg, "run_1d_sweeps", true)
-    run_2d_mapping = get(pipeline_cfg, "run_2d_mapping", true)
-    
-    sweep_settings = get(pipeline_cfg, "sweep_settings", Dict())
-    grid_cfg = get(config, "grid", Dict())
-    phys_cfg = get(config, "physics", Dict())
-    sweeps = get(config, "sweeps", [])
-    maps = get(config, "maps", [])
-    
-    # Generate unique run ID
-    run_id = "run_" * first(bytes2hex(sha256(string(now()))), 8)
-    out_base_dir = joinpath(project_root, output_dir, run_id)
-    mkpath(out_base_dir)
-    
-    start_time_total = time()
-    
-    hardware_cfg = get(config, "hardware", Dict())
-    max_vram_gb = get(hardware_cfg, "max_vram_gb", 8.0)
-    max_threads = get(hardware_cfg, "max_threads", Threads.nthreads())
-    os_vram_overhead_gb = get(hardware_cfg, "os_vram_overhead_gb", 1.0)
-    force_cpu = get(hardware_cfg, "force_cpu", false)
-    
-    backend = force_cpu ? KernelAbstractions.CPU() : get_best_backend()
-    backend_str = if backend isa KernelAbstractions.CPU
-        "$(Threads.nthreads()) CPU Threads"
-    elseif isdefined(Main, :CUDA) && backend isa Main.CUDA.CUDABackend
-        "NVIDIA CUDA GPU"
-    elseif isdefined(Main, :AMDGPU) && backend isa Main.AMDGPU.ROCBackend
-        "AMD ROCm GPU"
-    elseif isdefined(Main, :Metal) && backend isa Main.Metal.MetalBackend
-        "Apple Metal GPU"
-    elseif isdefined(Main, :oneAPI) && backend isa Main.oneAPI.oneAPIBackend
-        "Intel oneAPI GPU"
-    else
-        "Unknown Accelerator"
+    tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
+    try
+        with_logger(tee) do
+            _run_pipeline(cfg, config_path, project_root, out_base)
+        end
+    finally
+        close(log_stream)
     end
-    
-    # Setup Simulation Grid
-    T_obs = get(grid_cfg, "T_obs", 3.15e7) # 1 year
-    df = 1.0 / T_obs
-    f_min = get(grid_cfg, "f_min", 1.0e-3)
-    f_max = get(grid_cfg, "f_max", 0.01)
-    
-    # Generate and move to backend
-    freqs_cpu = collect(f_min:df:f_max)
-    Sn_vals_cpu = analytic_noise_psd.(freqs_cpu)
-    
-    freqs = to_backend(freqs_cpu, backend)
-    Sn_vals = to_backend(Sn_vals_cpu, backend)
-    
-    # Extract physics kwargs
-    phys_kwargs = (
-        mass_scale = get(phys_cfg, "mass_scale", 10.0),
-        time_scale = get(phys_cfg, "time_scale", 1000.0),
-        amp_scale = get(phys_cfg, "amp_scale", 1e-21),
-        eta = get(phys_cfg, "eta", 0.25),
-        amp_33_factor = get(phys_cfg, "amp_33_factor", 0.1),
-        sky_theta = get(phys_cfg, "sky_theta", 1.047),
-        sky_phi = get(phys_cfg, "sky_phi", 0.0),
-        inclination = get(phys_cfg, "inclination", 0.523),
-        polarization = get(phys_cfg, "polarization", 0.0)
-    )
-    
-    # Dynamic Memory & Concurrency Manager
-    if backend isa KernelAbstractions.CPU
-        # CPU uses the optimized sum(1:N) allocation-free loop. 
-        # The memory footprint per thread is basically zero, so no throttling is needed.
-        safe_concurrency = max_threads
-    else
-        # For a 6-parameter AD Hessian evaluation via array broadcasting (GPU), 
-        # ForwardDiff allocates arrays of Dual{Dual} numbers.
-        # 1 ComplexF64 = 16 bytes. A 6-param Complex Hessian Dual is ~1500 bytes.
-        # With 3 channels and intermediate broadcast arrays, we conservatively estimate 5000 bytes.
-        available_vram_gb = max(1.0, max_vram_gb - os_vram_overhead_gb)
-        bytes_per_bin_per_thread = 5000 
-        gb_per_thread = (length(freqs) * bytes_per_bin_per_thread) / (1024^3)
-        safe_concurrency = max(1, floor(Int, available_vram_gb / gb_per_thread))
-    end
-    
-    active_threads = min(Threads.nthreads(), max_threads, safe_concurrency)
-    
-    println("================================================================================")
-    println("  🌌 Two-Waveform Distinguishability Unified Pipeline")
-    println("================================================================================")
-    println("  ▶ Run ID           : $run_id")
-    println("  ▶ Simulation Grid  : $(length(freqs)) frequency bins ($(f_min) to $(f_max) Hz)")
-    if backend isa KernelAbstractions.CPU
-        println("  ▶ Allocation-Free  : CPU loop active (Safe Concurrency: Infinite)")
-    else
-        println("  ▶ GPU VRAM Limit   : $(max_vram_gb) GB (Safe Concurrency: $safe_concurrency tasks)")
-    end
-    println("  ▶ Compute Backend  : $backend_str (Throttled to $active_threads active threads)")
-    println("================================================================================")
-    flush(stdout)
-    
-    if run_1d_sweeps && !isempty(sweeps)
-        run_1d_sweeps_module(sweeps, out_base_dir, freqs, Sn_vals, df, phys_kwargs, sweep_settings, start_time_total, active_threads, backend)
+    return out_base
+end
+
+function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root::String,
+                       out_base::String)
+    start_time = time()
+    df = 1.0 / cfg.T_obs
+    freqs = collect(cfg.f_min:df:cfg.f_max)
+    Sn = analytic_noise_psd.(freqs; noise = cfg.noise)
+    nch = n_channels(cfg.wp)
+
+    prefer = cfg.force_cpu ? :none : cfg.gpu_backend
+    backend = get_best_backend(prefer = prefer)
+    cfg.force_cpu &&
+        @warn "[hardware].force_cpu = true: GPU detection bypassed, running on the CPU backend."
+    if !(backend isa KernelAbstractions.CPU) && cfg.wp.include_t_channel
+        error("GPU backends support the 2-channel (A, E) configuration only; " *
+              "set [physics].include_t_channel = false (T is identically zero).")
     end
 
-    if run_2d_mapping && !isempty(maps)
-        run_2d_mapping_module(maps, out_base_dir, freqs, Sn_vals, df, phys_kwargs, start_time_total, active_threads, backend)
+    active_threads, est_gb = plan_resources(cfg, length(freqs), nch, backend)
+
+    freqs_dev = backend isa KernelAbstractions.CPU ? freqs : to_backend(freqs, backend)
+    Sn_dev = backend isa KernelAbstractions.CPU ? Sn : to_backend(Sn, backend)
+    ctx = RunContext(cfg, out_base, freqs, Sn, freqs_dev, Sn_dev, df, backend,
+                     active_threads, start_time)
+
+    write_run_metadata(out_base;
+                       run_id = basename(out_base), git = git_state(project_root),
+                       julia_version = string(VERSION), hostname = gethostname(),
+                       started = string(now()), backend = backend_name(backend),
+                       julia_threads = Threads.nthreads(), active_tasks = active_threads,
+                       n_frequency_bins = length(freqs), channels = nch,
+                       estimated_ram_gb = round(est_gb, digits = 2),
+                       optimizer = string(cfg.optimizer),
+                       confusion_noise = cfg.noise.confusion_enabled)
+
+    println("=" ^ 78)
+    println("  Two-Waveform Distinguishability Pipeline")
+    println("=" ^ 78)
+    @info "Run directory: $out_base"
+    @info "Grid: $(length(freqs)) bins ($(cfg.f_min) – $(cfg.f_max) Hz, df = $df); channels: $nch"
+    @info "Backend: $(backend_name(backend)); concurrency: $active_threads tasks; " *
+          "estimated peak RAM $(round(est_gb, digits = 2)) GB (budget $(cfg.max_ram_gb) GB)"
+    @info "Noise: instrumental Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14" : "DISABLED")"
+    @info "Optimizer: $(cfg.optimizer) with physical bounds"
+
+    failures = String[]
+    if cfg.run_1d_sweeps && !isempty(cfg.sweeps)
+        @info ">>> 1D parameter sweeps ($(length(cfg.sweeps)) configurations)"
+        for (i, s) in enumerate(cfg.sweeps)
+            try
+                run_sweep(s, i, length(cfg.sweeps), ctx)
+            catch err
+                push!(failures, String(s["name"]))
+                @error "Sweep '$(s["name"])' failed; continuing with remaining stages." exception = (err, catch_backtrace())
+            end
+        end
     end
-    
-    total_elapsed = time() - start_time_total
-    println("\n" * "="^80)
-    println("  ✅ PIPELINE ORCHESTRATION COMPLETE")
-    println("  ▶ Total Uptime     : $(format_time(floor(Int, total_elapsed)))")
-    println("  ▶ Results Vaulted  : $(relpath(out_base_dir, project_root))/")
-    println("="^80)
-    flush(stdout)
+    if cfg.run_2d_mapping && !isempty(cfg.maps)
+        @info ">>> 2D confusion mapping ($(length(cfg.maps)) configurations)"
+        for (i, m) in enumerate(cfg.maps)
+            try
+                run_map(m, i, length(cfg.maps), ctx)
+            catch err
+                push!(failures, String(m["name"]))
+                @error "Map '$(m["name"])' failed; continuing with remaining stages." exception = (err, catch_backtrace())
+            end
+        end
+    end
+
+    elapsed = time() - start_time
+    write_run_metadata(out_base; finished = string(now()),
+                       elapsed_seconds = round(elapsed, digits = 1),
+                       failed_stages = join(failures, ","))
+    println("=" ^ 78)
+    if isempty(failures)
+        @info "Pipeline complete in $(format_time(elapsed)); results in $out_base"
+    else
+        @warn "Pipeline finished in $(format_time(elapsed)) with FAILED stages: " *
+              "$(join(failures, ", ")) — see run.log for backtraces. Results in $out_base"
+    end
+    println("=" ^ 78)
+    return nothing
 end
 
 end # module

@@ -1,89 +1,183 @@
 module Physics
 
-export analytic_noise_psd, scaled_waveform_model
+export NoiseParams, robson_confusion_params, analytic_noise_psd,
+       WaveformParams, waveform_params, spin_beta, strain_bin,
+       scaled_waveform_model, SECONDS_PER_YEAR
 
 const L_ARM = 2.5e9
 const C_LIGHT = 2.99792458e8
 const F_STAR = C_LIGHT / (2 * π * L_ARM)
 
 """
-    analytic_noise_psd(f)
-
-Calculates an analytic noise Power Spectral Density (PSD) at frequency `f` typical for space-based interferometers.
-This includes both instrumental noise approximations and confusion noise background.
+Seconds in one Julian year (365.25 d). Single source of truth for the
+detector's orbital period and the default observation time.
 """
-function analytic_noise_psd(f::Real)
+const SECONDS_PER_YEAR = 3.15576e7
+
+# Robson, Cornish & Liu (2019), arXiv:1803.01944, Table 1: galactic
+# confusion-noise fit coefficients (α, β, κ, γ, f_k) per mission duration.
+const ROBSON_TABLE = (
+    (tobs = 0.5 * SECONDS_PER_YEAR, alpha = 0.133, beta = 243.0, kappa = 482.0, gamma = 917.0, fk = 0.00258),
+    (tobs = 1.0 * SECONDS_PER_YEAR, alpha = 0.171, beta = 292.0, kappa = 1020.0, gamma = 1680.0, fk = 0.00215),
+    (tobs = 2.0 * SECONDS_PER_YEAR, alpha = 0.165, beta = 299.0, kappa = 611.0, gamma = 1340.0, fk = 0.00173),
+    (tobs = 4.0 * SECONDS_PER_YEAR, alpha = 0.138, beta = -221.0, kappa = 521.0, gamma = 1680.0, fk = 0.00113),
+)
+
+"""
+    NoiseParams(; kwargs...)
+
+Coefficients of the analytic LISA noise model. The instrumental part is the
+Michelson-channel PSD of Robson et al. (2019) Eq. 12 (strain-referred, *not*
+sky-averaged — antenna response is applied explicitly by `Detector`). The
+galactic confusion part is Eq. 14, `S_c(f) = A f^{-7/3} e^{-f^α + β f sin(κf)}
+[1 + tanh(γ(f_k - f))]`, defaulting to the 1-yr column of Table 1.
+
+All fields are configurable through the `[noise]` section of `config.toml`.
+"""
+Base.@kwdef struct NoiseParams
+    confusion_enabled::Bool = true
+    confusion_amp::Float64 = 9.0e-45
+    confusion_alpha::Float64 = 0.171
+    confusion_beta::Float64 = 292.0
+    confusion_kappa::Float64 = 1020.0
+    confusion_gamma::Float64 = 1680.0
+    confusion_fk::Float64 = 0.00215
+end
+
+"""
+    robson_confusion_params(T_obs; enabled = true, amp = 9.0e-45)
+
+Build a [`NoiseParams`](@ref) whose confusion coefficients are the Robson
+et al. (2019) Table 1 column nearest to the observation time `T_obs` [s].
+"""
+function robson_confusion_params(T_obs::Real; enabled::Bool = true, amp::Real = 9.0e-45)
+    row = argmin(r -> abs(log(T_obs / r.tobs)), ROBSON_TABLE)
+    return NoiseParams(confusion_enabled = enabled, confusion_amp = amp,
+                       confusion_alpha = row.alpha, confusion_beta = row.beta,
+                       confusion_kappa = row.kappa, confusion_gamma = row.gamma,
+                       confusion_fk = row.fk)
+end
+
+"""
+    analytic_noise_psd(f; noise = NoiseParams())
+
+One-sided noise PSD at frequency `f` [Hz]: Robson et al. (2019) Eq. 12
+instrumental noise plus the Eq. 14 galactic confusion fit (togglable via
+`noise.confusion_enabled`). Returns a positive floor value for `f <= 0`.
+"""
+function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
     if f <= 0.0
         return 1e-30
     end
-    
-    # Optical Metrology Noise
-    p_oms = (1.5e-11)^2 * (1 + (2e-3/f)^4)
-    
-    # Acceleration Noise
-    p_acc = (3e-15)^2 * (1 + (0.4e-3/f)^2) * (1 + (f/8e-3)^4)
-    
-    # Total Instrumental Noise
-    s_inst = (p_oms / L_ARM^2) + (2 * p_acc / ( (2*π*f)^4 * L_ARM^2 )) * (1 + cos(f/F_STAR)^2)
 
-    # Galactic Binary Confusion Noise (approximate fit)
-    A_gal, fk, B, C, D = 1.8e-44, 1.0e-4, 292.0, 10.0^(-3.5), 10.0^(-4.5)
-    s_gal = A_gal * f^(-7/3) * exp(-(f/fk)^B) * (1 + tanh((C-f)/D))
+    # Optical Metrology Noise (Robson Eq. 10)
+    p_oms = (1.5e-11)^2 * (1 + (2e-3 / f)^4)
+
+    # Acceleration Noise (Robson Eq. 11)
+    p_acc = (3e-15)^2 * (1 + (0.4e-3 / f)^2) * (1 + (f / 8e-3)^4)
+
+    # Total Instrumental Noise (Robson Eq. 12)
+    s_inst = (p_oms / L_ARM^2) + (2 * p_acc / ((2 * π * f)^4 * L_ARM^2)) * (1 + cos(f / F_STAR)^2)
+
+    if !noise.confusion_enabled
+        return s_inst
+    end
+
+    # Galactic binary confusion noise (Robson Eq. 14)
+    s_gal = noise.confusion_amp * f^(-7 / 3) *
+            exp(-(f^noise.confusion_alpha) + noise.confusion_beta * f * sin(noise.confusion_kappa * f)) *
+            (1 + tanh(noise.confusion_gamma * (noise.confusion_fk - f)))
 
     return s_inst + s_gal
 end
 
 """
-    scaled_waveform_model(theta, freq_grid)
+    WaveformParams(; kwargs...)
 
-Generates a frequency-domain inspiral waveform including spin-orbit coupling 
-and the first sub-dominant higher harmonic (l=3, m=3).
-Crucially, `theta` is an array of scaled parameters of O(1) to ensure the Fisher matrix 
-and optimization landscape are well-conditioned.
-
-Parameters in `theta`:
-1. A_scaled   (O(1) value mapping to Amplitude ~ 1e-21)
-2. Mc_scaled  (O(1) value mapping to Chirp Mass ~ 10 seconds)
-3. tc_scaled  (O(1) value mapping to Coalescence Time ~ 1000 seconds)
-4. phic       (Phase at coalescence, O(1) radians)
-5. chi1       (Dimensionless spin of primary mass, [-1, 1])
-6. chi2       (Dimensionless spin of secondary mass, [-1, 1])
+Immutable, isbits container for every physical parameter of the waveform and
+detector-response model. This is the single source of defaults (previously
+triplicated across `Physics`, `Detector` and `Inference` signatures) and is
+safe to pass into GPU kernels. Values are overridden by the `[physics]`
+section of `config.toml`.
 """
-function scaled_waveform_model(theta::AbstractVector, freq_grid::AbstractVector; 
-                               mass_scale::Real=10.0, time_scale::Real=1000.0, 
-                               amp_scale::Real=1e-21, eta::Real=0.25, 
-                               amp_33_factor::Real=0.1, kwargs...)
-    A_scale, Mc_scale, tc_scale, phic, chi1, chi2 = theta
-    
-    # Restore physical units internally using configurable scales
-    A = A_scale * amp_scale
-    Mc = Mc_scale * mass_scale
-    tc = tc_scale * time_scale
-    
-    # Effective spin parameter (simplified for aligned spins)
-    chi_eff = 0.5 * (chi1 + chi2) # Exact for equal masses
-    
-    # --- Dominant Harmonic (l=2, m=2) ---
-    amp_22 = @. A * (freq_grid ^ (-7/6))
-    
-    # Phase includes the leading order spin-orbit coupling term (1.5PN)
-    # The term is proportional to beta = (113/3 - 76*eta/3) * chi_eff / 4
-    beta = (113.0/3.0 - 76.0*eta/3.0) * chi_eff / 4.0
-    v_param = @. (π * Mc * freq_grid)^(1/3)
-    
-    phase_22 = @. 2 * π * freq_grid * tc - phic - (3/128) * (v_param^(-5)) * (1.0 - 4.0 * beta * (v_param^3))
-    
-    h_22 = @. amp_22 * exp(1im * phase_22)
-    
-    # --- Higher Harmonic (l=3, m=3) ---
-    amp_33 = @. (amp_33_factor * A) * (freq_grid ^ (-7/6)) * v_param
-    
-    # The frequency of the 33 mode is 1.5x the 22 mode frequency
-    phase_33 = @. 1.5 * phase_22
-    
-    h_33 = @. amp_33 * exp(1im * phase_33)
-    
-    return h_22 .+ h_33
+Base.@kwdef struct WaveformParams{T<:Real}
+    mass_scale::T = 10.0
+    time_scale::T = 1000.0
+    amp_scale::T = 1e-21
+    eta::T = 0.25
+    amp_33_factor::T = 0.1
+    sky_theta::T = 1.047
+    sky_phi::T = 0.0
+    inclination::T = 0.523
+    polarization::T = 0.0
+    include_t_channel::Bool = false
+end
+
+"""
+    waveform_params(; kwargs...) -> WaveformParams
+
+Build a [`WaveformParams`](@ref) from a keyword soup, silently ignoring any
+keys that are not fields (so pipeline call sites can splat a mixed
+configuration NamedTuple through legacy keyword APIs).
+"""
+function waveform_params(; kwargs...)
+    known = filter(p -> first(p) in fieldnames(WaveformParams), pairs(kwargs))
+    return WaveformParams(; known...)
+end
+
+"""
+    spin_beta(chi1, chi2, eta)
+
+Leading-order (1.5PN) spin-orbit phase coefficient
+`β = (113/3 − 76η/3) χ_eff / 4` with `χ_eff = (χ₁ + χ₂)/2`.
+"""
+@inline function spin_beta(chi1, chi2, eta)
+    chi_eff = 0.5 * (chi1 + chi2)
+    return (113.0 / 3.0 - 76.0 * eta / 3.0) * chi_eff / 4.0
+end
+
+"""
+    strain_bin(f, A, Mc, tc, phic, beta, amp_33_factor)
+
+Scalar per-bin frequency-domain strain: dominant (2,2) mode with 1.5PN
+spin-orbit phasing plus the (3,3) harmonic at Newtonian phase ratio
+`Ψ₃₃ = 1.5 Ψ₂₂`. `A`, `Mc`, `tc` are in physical units (s-based geometrised
+units for `Mc`, `tc`). This is the single scalar core shared by the broadcast
+model, the CPU inference loop and the GPU kernel — generic over `Real`
+(including `ForwardDiff.Dual`).
+"""
+@inline function strain_bin(f::Real, A, Mc, tc, phic, beta, amp_33_factor)
+    v_param = (π * Mc * f)^(1 / 3)
+
+    amp_22 = A * (f^(-7 / 6))
+    phase_22 = 2 * π * f * tc - phic - (3 / 128) * (v_param^(-5)) * (1.0 - 4.0 * beta * (v_param^3))
+    h_22 = amp_22 * cis(phase_22)
+
+    amp_33 = (amp_33_factor * A) * (f^(-7 / 6)) * v_param
+    h_33 = amp_33 * cis(1.5 * phase_22)
+
+    return h_22 + h_33
+end
+
+"""
+    scaled_waveform_model(theta, freq_grid; kwargs...)
+    scaled_waveform_model(theta, freq_grid, wp::WaveformParams)
+
+Frequency-domain inspiral waveform over `freq_grid` for the O(1)-scaled
+6-parameter vector `theta = [A, M_c, t_c, φ_c, χ₁, χ₂]`. Physical units are
+restored internally via the scales in `wp`. Broadcasts [`strain_bin`](@ref).
+"""
+function scaled_waveform_model(theta::AbstractVector, freq_grid::AbstractVector; kwargs...)
+    return scaled_waveform_model(theta, freq_grid, waveform_params(; kwargs...))
+end
+
+function scaled_waveform_model(theta::AbstractVector, freq_grid::AbstractVector, wp::WaveformParams)
+    A = theta[1] * wp.amp_scale
+    Mc = theta[2] * wp.mass_scale
+    tc = theta[3] * wp.time_scale
+    phic = theta[4]
+    beta = spin_beta(theta[5], theta[6], wp.eta)
+    return strain_bin.(freq_grid, A, Mc, tc, phic, beta, wp.amp_33_factor)
 end
 
 end # module

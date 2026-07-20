@@ -1,53 +1,96 @@
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
+# ipnewton (box-constrained exact-Hessian interior-point Newton, recommended) |
+# lbfgs_box (Fminbox gradient-only) | lbfgs (legacy UNCONSTRAINED)
+optimizer = "ipnewton"
 
 [pipeline.sweep_settings]
-# Extreme resolution for the 1D distance optimization.
 n_deltas = 50
 min_log_delta = -5.0
 max_log_delta = -0.5
+# discernibility threshold rho for the 1D sweeps (per-sweep override: rho_thresh)
+rho_thresh = 1.0
+# directions with Fisher norm below this are reported as degenerate
+g_uu_degenerate = 1e-6
 
 [grid]
-# Massive frequency grid (f_max = 0.05 Hz).
-# At df = 1/1yr, this generates exactly 1,577,880 frequency bins per array.
-T_obs = 3.15e7
+# df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
+# (1 yr, 0.05 Hz -> ~1.58 M bins; check [safety].max_ram_gb before scaling up).
+T_obs = 3.15576e7
 f_min = 1.0e-4
 f_max = 0.05
-[hardware]
-# Dynamic memory manager limits to prevent OOM crashes on massive GPU grids.
-max_vram_gb = 32.0
-os_vram_overhead_gb = 4.0
-max_threads = 22
-# Set to true to override GPU detection and force the allocation-free CPU loop
-force_cpu = true
 
 [physics]
-mass_scale = 10.0      
-time_scale = 10000.0   
-amp_scale = 1e-21      
-eta = 0.25             
-amp_33_factor = 0.1    
-sky_theta = 1.047      
-sky_phi = 3.1415       
-inclination = 0.523    
-polarization = 0.785   
+mass_scale = 10.0
+time_scale = 10000.0
+amp_scale = 1e-21
+eta = 0.25
+amp_33_factor = 0.1
+sky_theta = 1.047
+sky_phi = 3.1415
+inclination = 0.523
+polarization = 0.785
+# the T channel is identically zero in this low-frequency model; enabling it
+# only adds dead compute (and is unsupported on GPU backends)
+include_t_channel = false
+
+[noise]
+# Galactic confusion noise: Robson, Cornish & Liu (2019) Eq. 14. Coefficients
+# default to the Table 1 column nearest [grid].T_obs; override any of
+# confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
+# confusion_gamma / confusion_fk here. Set false to reproduce
+# instrumental-only runs (e.g. the pre-2026 campaign, whose confusion term
+# was inert due to a coefficient transcription bug).
+confusion_enabled = true
+
+[mapping]
+# total directions around the full circle before refinement (even; the solver
+# computes half and mirrors — K(u) is exactly even in u)
+n_angles = 5000
+# adjacent-direction capped-radius ratio that triggers angular refinement
+neighbor_ratio_tol = 1.25
+max_refine_levels = 6
+
+[parameter_bounds]
+# hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
+# The phase is periodic (deviations capped at ±pi) regardless of this table.
+amplitude = [0.0, inf]
+chirp_mass = [0.0, inf]
+time = [0.0, inf]
+spin1 = [-1.0, 1.0]
+spin2 = [-1.0, 1.0]
+
+[hardware]
+# GPU backends activate by installing/loading the matching package (CUDA,
+# AMDGPU, Metal, oneAPI); gpu_backend: auto | none | cuda | amdgpu | metal | oneapi
+gpu_backend = "auto"
+force_cpu = true
+max_threads = 22
+max_vram_gb = 32.0
+os_vram_overhead_gb = 4.0
+
+[safety]
+# pipeline refuses to start (or downscales concurrency) beyond this budget
+max_ram_gb = 24.0
+# per-bin VRAM footprint of one concurrent GPU optimization task
+bytes_per_bin_per_task_gpu = 1000
 
 
 # =============================================================================
-# 1D Parameter Sweeps (Validating the delta^4 scaling law)
+# 1D parameter sweeps (validating the delta^4 scaling law)
 # =============================================================================
 
 [[sweeps]]
 name = "six_dimensional_diagonal_stress"
-# The ultimate test. Base source: A highly spinning, asymmetric binary.
+# The ultimate test. Base source: a highly spinning, asymmetric binary.
 theta_0 = [1.0, 1.25, 300.0, 1.57, 0.9, -0.4]
-# Direction: Simultaneously altering Mass, Time, Phase, and BOTH spins diagonally.
+# Direction: simultaneously altering mass, time, phase and BOTH spins.
 u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
 
 [[sweeps]]
 name = "ldc_radler_mbhb_base"
-# Standard LDC "Radler" Massive Black Hole Binary.
+# Standard LDC "Radler" massive black-hole binary.
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 
@@ -59,19 +102,14 @@ u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
 
 [[sweeps]]
 name = "emri_analog_time_shift"
-# Lower mass system, moving strictly in time to test Doppler/TDI Antenna limits.
+# Lower-mass system, moving strictly in time to test Doppler/TDI limits.
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
 
 
 # =============================================================================
-# 2D Zone of Confusion Maps (Drawing the discernibility ellipses)
+# 2D zone-of-confusion maps (discernibility boundaries, prior-capped)
 # =============================================================================
-
-[mapping]
-# Brutal angular resolution. 5000 angles means 5000 exact analytical AD Extrinsic
-# Curvature evaluations per mapped plane.
-n_angles = 5000
 
 [[maps]]
 name = "mass_vs_time_degeneracy"
