@@ -13,3 +13,4 @@ data/logs/
 .DS_Store
 docs/build/
 # Manifest.toml IS version-controlled (portability guarantee across machines)
+benchmarks/Manifest.toml
