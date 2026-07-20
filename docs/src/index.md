@@ -7,8 +7,7 @@
 ├── benchmarks/
 │   └── run_benchmarks.jl # Profilers and timing suite
 ├── scripts/
-│   ├── pipeline.jl       # Unified CLI orchestrator entry point
-│   └── launch_campaign.jl # Background runner and log vaulter
+│   └── pipeline.jl       # Unified CLI orchestrator entry point
 ├── src/
 │   ├── Detector.jl       # TDI projection & dynamic orbital/antenna modulations
 │   ├── Geometry.jl       # Core tensor mathematics (Jacobian, Gram-Schmidt)
@@ -46,21 +45,11 @@ The entire project is controlled via the `config.toml` file. You define your phy
 
 Because the path resolution is fully dynamic, you can execute the unified pipeline from anywhere:
 
-**1. Live Interactive Run:**
 ```bash
 julia --threads auto TwoWaveformDistinguishability/scripts/pipeline.jl
 ```
+
 *(Note: The pipeline automatically suppresses package activation logs and provides a beautiful, aesthetic real-time wall-clock in your terminal).*
-
-**2. Background Campaign (Overnight/HPC Runs):**
-```bash
-julia TwoWaveformDistinguishability/scripts/launch_campaign.jl
-```
-*(Spawns the orchestrator in the background, instantly returns terminal control, and dynamically vaults all terminal logs into a timestamped file in `data/logs/`).*
-
-### 📚 Local Documentation
-This project uses `Documenter.jl` for rigorous, offline scientific documentation. To view the mathematical models and the API reference locally, open the following file in your web browser:
-`TwoWaveformDistinguishability/docs/build/index.html`
 
 ### Options:
 *   `--config`: Path to your TOML configuration file (default: `config.toml`).
@@ -76,4 +65,3 @@ Outputs are cleanly vaulted into unique `data/outputs/run_<ID>` directories, sep
     *   A 2-layered plot showing the true two-source signal vs. the best-fit single source, and isolating the unabsorbable Extrinsic Curvature residual on its own linear scale.
 3.  **`confusion_zone.png` (2D Map):**
     *   A continuous, filled ellipse showing the Fundamental Discernibility boundary ($\delta_{\mathrm{min}}$) for a given parameter plane (e.g., Mass vs. Time). Any secondary source inside this red zone is operationally indistinguishable from the primary source.
-ous, filled ellipse showing the Fundamental Discernibility boundary ($\delta_{\mathrm{min}}$) for a given parameter plane (e.g., Mass vs. Time). Any secondary source inside this red zone is operationally indistinguishable from the primary source.
