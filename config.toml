@@ -1,0 +1,109 @@
+[pipeline]
+run_1d_sweeps = true
+run_2d_mapping = true
+
+[pipeline.sweep_settings]
+# Extreme resolution for the 1D distance optimization.
+n_deltas = 50
+min_log_delta = -5.0
+max_log_delta = -0.5
+
+[grid]
+# Massive frequency grid (f_max = 0.05 Hz).
+# At df = 1/1yr, this generates exactly 1,577,880 frequency bins per array.
+T_obs = 3.15e7
+f_min = 1.0e-4
+f_max = 0.05
+[hardware]
+# Dynamic memory manager limits to prevent OOM crashes on massive GPU grids.
+max_vram_gb = 32.0
+os_vram_overhead_gb = 4.0
+max_threads = 22
+# Set to true to override GPU detection and force the allocation-free CPU loop
+force_cpu = true
+
+[physics]
+mass_scale = 10.0      
+time_scale = 10000.0   
+amp_scale = 1e-21      
+eta = 0.25             
+amp_33_factor = 0.1    
+sky_theta = 1.047      
+sky_phi = 3.1415       
+inclination = 0.523    
+polarization = 0.785   
+
+
+# =============================================================================
+# 1D Parameter Sweeps (Validating the delta^4 scaling law)
+# =============================================================================
+
+[[sweeps]]
+name = "six_dimensional_diagonal_stress"
+# The ultimate test. Base source: A highly spinning, asymmetric binary.
+theta_0 = [1.0, 1.25, 300.0, 1.57, 0.9, -0.4]
+# Direction: Simultaneously altering Mass, Time, Phase, and BOTH spins diagonally.
+u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
+
+[[sweeps]]
+name = "ldc_radler_mbhb_base"
+# Standard LDC "Radler" Massive Black Hole Binary.
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "extreme_spin_orbit_coupling"
+# Extreme spins to maximize the 1.5PN phase twist.
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.95, -0.95]
+u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
+
+[[sweeps]]
+name = "emri_analog_time_shift"
+# Lower mass system, moving strictly in time to test Doppler/TDI Antenna limits.
+theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
+u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+
+# =============================================================================
+# 2D Zone of Confusion Maps (Drawing the discernibility ellipses)
+# =============================================================================
+
+[mapping]
+# Brutal angular resolution. 5000 angles means 5000 exact analytical AD Extrinsic
+# Curvature evaluations per mapped plane.
+n_angles = 5000
+
+[[maps]]
+name = "mass_vs_time_degeneracy"
+param_x = 2
+param_y = 3
+rho_thresh = 1.0
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "spin1_vs_spin2_coupling"
+param_x = 5
+param_y = 6
+rho_thresh = 1.0
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_spin1_twist"
+param_x = 2
+param_y = 5
+rho_thresh = 1.0
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "time_vs_phase_doppler"
+param_x = 3
+param_y = 4
+rho_thresh = 1.0
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_phase_emri_analog"
+param_x = 2
+param_y = 4
+rho_thresh = 1.0
+theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
