@@ -1,3 +1,14 @@
+# =============================================================================
+# Production campaign configuration (CPU reference run)
+#
+# Case naming is physical (source properties and probed parameter plane), not
+# tied to any external dataset. The five sweeps validate the quartic law
+# across qualitatively different directions of the 6-parameter manifold; the
+# five maps chart the prior-capped zones of confusion around two reference
+# sources: a massive aligned-spin equal-mass binary (chirp mass ~ 3x10^6 Msun
+# in geometrised units via mass_scale) and a low-mass late-merging system.
+# =============================================================================
+
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
@@ -9,20 +20,25 @@ optimizer = "ipnewton"
 rng_seed = 42
 
 [pipeline.sweep_settings]
-n_deltas = 50
+# 28 log-spaced separations over 4.5 decades (~6 per decade): dense enough for
+# the slope/prefactor fits, sparse enough for readable scatter markers
+n_deltas = 28
 min_log_delta = -5.0
 max_log_delta = -0.5
 # discernibility threshold rho for the 1D sweeps (per-sweep override: rho_thresh)
 rho_thresh = 1.0
 # directions with Fisher norm below this are reported as degenerate
 g_uu_degenerate = 1e-6
-# optimizer starts per separation (1 = canonical start only; >1 adds seeded
-# perturbed restarts and records MultiStartGain — secondary-minimum detection)
-n_starts = 1
+# two optimizer starts per separation: canonical + one seeded restart, for
+# secondary-minimum detection (MultiStartGain column)
+n_starts = 2
+# optimizer convergence: gradient tolerance and iteration cap
+g_tol = 1e-12
+max_iterations = 1000
 
 [grid]
 # df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
-# (1 yr, 0.05 Hz -> ~1.58 M bins; check [safety].max_ram_gb before scaling up).
+# (1 Julian yr, 0.05 Hz -> ~1.57 M bins; checked against [safety].max_ram_gb).
 T_obs = 3.15576e7
 f_min = 1.0e-4
 f_max = 0.05
@@ -52,8 +68,9 @@ confusion_enabled = true
 
 [mapping]
 # total directions around the full circle before refinement (even; the solver
-# computes half and mirrors — K(u) is exactly even in u)
-n_angles = 5000
+# computes half and mirrors — K(u) is exactly even in u). 8192 gives smooth
+# publication-grade boundaries; adaptive refinement adds more near spikes.
+n_angles = 8192
 # adjacent-direction capped-radius ratio that triggers angular refinement
 neighbor_ratio_tol = 1.25
 max_refine_levels = 6
@@ -75,6 +92,9 @@ force_cpu = true
 max_threads = 22
 max_vram_gb = 32.0
 os_vram_overhead_gb = 4.0
+# ForwardDiff Hessian chunking for GPU compilers that reject the full 49-lane
+# nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
+hessian_chunk = 0
 
 [safety]
 # pipeline refuses to start (or downscales concurrency) beyond this budget
@@ -89,35 +109,42 @@ bytes_per_bin_per_task_gpu = 1000
 
 [[sweeps]]
 name = "six_dimensional_diagonal_stress"
-# The ultimate test. Base source: a highly spinning, asymmetric binary.
+# Hardest test of the tensorial law: a highly spinning asymmetric binary with
+# the second source displaced simultaneously in mass, time, phase and BOTH
+# spins — no coordinate axis is special.
 theta_0 = [1.0, 1.25, 300.0, 1.57, 0.9, -0.4]
-# Direction: simultaneously altering mass, time, phase and BOTH spins.
 u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
 
 [[sweeps]]
-name = "ldc_radler_mbhb_base"
-# Standard LDC "Radler" massive black-hole binary.
+name = "massive_binary_mass_time"
+# Reference massive aligned-spin equal-mass binary (Mc ~ 3x10^6 Msun); the
+# classic chirp-rate/arrival-time direction that dominates real catalogs.
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 
 [[sweeps]]
-name = "unequal_amplitude_radler"
-# Same base and direction as ldc_radler_mbhb_base, but the second source has
-# half the amplitude: tests the A_harm = 2A₁A₂/(A₁+A₂) prefactor law,
-# D² = (1/16) K δ⁴ (2q/(1+q))² with q = A₂/A₁.
+name = "unequal_amplitude_mass_time"
+# Same base and direction as massive_binary_mass_time, but the second source
+# carries half the amplitude: validates the A_harm = 2A1A2/(A1+A2) prefactor,
+# D^2 = (1/16) K delta^4 (2q/(1+q))^2 with q = A2/A1. Note: for q != 1 the
+# odd O(delta^5) term is not midpoint-suppressed, so the quartic-law validity
+# range is intrinsically shorter (quantified by the c1 fit).
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 amp_ratio = 0.5
 
 [[sweeps]]
 name = "extreme_spin_orbit_coupling"
-# Extreme spins to maximize the 1.5PN phase twist.
+# Maximal anti-aligned spins to maximize the 1.5PN phase twist; the direction
+# sweeps phase and both spins.
 theta_0 = [1.0, 2.0, 150.0, 1.57, 0.95, -0.95]
 u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
 
 [[sweeps]]
-name = "emri_analog_time_shift"
-# Lower-mass system, moving strictly in time to test Doppler/TDI limits.
+name = "low_mass_time_shift"
+# Low-mass, late-merging system displaced purely in coalescence time: isolates
+# the orbital-Doppler/TDI response (a time shift moves the detector along its
+# solar orbit at every contributing frequency).
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
 
@@ -155,7 +182,7 @@ rho_thresh = 1.0
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 
 [[maps]]
-name = "mass_vs_phase_emri_analog"
+name = "mass_vs_phase_low_mass"
 param_x = 2
 param_y = 4
 rho_thresh = 1.0

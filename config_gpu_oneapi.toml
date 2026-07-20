@@ -1,0 +1,106 @@
+# =============================================================================
+# GPU cross-validation campaign (Intel oneAPI iGPU, FP64 emulation)
+#
+# Same physics, grid, noise and sweep cases as config.toml; differences are
+# hardware/tolerance only, each documented:
+#   - gpu_backend = "oneapi", force_cpu = false: sweeps run through the
+#     KernelAbstractions lanes kernel on the iGPU.
+#   - hessian_chunk = 3: the full 49-lane nested-dual Hessian kernel exceeds
+#     an IGC module-build limit under FP64 emulation; chunk-3 (28 lanes per
+#     launch) is validated to machine epsilon against the CPU reference.
+#   - g_tol = 1e-9, max_iterations = 150: FP64-emulated transcendentals limit
+#     the loss/gradient fidelity (~1e-10 relative on the value), so the
+#     smallest-delta fits hit an emulation floor and would stall against a
+#     1e-12 gradient norm; the relaxed tolerance and tighter cap bound the
+#     wall time of stalled fits while leaving the clean-window comparison
+#     against the CPU run unaffected.
+#   - run_2d_mapping = false: the map stage is CPU-only by design and would
+#     reproduce the CPU run bit-for-bit; skipped to keep the GPU run focused.
+#   - n_starts = 1: the multi-start robustness data comes from the CPU run;
+#     the GPU run is a cross-validation of the optimizer path itself.
+# Launch requires oneAPI.jl in the environment and, on FP64-less iGPUs, the
+# emulation environment variables:
+#   OverrideDefaultFP64Settings=1 IGC_EnableDPEmulation=1
+# =============================================================================
+
+[pipeline]
+run_1d_sweeps = true
+run_2d_mapping = false
+optimizer = "ipnewton"
+rng_seed = 42
+
+[pipeline.sweep_settings]
+n_deltas = 28
+min_log_delta = -5.0
+max_log_delta = -0.5
+rho_thresh = 1.0
+g_uu_degenerate = 1e-6
+n_starts = 1
+g_tol = 1e-9
+max_iterations = 150
+
+[grid]
+T_obs = 3.15576e7
+f_min = 1.0e-4
+f_max = 0.05
+
+[physics]
+mass_scale = 10.0
+time_scale = 10000.0
+amp_scale = 1e-21
+eta = 0.25
+amp_33_factor = 0.1
+sky_theta = 1.047
+sky_phi = 3.1415
+inclination = 0.523
+polarization = 0.785
+include_t_channel = false
+
+[noise]
+confusion_enabled = true
+
+[parameter_bounds]
+amplitude = [0.0, inf]
+chirp_mass = [0.0, inf]
+time = [0.0, inf]
+spin1 = [-1.0, 1.0]
+spin2 = [-1.0, 1.0]
+
+[hardware]
+gpu_backend = "oneapi"
+force_cpu = false
+max_threads = 22
+# iGPU uses shared system memory; the budget throttles concurrent GPU tasks
+max_vram_gb = 8.0
+os_vram_overhead_gb = 1.0
+hessian_chunk = 3
+
+[safety]
+max_ram_gb = 24.0
+bytes_per_bin_per_task_gpu = 1000
+
+[[sweeps]]
+name = "six_dimensional_diagonal_stress"
+theta_0 = [1.0, 1.25, 300.0, 1.57, 0.9, -0.4]
+u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
+
+[[sweeps]]
+name = "massive_binary_mass_time"
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "unequal_amplitude_mass_time"
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+amp_ratio = 0.5
+
+[[sweeps]]
+name = "extreme_spin_orbit_coupling"
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.95, -0.95]
+u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
+
+[[sweeps]]
+name = "low_mass_time_shift"
+theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
+u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]

@@ -196,6 +196,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                                                   FIX_FREQS, FIX_SN, FIX_DF;
                                                   iterations = 50, FIX_PHYS...)
         @test d0 < 1e-5
+        # chunked-Hessian option must reproduce the full-chunk optimization
+        d0c, _, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
+                                                 FIX_FREQS, FIX_SN, FIX_DF;
+                                                 iterations = 50, hessian_chunk = 2,
+                                                 FIX_PHYS...)
+        @test d0c < 1e-5
 
         # guardrail: a GPU backend with host Arrays must fail loudly, not crash
         # deep inside a kernel launch (get_best_backend() returns a GPU whenever
@@ -293,8 +299,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nn_starts = 0\n"))
             cfg_ms = load_and_validate_config(
-                write_cfg(dir, "[pipeline]\nrng_seed = 7\n[pipeline.sweep_settings]\nn_starts = 3\n"))
+                write_cfg(dir, "[pipeline]\nrng_seed = 7\n[pipeline.sweep_settings]\nn_starts = 3\ng_tol = 1e-9\nmax_iterations = 300\n[hardware]\nhessian_chunk = 3\n"))
             @test cfg_ms.n_starts == 3 && cfg_ms.rng_seed == 7
+            @test cfg_ms.g_tol == 1e-9 && cfg_ms.max_iterations == 300
+            @test cfg_ms.hessian_chunk == 3
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[hardware]\nhessian_chunk = 9\n"))
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
         end
     end
 

@@ -250,10 +250,13 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             fr = ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
             sn = ctx.backend isa KernelAbstractions.CPU ? ctx.Sn : ctx.Sn_dev
             solve(x0) = calculate_numerical_distance(data, x0, fr, sn, ctx.df;
-                                                     g_tol = 1e-12, iterations = 1000,
+                                                     g_tol = cfg.g_tol,
+                                                     iterations = cfg.max_iterations,
                                                      backend = ctx.backend,
                                                      optimizer = cfg.optimizer,
-                                                     bounds = cfg.bounds, phys...)
+                                                     bounds = cfg.bounds,
+                                                     hessian_chunk = cfg.hessian_chunk,
+                                                     phys...)
             dist, best, res = solve(guess)
             dist_canonical = dist
             for k in 2:cfg.n_starts
