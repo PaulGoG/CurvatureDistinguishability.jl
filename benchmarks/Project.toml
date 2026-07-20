@@ -2,6 +2,7 @@
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+TwoWaveformDistinguishability = "023135ff-521e-423d-a4c9-75a9bc432dee"
 
 [compat]
 BenchmarkTools = "1"
