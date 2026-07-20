@@ -18,12 +18,14 @@ struct PipelineSettings
     run_1d_sweeps::Bool
     run_2d_mapping::Bool
     optimizer::Symbol
+    rng_seed::Int
     # sweep settings
     n_deltas::Int
     min_log_delta::Float64
     max_log_delta::Float64
     sweep_rho_thresh::Float64
     g_uu_degenerate::Float64
+    n_starts::Int
     # grid
     T_obs::Float64
     f_min::Float64
@@ -53,9 +55,10 @@ end
 const KNOWN_KEYS = Dict(
     "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
            "safety", "parameter_bounds", "sweeps", "maps"],
-    "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "sweep_settings"],
+    "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
+                   "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
-                                  "rho_thresh", "g_uu_degenerate"],
+                                  "rho_thresh", "g_uu_degenerate", "n_starts"],
     "grid" => ["T_obs", "f_min", "f_max"],
     "physics" => ["mass_scale", "time_scale", "amp_scale", "eta", "amp_33_factor",
                   "sky_theta", "sky_phi", "inclination", "polarization",
@@ -67,7 +70,7 @@ const KNOWN_KEYS = Dict(
                    "os_vram_overhead_gb"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu"],
     "parameter_bounds" => collect(PARAM_KEYS),
-    "sweeps[]" => ["name", "theta_0", "u_dir", "rho_thresh"],
+    "sweeps[]" => ["name", "theta_0", "u_dir", "rho_thresh", "amp_ratio"],
     "maps[]" => ["name", "param_x", "param_y", "rho_thresh", "theta_0", "n_angles"],
 )
 
@@ -137,6 +140,7 @@ function load_and_validate_config(config_path::AbstractString)
     optimizer === :lbfgs &&
         @warn "[pipeline].optimizer = \"lbfgs\" runs UNCONSTRAINED (legacy mode): " *
               "best fits may leave the physical parameter space."
+    rng_seed = getint(pipeline, "rng_seed", 42, "pipeline")
 
     ss = get(pipeline, "sweep_settings", Dict{String,Any}())
     warn_unknown_keys(ss, "pipeline.sweep_settings")
@@ -150,6 +154,8 @@ function load_and_validate_config(config_path::AbstractString)
     sweep_rho > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
     g_deg = getnum(ss, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
+    n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
+    n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
 
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
@@ -257,6 +263,13 @@ function load_and_validate_config(config_path::AbstractString)
         u = validate_theta6(get(s, "u_dir", nothing), "[[sweeps]] '$name'.u_dir")
         norm_u = sqrt(sum(abs2, u))
         norm_u > 0 || error("[[sweeps]] '$name'.u_dir must be nonzero")
+        amp_ratio = getnum(s, "amp_ratio", 1.0, "sweeps[]")
+        amp_ratio > 0 || error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
+        if amp_ratio != 1.0 && u[1] != 0
+            error("[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
+                  "separation is expressed via amp_ratio (the A_harm law), not via the " *
+                  "sweep direction.")
+        end
         u[1] == 0 ||
             @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
@@ -289,8 +302,8 @@ function load_and_validate_config(config_path::AbstractString)
     (run_maps && isempty(maps)) &&
         @warn "[pipeline].run_2d_mapping = true but no [[maps]] entries are defined."
 
-    return PipelineSettings(run_sweeps, run_maps, optimizer,
-                            n_deltas, min_log, max_log, sweep_rho, g_deg,
+    return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
+                            n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
                             T_obs, f_min, f_max, wp, noise,
                             map_n_angles, ratio_tol, refine_levels,
                             force_cpu, gpu_backend, max_threads,
