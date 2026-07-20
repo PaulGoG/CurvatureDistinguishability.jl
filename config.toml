@@ -4,6 +4,9 @@ run_2d_mapping = true
 # ipnewton (box-constrained exact-Hessian interior-point Newton, recommended) |
 # lbfgs_box (Fminbox gradient-only) | lbfgs (legacy UNCONSTRAINED)
 optimizer = "ipnewton"
+# seed for all stochastic components (multi-start perturbations); recorded in
+# run metadata for reproducibility
+rng_seed = 42
 
 [pipeline.sweep_settings]
 n_deltas = 50
@@ -13,6 +16,9 @@ max_log_delta = -0.5
 rho_thresh = 1.0
 # directions with Fisher norm below this are reported as degenerate
 g_uu_degenerate = 1e-6
+# optimizer starts per separation (1 = canonical start only; >1 adds seeded
+# perturbed restarts and records MultiStartGain — secondary-minimum detection)
+n_starts = 1
 
 [grid]
 # df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
@@ -93,6 +99,15 @@ name = "ldc_radler_mbhb_base"
 # Standard LDC "Radler" massive black-hole binary.
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "unequal_amplitude_radler"
+# Same base and direction as ldc_radler_mbhb_base, but the second source has
+# half the amplitude: tests the A_harm = 2A₁A₂/(A₁+A₂) prefactor law,
+# D² = (1/16) K δ⁴ (2q/(1+q))² with q = A₂/A₁.
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+amp_ratio = 0.5
 
 [[sweeps]]
 name = "extreme_spin_orbit_coupling"

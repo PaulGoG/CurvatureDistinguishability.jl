@@ -151,7 +151,8 @@ the annotated slope fit.
 """
 function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo::AbstractVector;
                         rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
-                        clean::AbstractVector{Bool}, floor_level::Real)
+                        clean::AbstractVector{Bool}, floor_level::Real,
+                        c1::Real = NaN, c2::Real = NaN)
     with_theme(twd_theme()) do
         fig = Figure(size = (900, 850))
 
@@ -196,6 +197,14 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                    ylabel = L"D^2_{num}/D^2_{theo}", xticks = xt)
         ratio = d2_num ./ d2_theo
         hlines!(ax2, [1.0]; color = :grey35, linewidth = 1.2)
+        if isfinite(c1)
+            dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)), length = 120)
+            model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
+            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:grey35, 0.8), linewidth = 1.4)
+            text!(ax2, minimum(deltas), 2.02;
+                  text = @sprintf("1 + c₁δ + c₂δ²,  c₁ = %.3g", c1),
+                  align = (:left, :top), fontsize = 14, color = :grey35)
+        end
         excl = .!clean
         any(excl) && scatter!(ax2, deltas[excl], clamp.(ratio[excl], 0.0, 2.05);
                               color = (:grey, 0.55), markersize = 9)
@@ -336,7 +345,8 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             msg = @sprintf("%.0f%% of directions prior-limited", 100 * prior_frac)
             degenerate_frac > 0 &&
                 (msg *= @sprintf(" (%.0f%% degenerate)", 100 * degenerate_frac))
-            text!(ax, xmax * (1 + pad), -ymax * (1 + pad); text = msg,
+            # relative axis coordinates keep the annotation inside the frame
+            text!(ax, 0.985, 0.015; text = msg, space = :relative,
                   align = (:right, :bottom), fontsize = 14, color = :grey35)
         end
         return fig

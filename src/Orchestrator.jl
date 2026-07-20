@@ -5,6 +5,7 @@ using Dates
 using TOML
 using CSV
 using DataFrames
+using Random
 using Statistics
 using ProgressMeter
 using Logging
@@ -80,6 +81,29 @@ function loglog_slope(x::AbstractVector, y::AbstractVector)
 end
 
 """
+    ratio_correction_fit(deltas, ratio) -> (c1, c1_err, c2)
+
+Least-squares fit of `ratio − 1 ≈ c₁δ + c₂δ²` (2×2 normal equations solved in
+closed form), quantifying the leading `O(δ⁵)` correction to the quartic law
+relative to `D²_th`. Returns NaNs with fewer than 3 points.
+"""
+function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
+    n = length(deltas)
+    n >= 3 || return NaN, NaN, NaN
+    y = ratio .- 1.0
+    s2 = sum(d^2 for d in deltas); s3 = sum(d^3 for d in deltas)
+    s4 = sum(d^4 for d in deltas)
+    b1 = sum(deltas .* y); b2 = sum(deltas .^ 2 .* y)
+    det = s2 * s4 - s3^2
+    abs(det) < 1e-300 && return NaN, NaN, NaN
+    c1 = (s4 * b1 - s3 * b2) / det
+    c2 = (s2 * b2 - s3 * b1) / det
+    resid = y .- c1 .* deltas .- c2 .* deltas .^ 2
+    c1_err = n > 2 ? sqrt(max(0.0, sum(abs2, resid) / (n - 2)) * s4 / det) : NaN
+    return c1, c1_err, c2
+end
+
+"""
     plan_resources(cfg, n_bins, nch, backend) -> (active_threads, est_gb)
 
 Pre-flight memory estimate against the `[safety]` budget: refuses to start
@@ -147,6 +171,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     theta0 = Float64.(sweep["theta_0"])
     u_raw = Float64.(sweep["u_dir"])
     rho_sq = Float64(get(sweep, "rho_thresh", cfg.sweep_rho_thresh))^2
+    q = Float64(get(sweep, "amp_ratio", 1.0))          # A₂/A₁
+    amp_prefactor = (2q / (1 + q))^2                   # (A_harm/A)², = 1 at q = 1
 
     out_dir = joinpath(ctx.out_base, "sweeps", name)
     mkpath(out_dir)
@@ -158,6 +184,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, "  base parameters : $theta0")
         logline(log_io, "  direction       : $u_raw")
         logline(log_io, "  rho^2 threshold : $rho_sq")
+        q != 1.0 && logline(log_io, @sprintf("  amplitude ratio : q = %.4g (A_harm prefactor %.5f)",
+                                             q, amp_prefactor))
 
         logline(log_io, "  [1/3] manifold geometry (K(u), g(u,u))")
         K_u, g_uu = compute_extrinsic_curvature(theta0, u_raw, ctx.freqs, ctx.Sn, ctx.df, wp)
@@ -179,6 +207,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         # guardrail: does the second source stay physical over the sweep range?
         far = theta0 .+ maximum(deltas) .* u_norm
+        far[1] = q * theta0[1]
         for i in 1:6
             cfg.bounds.periodic[i] && continue
             if !(cfg.bounds.lower[i] <= far[i] <= cfg.bounds.upper[i])
@@ -196,13 +225,16 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         iters = zeros(Int, n)
         gnorm = zeros(n)
         atbound = falses(n)
+        ms_gain = ones(n)
 
         logline(log_io, "  [2/3] optimization sweep ($(n) separations, " *
-                        "$(ctx.active_threads) concurrent, optimizer = $(cfg.optimizer))")
+                        "$(ctx.active_threads) concurrent, optimizer = $(cfg.optimizer)" *
+                        (cfg.n_starts > 1 ? ", $(cfg.n_starts) starts" : "") * ")")
         prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
         parallel_foreach(n, ctx.active_threads) do i
             d = deltas[i]
             p2 = theta0 .+ d .* u_norm
+            p2[1] = q * theta0[1]
             h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
             h2 = scaled_waveform_model(p2, ctx.freqs, wp)
             ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
@@ -211,18 +243,31 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             if !(ctx.backend isa KernelAbstractions.CPU)
                 data = map(a -> to_backend(a, ctx.backend), data)
             end
-            guess = theta0 .+ (0.5 * d) .* u_norm
-            guess[1] *= 2.0 # two equal-amplitude sources superpose to ~2A
+            # degenerate effective source: amplitude (1+q)A at the weighted midpoint
+            guess = theta0 .+ (q / (1 + q) * d) .* u_norm
+            guess[1] = (1 + q) * theta0[1]
 
             fr = ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
             sn = ctx.backend isa KernelAbstractions.CPU ? ctx.Sn : ctx.Sn_dev
-            dist, best, res = calculate_numerical_distance(data, guess, fr, sn, ctx.df;
-                                                           g_tol = 1e-12, iterations = 1000,
-                                                           backend = ctx.backend,
-                                                           optimizer = cfg.optimizer,
-                                                           bounds = cfg.bounds, phys...)
+            solve(x0) = calculate_numerical_distance(data, x0, fr, sn, ctx.df;
+                                                     g_tol = 1e-12, iterations = 1000,
+                                                     backend = ctx.backend,
+                                                     optimizer = cfg.optimizer,
+                                                     bounds = cfg.bounds, phys...)
+            dist, best, res = solve(guess)
+            dist_canonical = dist
+            for k in 2:cfg.n_starts
+                # deterministic per-task stream: independent of thread scheduling
+                rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
+                pert = guess .+ (0.35 * d * randn(rng)) .* u_norm .+ 1e-3 .* randn(rng, 6)
+                dist_k, best_k, res_k = solve(clamp_interior(pert, cfg.bounds))
+                if dist_k < dist
+                    dist, best, res = dist_k, best_k, res_k
+                end
+            end
             diag = optimization_diagnostics(res, best, cfg.bounds)
             D2_num[i] = dist
+            ms_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
             best_fits[i, :] .= best
             conv[i] = diag.converged
             iters[i] = diag.iterations
@@ -232,7 +277,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         end
         finish!(prog)
 
-        D2_theo = (1.0 / 16.0) .* K_norm .* deltas .^ 4
+        D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
         ratio = D2_num ./ D2_theo
         clean = (ratio .> 0.5) .& (ratio .< 2.0)
         floor_pts = findall(i -> !clean[i] && ratio[i] >= 2.0, 1:n)
@@ -240,6 +285,16 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         slope, slope_err = count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
         logline(log_io, @sprintf("        clean points %d/%d; fitted log-log slope %.4f ± %.4f",
                                  count(clean), n, slope, slope_err))
+        c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
+        delta_valid = (isfinite(c1) && abs(c1) > 1e-12) ? 0.1 / abs(c1) : Inf
+        isfinite(c1) &&
+            logline(log_io, @sprintf("        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (10%%-validity δ ≈ %.3g)",
+                                     c1, c1_err, c2, delta_valid))
+        if cfg.n_starts > 1 && maximum(ms_gain) > 1.5
+            @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
+                  "start for $(count(>(1.5), ms_gain))/$n separations (max gain " *
+                  "$(round(maximum(ms_gain), digits = 2))) — evidence of secondary minima."
+        end
         any(atbound) &&
             @warn "Sweep '$name': the best fit sits on a physical bound for " *
                   "$(count(atbound))/$n separations (see AtBound column)."
@@ -253,23 +308,26 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                            BestFit_Time = best_fits[:, 3], BestFit_Phase = best_fits[:, 4],
                            BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],
                            Converged = collect(conv), Iterations = iters,
-                           GradNorm = gnorm, AtBound = collect(atbound))
+                           GradNorm = gnorm, AtBound = collect(atbound),
+                           Starts = fill(cfg.n_starts, n), MultiStartGain = ms_gain)
         CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
 
         # residual spectrum at the separation nearest the discernibility threshold
         pos = findall(>(0), D2_num)
         idx_star = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
         d_star = deltas[idx_star]
-        spec, meta = residual_spectrum(theta0, u_norm, d_star, best_fits[idx_star, :],
-                                       D2_num[idx_star], D2_theo[idx_star], ctx, wp)
+        spec, meta = residual_spectrum(theta0, u_norm, q, d_star, best_fits[idx_star, :],
+                                       ctx, wp)
         CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
         open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
             TOML.print(io, Dict(
                 "name" => name, "delta_star" => d_star,
                 "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
                 "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
-                "df" => ctx.df, "delta_min" => delta_min,
+                "df" => ctx.df, "delta_min" => delta_min, "amp_ratio" => q,
                 "slope" => slope, "slope_err" => slope_err,
+                "c1" => c1, "c1_err" => c1_err, "c2" => c2,
+                "delta_valid" => delta_valid,
                 "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
                 "residual_d2_integral_A" => meta.int_A,
                 "residual_d2_integral_E" => meta.int_E))
@@ -279,7 +337,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             fig = scaling_figure(collect(deltas), D2_num, D2_theo;
                                  rho_sq = rho_sq, delta_min = delta_min, slope = slope,
                                  slope_err = slope_err, clean = collect(clean),
-                                 floor_level = floor_level)
+                                 floor_level = floor_level, c1 = c1, c2 = c2)
             save_figure(fig, joinpath(out_dir, "scaling_plot"))
             rfig = residual_figure(spec, (delta_star = d_star, df = ctx.df,
                                           d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]))
@@ -300,9 +358,10 @@ Decimated residual spectrum (density units, `d(SNR²)/df = 4|x|²/Sn`) of the
 two-source data, the best-fit single source and the unabsorbed residual, for
 channels A and E.
 """
-function residual_spectrum(theta0, u_norm, d_star, best_fit, d2_num, d2_theo,
+function residual_spectrum(theta0, u_norm, q, d_star, best_fit,
                            ctx::RunContext, wp::WaveformParams)
     p2 = theta0 .+ d_star .* u_norm
+    p2[1] = q * theta0[1]
     h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
     h2 = scaled_waveform_model(p2, ctx.freqs, wp)
     ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
@@ -464,6 +523,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         end
 
         df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
+                           Dir_Cos = dircos, Dir_Sin = dirsin,
                            R_Capped = r_cap, R_Math = r_math, R_Box = r_boxv,
                            Prior_Limited = collect(prior_lim), Degenerate = collect(degen),
                            K_Raw = K_raw, G_uu = g_arr)
@@ -553,6 +613,7 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
                        n_frequency_bins = length(freqs), channels = nch,
                        estimated_ram_gb = round(est_gb, digits = 2),
                        optimizer = string(cfg.optimizer),
+                       n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
                        confusion_noise = cfg.noise.confusion_enabled)
 
     println("=" ^ 78)
