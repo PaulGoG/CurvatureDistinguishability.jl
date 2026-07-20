@@ -45,6 +45,87 @@ function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real
     return 4.0 * df * sum(out)
 end
 
+# --- dual-number lanes path --------------------------------------------------
+# Device arrays with Dual eltypes break some GPU runtimes (observed: Level Zero
+# rejects the 56-byte-eltype reduction with ZE_RESULT_ERROR_INVALID_SIZE), so
+# under ForwardDiff the kernel computes with Duals internally but stores the
+# contribution as scalar Float64 "lanes" (value + partials, recursively) in a
+# plain n × M matrix; the M standard reductions then run on every backend and
+# the scalar Dual is reassembled on the host.
+
+@inline flatten_dual(x::Float64) = (x,)
+@inline function flatten_dual(d::ForwardDiff.Dual{T,V,N}) where {T,V,N}
+    return (flatten_dual(ForwardDiff.value(d))...,
+            _flatten_partials(ForwardDiff.partials(d), Val(N))...)
+end
+@inline _flatten_partials(ps, ::Val{0}) = ()
+@inline function _flatten_partials(ps, ::Val{K}) where {K}
+    return (_flatten_partials(ps, Val(K - 1))..., flatten_dual(ps[K])...)
+end
+
+rebuild_dual(::Type{Float64}, s, i::Int) = (s[i], i + 1)
+function rebuild_dual(::Type{ForwardDiff.Dual{T,V,N}}, s, i::Int) where {T,V,N}
+    v, j = rebuild_dual(V, s, i)
+    parts, j2 = _rebuild_partials(V, s, j, Val(N))
+    return ForwardDiff.Dual{T,V,N}(v, ForwardDiff.Partials{N,V}(parts)), j2
+end
+_rebuild_partials(::Type{V}, s, i::Int, ::Val{0}) where {V} = ((), i)
+function _rebuild_partials(::Type{V}, s, i::Int, ::Val{K}) where {V,K}
+    p1, j = rebuild_dual(V, s, i)
+    rest, j2 = _rebuild_partials(V, s, j, Val(K - 1))
+    return (p1, rest...), j2
+end
+
+# Direct recursive per-scalar stores (no intermediate NTuple{M}): materializing
+# the 49-lane tuple of a nested Hessian dual makes some GPU compilers fall back
+# to heap allocation (`gpu_malloc` InvalidIRError on IGC); writing each lane as
+# it is produced keeps the kernel allocation-free. Lane order matches
+# `flatten_dual`/`rebuild_dual`: value first, then partials 1..N, recursively.
+@inline function _store_dual!(out, i, k::Int, x::Float64)
+    @inbounds out[i, k] = x
+    return k + 1
+end
+@inline function _store_dual!(out, i, k::Int, d::ForwardDiff.Dual{T,V,N}) where {T,V,N}
+    k2 = _store_dual!(out, i, k, ForwardDiff.value(d))
+    return _store_parts!(out, i, k2, ForwardDiff.partials(d), Val(N))
+end
+@inline _store_parts!(out, i, k::Int, ps, ::Val{0}) = k
+@inline function _store_parts!(out, i, k::Int, ps, ::Val{J}) where {J}
+    k2 = _store_parts!(out, i, k, ps, Val(J - 1))
+    return _store_dual!(out, i, k2, ps[J])
+end
+
+@kernel function loss_bins_lanes!(out, @Const(freqs), @Const(Sn), @Const(data_A), @Const(data_E),
+                                  θ::NTuple{6}, wp::WaveformParams)
+    i = @index(Global, Linear)
+    @inbounds begin
+        f = freqs[i]
+        A = θ[1] * wp.amp_scale
+        Mc = θ[2] * wp.mass_scale
+        tc = θ[3] * wp.time_scale
+        beta = spin_beta(θ[5], θ[6], wp.eta)
+        h = strain_bin(f, A, Mc, tc, θ[4], beta, wp.amp_33_factor)
+        mod_A, mod_E = tdi_modulation_bin(f, Mc, tc, wp)
+        diff_A = data_A[i] - mod_A * h
+        diff_E = data_E[i] - mod_E * h
+        c = (real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)) / Sn[i]
+        _store_dual!(out, i, 1, c)
+    end
+end
+
+function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::Real,
+                     wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
+    θ = ntuple(i -> p[i], Val(6))
+    M = sizeof(D) ÷ sizeof(Float64)
+    out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
+    kern = loss_bins_lanes!(backend)
+    kern(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+    KernelAbstractions.synchronize(backend)
+    s = Array(vec(sum(out; dims = 1)))
+    dual, _ = rebuild_dual(D, s, 1)
+    return 4.0 * df * dual
+end
+
 function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Real,
                   wp::WaveformParams)
     A = p[1] * wp.amp_scale
