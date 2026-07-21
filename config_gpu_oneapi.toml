@@ -16,6 +16,9 @@
 #     against the CPU run unaffected.
 #   - run_2d_mapping = false: the map stage is CPU-only by design and would
 #     reproduce the CPU run bit-for-bit; skipped to keep the GPU run focused.
+#   - max_threads = 1: concurrent multi-task access to the Level Zero driver
+#     segfaulted (2026-07-21); the GPU serializes kernels anyway, so the run
+#     is pinned to a single task and a single Julia thread.
 #   - n_starts = 1: the multi-start robustness data comes from the CPU run;
 #     the GPU run is a cross-validation of the optimizer path itself.
 # Launch requires oneAPI.jl in the environment and, on FP64-less iGPUs, the
@@ -69,7 +72,7 @@ spin2 = [-1.0, 1.0]
 [hardware]
 gpu_backend = "oneapi"
 force_cpu = false
-max_threads = 22
+max_threads = 1
 # iGPU uses shared system memory; the budget throttles concurrent GPU tasks
 max_vram_gb = 8.0
 os_vram_overhead_gb = 1.0
