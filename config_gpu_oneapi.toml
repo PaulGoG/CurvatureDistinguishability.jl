@@ -37,7 +37,7 @@ rho_thresh = 1.0
 g_uu_degenerate = 1e-6
 n_starts = 1
 g_tol = 1e-9
-max_iterations = 150
+max_iterations = 60
 
 [grid]
 T_obs = 3.15576e7
