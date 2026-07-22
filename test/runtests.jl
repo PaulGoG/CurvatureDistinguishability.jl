@@ -307,6 +307,24 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 write_cfg(dir, "[hardware]\nhessian_chunk = 9\n"))
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
+
+            # safe-by-default optimizer tolerances (2026-07-21 stall lesson)
+            cfg_def = load_and_validate_config(write_cfg(dir, ""))
+            @test cfg_def.g_tol == 1e-10 && cfg_def.max_iterations == 100
+            @test_logs (:warn, r"tighter than the numerical precision floor") match_mode = :any load_and_validate_config(
+                write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 1e-12\n"))
+            @test_logs (:warn, r"floor fits burn the full cap") match_mode = :any load_and_validate_config(
+                write_cfg(dir, "[pipeline.sweep_settings]\nmax_iterations = 1000\n"))
+
+            # deprecated hardware keys are accepted with warnings and honored
+            cfg_fc = @test_logs (:warn, r"force_cpu is deprecated") match_mode = :any load_and_validate_config(
+                write_cfg(dir, "[hardware]\nforce_cpu = true\ngpu_backend = \"auto\"\n"))
+            @test cfg_fc.gpu_backend === :none
+            cfg_vr = @test_logs (:warn, r"max_vram_gb is deprecated") match_mode = :any load_and_validate_config(
+                write_cfg(dir, "[hardware]\nmax_vram_gb = 4.0\n"))
+            @test cfg_vr.max_vram_gb == 4.0
+            cfg_vs = load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))
+            @test cfg_vs.max_vram_gb == 6.0
         end
     end
 
@@ -384,7 +402,6 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             name = "mini_mass_time"
             param_x = 2
             param_y = 3
-            rho_thresh = 1.0
             theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             """)
             out_base = run_pipeline(cfg_path, dir, "outputs")

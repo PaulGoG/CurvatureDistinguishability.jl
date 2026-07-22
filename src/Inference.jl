@@ -34,15 +34,42 @@ between the 2-channel (A, E) data and the single-source model at parameters
     end
 end
 
+# GPU execution is serialized library-wide and device buffers are cached:
+# concurrent multi-task access to a GPU driver from Julia tasks segfaulted in
+# production (Level Zero, 2026-07-21), and per-call device allocations at
+# ~10³–10⁴ per sweep triggered a long-session oneAPI "freed reference" bug.
+# The lock costs nothing on CPU paths (not taken) and nothing real on GPUs
+# (kernels serialize on the device anyway); the cache bounds device
+# allocation churn to a handful of buffers per (eltype, shape).
+const GPU_LOCK = ReentrantLock()
+const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
+
+function device_buffer(backend, ::Type{T}, dims::Dims) where {T}
+    key = (objectid(backend), T, dims)
+    buf = get(DEVICE_BUFFER_CACHE, key, nothing)
+    if buf === nothing
+        buf = KernelAbstractions.zeros(backend, T, dims)
+        DEVICE_BUFFER_CACHE[key] = buf
+    end
+    return buf
+end
+
 function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real,
                      wp::WaveformParams, backend)
     T = eltype(p)
     θ = ntuple(i -> p[i], Val(6))
-    out = KernelAbstractions.zeros(backend, T, length(freqs))
-    kern = loss_bins!(backend)
-    kern(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-    KernelAbstractions.synchronize(backend)
-    return 4.0 * df * sum(out)
+    if backend isa KernelAbstractions.CPU
+        out = KernelAbstractions.zeros(backend, T, length(freqs))
+        loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+        KernelAbstractions.synchronize(backend)
+        return 4.0 * df * sum(out)
+    end
+    lock(GPU_LOCK) do
+        out = device_buffer(backend, T, (length(freqs),))
+        loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+        KernelAbstractions.synchronize(backend)
+        return 4.0 * df * sum(out)
+    end
 end
 
 # --- dual-number lanes path --------------------------------------------------
@@ -117,13 +144,23 @@ function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::R
                      wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
     θ = ntuple(i -> p[i], Val(6))
     M = sizeof(D) ÷ sizeof(Float64)
-    out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
-    kern = loss_bins_lanes!(backend)
-    kern(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-    KernelAbstractions.synchronize(backend)
-    s = Array(vec(sum(out; dims = 1)))
-    dual, _ = rebuild_dual(D, s, 1)
-    return 4.0 * df * dual
+    if backend isa KernelAbstractions.CPU
+        out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
+        loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+        KernelAbstractions.synchronize(backend)
+        s = Array(vec(sum(out; dims = 1)))
+        dual, _ = rebuild_dual(D, s, 1)
+        return 4.0 * df * dual
+    end
+    lock(GPU_LOCK) do
+        out = device_buffer(backend, Float64, (length(freqs), M))
+        fill!(out, 0.0)
+        loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+        KernelAbstractions.synchronize(backend)
+        s = Array(vec(sum(out; dims = 1)))
+        dual, _ = rebuild_dual(D, s, 1)
+        return 4.0 * df * dual
+    end
 end
 
 function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Real,

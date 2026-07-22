@@ -58,7 +58,11 @@ Pkg.instantiate()
 GPU support is optional: install the package matching your hardware
 (`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`) and the corresponding
 package extension activates automatically; without one, the pipeline runs on
-the multi-threaded CPU backend (`[hardware].force_cpu = true` forces this).
+the multi-threaded CPU backend (`[hardware].gpu_backend = "none"` forces
+this). GPU runs are pinned to a single task by the pipeline and all GPU
+kernel launches are serialized library-wide — concurrent multi-task access
+to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
+since the device serializes kernels anyway.
 
 ## Usage
 

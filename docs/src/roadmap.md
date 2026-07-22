@@ -60,6 +60,16 @@ across CPU cores concurrently with GPU sweeps if the campaign time matters.
 Validate with `benchmarks/` + a single-δ solve before committing a queue
 allocation.
 
+**Production-hardening now enforced in code (2026-07-21 lessons):** GPU
+kernel launches are serialized through a library-wide lock and GPU runs are
+pinned to one task by `plan_resources` (concurrent multi-task Level Zero
+access segfaulted); device output buffers are cached across evaluations
+(per-call allocation churn triggered a long-session oneAPI
+"freed reference" failure — the cache reduces device allocations by ~10³;
+if the driver bug still bites in very long sessions, split the campaign
+into shorter per-sweep processes, which the per-stage guardrails and
+config-hash run directories make lossless).
+
 **Compiler-limit escape hatch (validated on the Meteor Lake iGPU under FP64
 emulation):** if a backend's compiler rejects the full 49-lane Hessian kernel
 (observed: IGC `ZE_RESULT_ERROR_MODULE_BUILD_FAILURE` — the emulation
