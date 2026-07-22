@@ -40,7 +40,6 @@ struct PipelineSettings
     neighbor_ratio_tol::Float64
     max_refine_levels::Int
     # hardware
-    force_cpu::Bool
     gpu_backend::Symbol
     max_threads::Int
     hessian_chunk::Int
@@ -70,9 +69,13 @@ const KNOWN_KEYS = Dict(
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
                 "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk"],
     "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels"],
-    "hardware" => ["force_cpu", "gpu_backend", "max_threads", "max_vram_gb",
-                   "os_vram_overhead_gb", "hessian_chunk"],
-    "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu"],
+    # force_cpu / max_vram_gb / os_vram_overhead_gb in [hardware] are
+    # DEPRECATED (accepted with a warning): use gpu_backend = "none" and the
+    # [safety] section respectively.
+    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk",
+                   "force_cpu", "max_vram_gb", "os_vram_overhead_gb"],
+    "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
+                 "os_vram_overhead_gb"],
     "parameter_bounds" => collect(PARAM_KEYS),
     "sweeps[]" => ["name", "theta_0", "u_dir", "rho_thresh", "amp_ratio"],
     "maps[]" => ["name", "param_x", "param_y", "rho_thresh", "theta_0", "n_angles"],
@@ -160,10 +163,20 @@ function load_and_validate_config(config_path::AbstractString)
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
-    g_tol = getnum(ss, "g_tol", 1e-12, "pipeline.sweep_settings")
+    # Safe-by-default optimizer tolerances (2026-07-21 lesson): fits at the
+    # numerical precision floor cannot reach very tight gradient norms and
+    # would otherwise grind against the iteration cap; clean-region fits
+    # converge in 16–40 Newton iterations, so 100 is generous.
+    g_tol = getnum(ss, "g_tol", 1e-10, "pipeline.sweep_settings")
     g_tol > 0 || error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
-    max_iterations = getint(ss, "max_iterations", 1000, "pipeline.sweep_settings")
+    g_tol < 1e-11 &&
+        @warn "[pipeline.sweep_settings].g_tol = $g_tol is tighter than the numerical " *
+              "precision floor of small-separation fits; expect iteration-cap stalls there."
+    max_iterations = getint(ss, "max_iterations", 100, "pipeline.sweep_settings")
     max_iterations >= 1 || error("[pipeline.sweep_settings].max_iterations must be >= 1")
+    max_iterations > 300 &&
+        @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits burn " *
+              "the full cap by construction — large caps cost wall time, not accuracy."
 
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
@@ -233,15 +246,16 @@ function load_and_validate_config(config_path::AbstractString)
 
     hardware = get(config, "hardware", Dict{String,Any}())
     warn_unknown_keys(hardware, "hardware")
-    force_cpu = getbool(hardware, "force_cpu", false, "hardware")
     gpu_str = get(hardware, "gpu_backend", "auto")
     gpu_backend = Symbol(lowercase(String(gpu_str)))
     gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
         error("[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'")
+    if haskey(hardware, "force_cpu")
+        @warn "[hardware].force_cpu is deprecated: use gpu_backend = \"none\" instead."
+        getbool(hardware, "force_cpu", false, "hardware") && (gpu_backend = :none)
+    end
     max_threads = getint(hardware, "max_threads", Threads.nthreads(), "hardware")
     max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
-    max_vram_gb = getnum(hardware, "max_vram_gb", 8.0, "hardware")
-    os_vram_gb = getnum(hardware, "os_vram_overhead_gb", 1.0, "hardware")
     hessian_chunk = getint(hardware, "hessian_chunk", 0, "hardware")
     0 <= hessian_chunk <= 6 ||
         error("[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
@@ -253,6 +267,18 @@ function load_and_validate_config(config_path::AbstractString)
     max_ram_gb = getnum(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
     gpu_bytes = getint(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
+    # VRAM budgets are [safety] keys; the historical [hardware] location is
+    # accepted with a deprecation warning ([safety] wins if both are present).
+    max_vram_gb = getnum(safety, "max_vram_gb", 8.0, "safety")
+    os_vram_gb = getnum(safety, "os_vram_overhead_gb", 1.0, "safety")
+    for key in ("max_vram_gb", "os_vram_overhead_gb")
+        if haskey(hardware, key)
+            @warn "[hardware].$key is deprecated: move it to the [safety] section."
+            haskey(safety, key) ||
+                (key == "max_vram_gb" ? (max_vram_gb = getnum(hardware, key, 8.0, "hardware")) :
+                                        (os_vram_gb = getnum(hardware, key, 1.0, "hardware")))
+        end
+    end
 
     bounds = try
         bounds_from_config(get(config, "parameter_bounds", Dict{String,Any}()))
@@ -300,7 +326,7 @@ function load_and_validate_config(config_path::AbstractString)
         (1 <= px <= 6 && 1 <= py <= 6) ||
             error("[[maps]] '$name': param_x/param_y must be in 1:6, got ($px, $py)")
         px != py || error("[[maps]] '$name': param_x and param_y must differ")
-        getnum(m, "rho_thresh", 1.0, "maps[]") > 0 ||
+        getnum(m, "rho_thresh", sweep_rho, "maps[]") > 0 ||
             error("[[maps]] '$name'.rho_thresh must be > 0")
         theta0 = validate_theta6(get(m, "theta_0", nothing), "[[maps]] '$name'.theta_0")
         check_interior(theta0, bounds, "map '$name'")
@@ -319,7 +345,7 @@ function load_and_validate_config(config_path::AbstractString)
                             g_tol, max_iterations,
                             T_obs, f_min, f_max, wp, noise,
                             map_n_angles, ratio_tol, refine_levels,
-                            force_cpu, gpu_backend, max_threads, hessian_chunk,
+                            gpu_backend, max_threads, hessian_chunk,
                             max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
                             bounds, sweeps, maps)
 end

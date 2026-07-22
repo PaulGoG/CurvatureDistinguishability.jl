@@ -133,14 +133,23 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
         @warn "Concurrency downscaled to $threads tasks to respect [safety].max_ram_gb = $(cfg.max_ram_gb) GB."
 
     if !(backend isa KernelAbstractions.CPU)
+        # GPU execution is single-task by design: concurrent multi-task access
+        # to GPU drivers from Julia tasks segfaulted in production (Level
+        # Zero, 2026-07-21), the library-level GPU lock serializes kernel
+        # launches anyway, and the device itself serializes kernels — extra
+        # tasks add crash surface, not throughput.
+        threads > 1 &&
+            @info "GPU backend active: concurrency pinned to 1 task (kernels serialize " *
+                  "on the device; concurrent driver access is unsafe)."
+        threads = 1
         vram_budget = max(0.0, cfg.max_vram_gb - cfg.os_vram_overhead_gb) * 2^30
-        safe = floor(Int, vram_budget / (n_bins * cfg.bytes_per_bin_per_task_gpu))
-        safe >= 1 || error("VRAM budget ($(round(vram_budget / 2^30, digits = 2)) GB usable) is below " *
-                           "the footprint of one GPU task " *
-                           "($(round(n_bins * cfg.bytes_per_bin_per_task_gpu / 2^30, digits = 2)) GB at " *
-                           "$(cfg.bytes_per_bin_per_task_gpu) bytes/bin). Reduce the grid or raise " *
-                           "[hardware].max_vram_gb.")
-        threads = min(threads, safe)
+        need = n_bins * cfg.bytes_per_bin_per_task_gpu
+        need <= vram_budget ||
+            error("VRAM budget ($(round(vram_budget / 2^30, digits = 2)) GB usable) is below " *
+                  "the footprint of one GPU task " *
+                  "($(round(need / 2^30, digits = 2)) GB at " *
+                  "$(cfg.bytes_per_bin_per_task_gpu) bytes/bin). Reduce the grid or raise " *
+                  "[safety].max_vram_gb.")
     end
 
     return threads, (fixed + threads * per_task) / 2^30
@@ -407,7 +416,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     name = String(map_cfg["name"])
     px = Int(map_cfg["param_x"])
     py = Int(map_cfg["param_y"])
-    rho_sq = Float64(get(map_cfg, "rho_thresh", 1.0))^2
+    # per-map override; defaults to the campaign-wide threshold
+    rho_sq = Float64(get(map_cfg, "rho_thresh", cfg.sweep_rho_thresh))^2
     theta0 = Float64.(map_cfg["theta_0"])
     n_angles = Int(get(map_cfg, "n_angles", cfg.map_n_angles))
     isodd(n_angles) && (n_angles += 1)
@@ -592,10 +602,9 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
     Sn = analytic_noise_psd.(freqs; noise = cfg.noise)
     nch = n_channels(cfg.wp)
 
-    prefer = cfg.force_cpu ? :none : cfg.gpu_backend
-    backend = get_best_backend(prefer = prefer)
-    cfg.force_cpu &&
-        @warn "[hardware].force_cpu = true: GPU detection bypassed, running on the CPU backend."
+    backend = get_best_backend(prefer = cfg.gpu_backend)
+    cfg.gpu_backend === :none &&
+        @info "[hardware].gpu_backend = \"none\": GPU detection bypassed, running on the CPU backend."
     if !(backend isa KernelAbstractions.CPU) && cfg.wp.include_t_channel
         error("GPU backends support the 2-channel (A, E) configuration only; " *
               "set [physics].include_t_channel = false (T is identically zero).")
