@@ -356,6 +356,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test TWD.Plotting.axis_exponent(2.0) == 0
         fmt = TWD.Plotting.scaled_tickformat(-4)
         @test fmt([6e-4, 3e-4]) == ["6", "3"]
+
+        # residual-band ticks: from the true band [1e-4, 0.05] every whole-power
+        # decade is present, including the low endpoint (regression: ticking
+        # off the decimated spec.f range dropped the 1e-4 tick, leaving 2).
+        vb, _ = decade_ticks(1e-4, 0.05)
+        @test round.(Int, log10.(vb)) == [-4, -3, -2]
+
+        # per-tick scientific notation (confusion-map axes; no common multiplier)
+        sl = TWD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
+        @test occursin("-1.5", sl[1].s) && occursin("10^{-4}", sl[1].s)
+        @test !occursin("times", sl[2].s) # zero renders as plain "0"
+        @test occursin("10^{-5}", sl[3].s) # mixed per-tick exponents allowed
     end
 
     @testset "End-to-end minimal pipeline" begin

@@ -336,7 +336,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 "name" => name, "delta_star" => d_star,
                 "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
                 "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
-                "df" => ctx.df, "delta_min" => delta_min, "amp_ratio" => q,
+                "df" => ctx.df, "f_min" => cfg.f_min, "f_max" => cfg.f_max,
+                "delta_min" => delta_min, "amp_ratio" => q,
                 "slope" => slope, "slope_err" => slope_err,
                 "c1" => c1, "c1_err" => c1_err, "c2" => c2,
                 "delta_valid" => delta_valid,
@@ -352,6 +353,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                                  floor_level = floor_level, c1 = c1, c2 = c2)
             save_figure(fig, joinpath(out_dir, "scaling_plot"))
             rfig = residual_figure(spec, (delta_star = d_star, df = ctx.df,
+                                          f_min = cfg.f_min, f_max = cfg.f_max,
                                           d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]))
             save_figure(rfig, joinpath(out_dir, "residual_plot"))
         catch err
