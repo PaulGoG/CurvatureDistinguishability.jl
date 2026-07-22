@@ -72,8 +72,12 @@ if isdir(sweeps_dir)
             spec_path = joinpath(dir, "residual_spectrum.csv")
             if rho_new === nothing && isfile(spec_path)
                 spec = CSV.read(spec_path, DataFrame)
+                # f_min/f_max come from the config snapshot (cfg), so the
+                # band-edge ticks/limits work even for runs whose sweep_meta
+                # predates the f_min/f_max fields.
                 rfig = residual_figure(spec, (delta_star = Float64(get(meta, "delta_star", NaN)),
                                               df = Float64(get(meta, "df", 1.0)),
+                                              f_min = cfg.f_min, f_max = cfg.f_max,
                                               d2_num = Float64(get(meta, "d2_num_star", NaN)),
                                               d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
                 save_figure(rfig, joinpath(dir, "residual_plot"))
