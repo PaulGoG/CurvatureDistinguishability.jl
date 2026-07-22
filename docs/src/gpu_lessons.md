@@ -99,6 +99,18 @@ production campaign and were fixed in code afterwards.
   `ERROR`-style lines but not `terminated by signal` — failure filters must
   cover every terminal signature, and silence must never be read as
   progress.
+- **Validation (2026-07-22):** with the `GPU_LOCK` + buffer cache in place,
+  a deliberate stress test ran 10 concurrent optimizations on the
+  FP64-emulated iGPU with the single-task pin *bypassed* (22 Julia threads,
+  concurrent `to_backend` allocations + concurrent solves). It completed in
+  95 s with **no segfault and zero caught failures**, every `D²` matching
+  theory to ratio 1.000. So the library-wide lock — not the task pin — is
+  what actually makes concurrent GPU access safe; the `plan_resources`
+  single-task pin is now belt-and-suspenders (kept because GPU kernels
+  serialize on the device regardless, so multi-task concurrency buys no GPU
+  throughput — only CPU-side optimizer overlap across δ-points, which is
+  minor). The pin can be relaxed if that overlap is ever wanted; the lock
+  keeps it safe.
 
 ## 6. oneAPI "freed reference" in a long session (production, last sweep)
 
