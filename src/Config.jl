@@ -39,6 +39,7 @@ struct PipelineSettings
     map_n_angles::Int
     neighbor_ratio_tol::Float64
     max_refine_levels::Int
+    corner_bisect_iters::Int
     # hardware
     gpu_backend::Symbol
     max_threads::Int
@@ -68,7 +69,7 @@ const KNOWN_KEYS = Dict(
                   "include_t_channel"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
                 "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk"],
-    "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels"],
+    "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
     # force_cpu / max_vram_gb / os_vram_overhead_gb in [hardware] are
     # DEPRECATED (accepted with a warning): use gpu_backend = "none" and the
     # [safety] section respectively.
@@ -243,6 +244,10 @@ function load_and_validate_config(config_path::AbstractString)
     refine_levels = getint(mapping, "max_refine_levels", 6, "mapping")
     0 <= refine_levels <= 16 ||
         error("[mapping].max_refine_levels must be in 0:16, got $refine_levels")
+    corner_iters = getint(mapping, "corner_bisect_iters", 25, "mapping")
+    0 <= corner_iters <= 60 ||
+        error("[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
+              "bisection), got $corner_iters")
 
     hardware = get(config, "hardware", Dict{String,Any}())
     warn_unknown_keys(hardware, "hardware")
@@ -344,7 +349,7 @@ function load_and_validate_config(config_path::AbstractString)
                             n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
                             g_tol, max_iterations,
                             T_obs, f_min, f_max, wp, noise,
-                            map_n_angles, ratio_tol, refine_levels,
+                            map_n_angles, ratio_tol, refine_levels, corner_iters,
                             gpu_backend, max_threads, hessian_chunk,
                             max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
                             bounds, sweeps, maps)

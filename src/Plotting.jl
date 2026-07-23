@@ -389,8 +389,10 @@ Where the prior cuts the zone off, the *uncapped mathematical* contour
 (`x_math`/`y_math`, when provided) continues past the wall as an empty
 dashed line with no fill — showing what curvature alone would allow; along
 degenerate directions it is unbounded and simply runs off the frame. The
-(finite part of the) prior box itself is thin grey dashed. `DataAspect` is
-applied only for same-unit planes (spin–spin).
+prior box itself is not drawn: the red runs mark where a wall is active, and
+the annotation names the active walls with their values (from `box`, e.g.
+"… prior-limited by Δχ₁ = 0.2"). `DataAspect` is applied only for same-unit
+planes (spin–spin).
 """
 function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector,
                      prior_limited::AbstractVector{Bool};
@@ -403,7 +405,6 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins
         fig = Figure(size = same_units ? (820, 830) : (960, 720))
 
-        lox, hix, loy, hiy = box
         # Limits fit the ZONE, not a symmetric ±max box: prior-capped zones are
         # strongly asymmetric (e.g. spins live in the lower-left wedge) and
         # symmetric limits waste most of the canvas on empty quadrants.
@@ -481,12 +482,6 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         isempty(cx) || lines!(ax, cx, cy; color = :dodgerblue4, linewidth = 3.0)
         isempty(bx) || lines!(ax, bx, by; color = :firebrick, linewidth = 3.0)
 
-        # the physical prior box (finite edges only)
-        isfinite(lox) && vlines!(ax, [lox]; color = :grey35, linestyle = :dash, linewidth = 1.4)
-        isfinite(hix) && vlines!(ax, [hix]; color = :grey35, linestyle = :dash, linewidth = 1.4)
-        isfinite(loy) && hlines!(ax, [loy]; color = :grey35, linestyle = :dash, linewidth = 1.4)
-        isfinite(hiy) && hlines!(ax, [hiy]; color = :grey35, linestyle = :dash, linewidth = 1.4)
-
         xlims!(ax, xlo, xhi)
         ylims!(ax, ylo, yhi)
 
@@ -494,15 +489,41 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             # never round a nonzero fraction to "0%": the capped boundary run
             # can be visually dominant yet contain few sampled directions
             # (adaptive refinement leaves flat prior walls sparsely sampled)
-            pctstr(f) = 100f < 0.5 ? "<1%" : @sprintf("%.0f%%", 100f)
-            msg = pctstr(prior_frac) * " of directions prior-limited"
+            pcttex(f) = 100f < 0.5 ? "{<}1\\%" : @sprintf("%.0f\\%%", 100f)
+            # name the ACTIVE walls with their values: a prior-limited boundary
+            # point sits exactly on the box edge its ray exited through, so an
+            # edge is active iff some capped point lies on it
+            devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:end-1])
+            fmt_edge(v, isphase) = isphase && isapprox(abs(v), π; atol = 1e-9) ?
+                                   (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
+            plx = view(x, prior_limited)
+            ply = view(y, prior_limited)
+            lox, hix, loy, hiy = box
+            walls = String[]
+            for (lo_e, hi_e, vals, tol, idx) in ((lox, hix, plx, 1e-6 * (xhi - xlo), px),
+                                                 (loy, hiy, ply, 1e-6 * (yhi - ylo), py))
+                lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
+                hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
+                isph = idx == 4
+                if lo_hit && hi_hit && isapprox(lo_e, -hi_e; rtol = 1e-9)
+                    push!(walls, string(devtex(idx), " = \\pm ", fmt_edge(abs(hi_e), isph)))
+                else
+                    lo_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(lo_e, isph)))
+                    hi_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(hi_e, isph)))
+                end
+            end
+            # \!-\! cancels the binary-operator spacing MathTeXEngine would put
+            # around the hyphen in "prior-limited"
+            msg = string(pcttex(prior_frac),
+                         "\\ \\mathrm{of\\ directions\\ prior}\\!-\\!\\mathrm{limited}")
+            isempty(walls) || (msg *= string("\\ \\mathrm{by}\\ ", join(walls, ",\\;\\ ")))
             degenerate_frac > 0 &&
-                (msg *= " (" * pctstr(degenerate_frac) * " degenerate)")
+                (msg *= string("\\;\\ (", pcttex(degenerate_frac), "\\ \\mathrm{degenerate})"))
             # on top of the plot, outside the box (a thin Label row above the
             # axis); tellwidth = false so the label's own width never dictates
             # the column width — otherwise the axis collapses to a narrow strip
-            Label(fig[0, 1], msg; fontsize = 18, color = :grey35, halign = :right,
-                  padding = (0, 4, 2, 0), tellwidth = false)
+            Label(fig[0, 1], latexstring(msg); fontsize = 18, color = :grey35,
+                  halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
         end
         return fig
     end

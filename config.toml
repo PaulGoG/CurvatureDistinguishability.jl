@@ -78,6 +78,11 @@ n_angles = 8192
 # adjacent-direction capped-radius ratio that triggers angular refinement
 neighbor_ratio_tol = 1.25
 max_refine_levels = 6
+# bisection iterations locating the exact direction where the mathematical
+# contour pierces a prior wall (r_math = r_box); the found direction is
+# inserted as a boundary vertex so zone corners are exact instead of
+# chamfered by a polygon chord. 0 disables the pass.
+corner_bisect_iters = 25
 
 [parameter_bounds]
 # hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
