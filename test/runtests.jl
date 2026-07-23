@@ -352,6 +352,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         steps = diff(vals_π)
         @test all(isapprox.(steps, steps[1]; rtol = 1e-12)) # single denominator
 
+        # coverage: a ±0.78π range must be ticked out to ±3π/4, not stop at
+        # ±π/2 (regression: sparse π ticks left the axis ends bare)
+        vc, _ = pi_ticks(-0.78π, 0.78π)
+        @test length(vc) >= 5
+        @test maximum(vc) ≈ 3π / 4 atol = 1e-12
+        @test minimum(vc) ≈ -3π / 4 atol = 1e-12
+
         @test TWD.Plotting.axis_exponent(6e-4) == -4
         @test TWD.Plotting.axis_exponent(2.0) == 0
         fmt = TWD.Plotting.scaled_tickformat(-4)
@@ -363,11 +370,19 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         vb, _ = decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
-        # per-tick scientific notation (confusion-map axes; no common multiplier)
+        # per-tick scientific notation (confusion-map axes; no axis-label
+        # multiplier) with a COMMON exponent across the axis — 5e-5 renders
+        # as 0.5×10⁻⁴, never mixing 10⁻⁴ with 10⁻⁵ labels on one axis
         sl = TWD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
         @test occursin("-1.5", sl[1].s) && occursin("10^{-4}", sl[1].s)
         @test !occursin("times", sl[2].s) # zero renders as plain "0"
-        @test occursin("10^{-5}", sl[3].s) # mixed per-tick exponents allowed
+        @test occursin("0.5", sl[3].s) && occursin("10^{-4}", sl[3].s)
+        @test !occursin("10^{-5}", sl[3].s)
+
+        # annotation number formatting: LaTeX ×10ⁿ, never bare e-notation
+        @test TWD.Plotting.sci_latex(9.34e-5) == "9.34\\times 10^{-5}"
+        @test TWD.Plotting.sci_latex(0.316) == "0.316"
+        @test TWD.Plotting.sci_latex(0) == "0"
     end
 
     @testset "End-to-end minimal pipeline" begin
