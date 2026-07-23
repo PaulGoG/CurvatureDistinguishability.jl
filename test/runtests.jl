@@ -412,6 +412,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test TWD.Plotting.sci_latex(9.34e-5) == "9.34\\times 10^{-5}"
         @test TWD.Plotting.sci_latex(0.316) == "0.316"
         @test TWD.Plotting.sci_latex(0) == "0"
+
+        # fit coefficients: ALWAYS mantissa ×10ⁿ with two decimals
+        @test TWD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
+        @test TWD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
+        @test TWD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
     end
 
     @testset "End-to-end minimal pipeline" begin
