@@ -1,30 +1,33 @@
 # =============================================================================
-# Production campaign configuration (CPU reference run)
+# Production configuration (CPU reference run)
 #
-# Case naming is physical (source properties and probed parameter plane), not
-# tied to any external dataset. The five sweeps validate the quartic law
-# across qualitatively different directions of the 6-parameter manifold; the
-# five maps chart the prior-capped zones of confusion around two reference
-# sources: a massive aligned-spin equal-mass binary (chirp mass ~ 3x10^6 Msun
-# in geometrised units via mass_scale) and a low-mass late-merging system.
+# Case naming is physical (source properties and probed parameter plane). The
+# seven sweeps validate the quartic distinguishability law across
+# qualitatively different directions of the 6-parameter manifold — including
+# a partially degenerate chirp-mass/spin-orbit compensation direction and a
+# near-null antisymmetric-spin direction; the seven maps chart prior-capped
+# zones of confusion around three reference sources: a massive aligned-spin
+# equal-mass binary, a light-seed binary, and a low-mass late-merging system.
 # =============================================================================
 
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
 # ipnewton (box-constrained exact-Hessian interior-point Newton, recommended) |
-# lbfgs_box (Fminbox gradient-only) | lbfgs (legacy UNCONSTRAINED)
+# lbfgs_box (Fminbox gradient-only) | lbfgs (UNCONSTRAINED, diagnostic only)
 optimizer = "ipnewton"
 # seed for all stochastic components (multi-start perturbations); recorded in
 # run metadata for reproducibility
 rng_seed = 42
 
 [pipeline.sweep_settings]
-# 28 log-spaced separations over 4.5 decades (~6 per decade): dense enough for
-# the slope/prefactor fits, sparse enough for readable scatter markers
-n_deltas = 28
-min_log_delta = -5.0
-max_log_delta = -0.5
+# 30 log-spaced separations over 4.6 decades (~6.5 per decade). The top end
+# extends to delta = 10^-0.2 ~ 0.63 to probe the onset of higher-order
+# corrections; every sweep base/direction below keeps the second source
+# inside the physical bounds at delta_max.
+n_deltas = 30
+min_log_delta = -4.8
+max_log_delta = -0.2
 # discernibility threshold rho for the 1D sweeps (per-sweep override: rho_thresh)
 rho_thresh = 1.0
 # directions with Fisher norm below this are reported as degenerate
@@ -65,9 +68,8 @@ include_t_channel = false
 # Galactic confusion noise: Robson, Cornish & Liu (2019) Eq. 14. Coefficients
 # default to the Table 1 column nearest [grid].T_obs; override any of
 # confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
-# confusion_gamma / confusion_fk here. Set false to reproduce
-# instrumental-only runs (e.g. the pre-2026 campaign, whose confusion term
-# was inert due to a coefficient transcription bug).
+# confusion_gamma / confusion_fk here. Set false for instrumental-only
+# noise studies.
 confusion_enabled = true
 
 [mapping]
@@ -123,7 +125,7 @@ name = "six_dimensional_diagonal_stress"
 # Hardest test of the tensorial law: a highly spinning asymmetric binary with
 # the second source displaced simultaneously in mass, time, phase and BOTH
 # spins — no coordinate axis is special.
-theta_0 = [1.0, 1.25, 300.0, 1.57, 0.9, -0.4]
+theta_0 = [1.0, 1.25, 300.0, 1.57, 0.6, -0.4]
 u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
 
 [[sweeps]]
@@ -146,9 +148,10 @@ amp_ratio = 0.5
 
 [[sweeps]]
 name = "extreme_spin_orbit_coupling"
-# Maximal anti-aligned spins to maximize the 1.5PN phase twist; the direction
-# sweeps phase and both spins.
-theta_0 = [1.0, 2.0, 150.0, 1.57, 0.95, -0.95]
+# Strongly anti-aligned spins maximize the 1.5PN spin-orbit phase twist; the
+# direction sweeps phase and both spins (base spins chosen so the second
+# source stays inside |chi| <= 1 at delta_max).
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
 u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
 
 [[sweeps]]
@@ -158,6 +161,25 @@ name = "low_mass_time_shift"
 # solar orbit at every contributing frequency).
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "seed_binary_mass_spin_compensation"
+# Light-seed binary probed along the classic 1.5PN chirp-mass/spin-orbit
+# compensation direction (raising Mc while lowering both aligned spins keeps
+# the phasing nearly stationary): the quartic coefficient K(u) is suppressed
+# by the partial degeneracy, testing the law where curvature is weak.
+theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]
+u_dir = [0.0, 0.6, 0.0, 0.0, -0.55, -0.55]
+
+[[sweeps]]
+name = "near_degenerate_antisymmetric_spin"
+# Dominantly the exactly flat antisymmetric-spin combination (the waveform
+# depends on spins only through chi_eff) with a 15% chirp-mass admixture,
+# tuned so the second source stays physical at delta_max while K(u) remains
+# orders of magnitude below the well-measured directions — the sharpest
+# stress test of the quartic law near a null direction of the manifold.
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
+u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
 
 
 # =============================================================================
@@ -195,3 +217,20 @@ name = "mass_vs_phase_low_mass"
 param_x = 2
 param_y = 4
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
+
+[[maps]]
+name = "time_vs_spin1_high_spin"
+# t_c-spin correlation at the strongly anti-aligned high-spin base: the
+# spin-orbit phase twist trades against arrival time.
+param_x = 3
+param_y = 5
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
+
+[[maps]]
+name = "phase_vs_spin1_seed"
+# Phase-spin plane of the light-seed binary: the 1.5PN spin-orbit twist
+# trades against the orbital phase, capped by the periodic +-pi phase wall
+# and the |chi| <= 1 spin prior.
+param_x = 4
+param_y = 5
+theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]

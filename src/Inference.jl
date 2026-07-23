@@ -36,7 +36,7 @@ end
 
 # GPU execution is serialized library-wide and device buffers are cached:
 # concurrent multi-task access to a GPU driver from Julia tasks segfaulted in
-# production (Level Zero, 2026-07-21), and per-call device allocations at
+# production (Level Zero), and per-call device allocations at
 # ~10³–10⁴ per sweep triggered a long-session oneAPI "freed reference" bug.
 # The lock costs nothing on CPU paths (not taken) and nothing real on GPUs
 # (kernels serialize on the device anyway); the cache bounds device
@@ -232,7 +232,7 @@ physical `bounds`:
 - `:ipnewton` (default): interior-point Newton using the exact ForwardDiff
   Hessian — fast convergence and a much lower convergence floor than L-BFGS.
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
-- `:lbfgs`: legacy unconstrained L-BFGS (regression comparisons).
+- `:lbfgs`: unconstrained L-BFGS (diagnostic comparisons only).
 
 Physics keywords (`mass_scale`, `sky_theta`, …) are accepted via `kwargs`.
 Returns `(D², best_fit, optim_result)`.

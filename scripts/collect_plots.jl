@@ -1,15 +1,12 @@
-# Collect the campaign figures as PNGs into a single flat, human-browsable
-# folder (data/regenerated-plots), rendered fresh from the persisted CSVs with
-# the current plotting code. Descriptive filenames; the source run directories
-# are not modified.
+# Collect every figure of one or more pipeline runs as PNGs into a single
+# flat, human-browsable folder (data/regenerated-plots by default), rendered
+# fresh from the persisted CSVs with the current plotting code. The source
+# run directories are not modified.
 #
-# By default only the CPU set is rendered — the GPU sweeps reproduce the CPU
-# figures to visual identity (slopes agree to 4 decimals; cross-validated at
-# the 1e-8 level), so duplicating them just doubles the inspection load.
-# Pass --all to also render the gpu_oneapi_* counterparts.
+#   julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
 #
-#   julia --project scripts/collect_plots.jl [dest_dir] [--all]
-#
+# With no run_id arguments, every data/outputs/run_* directory is rendered;
+# figure files are prefixed with the run id (run_<hash>_...).
 using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
@@ -21,24 +18,18 @@ using TwoWaveformDistinguishability.Bounds: deviation_box
 using TwoWaveformDistinguishability.Config: load_and_validate_config
 
 const OUT = joinpath(PROJECT_ROOT, "data", "outputs")
-const INCLUDE_GPU = "--all" in ARGS
-const POSARGS = filter(a -> a != "--all", ARGS)
-const DEST = length(POSARGS) >= 1 ? abspath(POSARGS[1]) : joinpath(PROJECT_ROOT, "data", "regenerated-plots")
+const DESTARG = !isempty(ARGS) && !startswith(ARGS[1], "run_")
+const DEST = DESTARG ? abspath(ARGS[1]) : joinpath(PROJECT_ROOT, "data", "regenerated-plots")
+const RUNSEL = filter(a -> startswith(a, "run_"), ARGS)
 mkpath(DEST)
 
-# (label, run_dir, sweep_case_names, map_case_names)
-const CAMPAIGN = [
-    ("cpu", "run_a2bec346", ["six_dimensional_diagonal_stress"], String[]),
-    ("cpu", "run_0d3a0b6b",
-        ["massive_binary_mass_time", "unequal_amplitude_mass_time",
-         "extreme_spin_orbit_coupling", "low_mass_time_shift"],
-        ["mass_vs_time_degeneracy", "spin1_vs_spin2_coupling", "mass_vs_spin1_twist",
-         "time_vs_phase_doppler", "mass_vs_phase_low_mass"]),
-    ("gpu_oneapi", "run_0dbc0494",
-        ["six_dimensional_diagonal_stress", "massive_binary_mass_time",
-         "unequal_amplitude_mass_time", "extreme_spin_orbit_coupling"], String[]),
-    ("gpu_oneapi", "run_110359a2", ["low_mass_time_shift"], String[]),
-]
+runs = isempty(RUNSEL) ?
+    sort(filter(d -> startswith(d, "run_") && isdir(joinpath(OUT, d)), readdir(OUT))) :
+    RUNSEL
+const CAMPAIGN = [(run, run,
+                   isdir(joinpath(OUT, run, "sweeps")) ? sort(readdir(joinpath(OUT, run, "sweeps"))) : String[],
+                   isdir(joinpath(OUT, run, "maps")) ? sort(readdir(joinpath(OUT, run, "maps"))) : String[])
+                  for run in runs]
 
 png_at(name) = joinpath(DEST, name * ".png")
 n = 0
@@ -103,7 +94,6 @@ function render_map(label, run, case)
 end
 
 for (label, run, sweeps, maps) in CAMPAIGN
-    label != "cpu" && !INCLUDE_GPU && continue
     for s in sweeps; render_sweep(label, run, s); end
     for mp in maps; render_map(label, run, mp); end
 end

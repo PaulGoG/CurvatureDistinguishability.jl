@@ -10,7 +10,7 @@ export PipelineSettings, load_and_validate_config
 Fully parsed and validated pipeline configuration. Construction goes through
 [`load_and_validate_config`](@ref), which fails fast with a descriptive
 error for unusable input and emits warnings for suspicious-but-runnable
-values — silent misconfiguration (the historical dead `[mapping].n_angles`)
+values — silent misconfiguration
 is designed out by warning on every unknown key.
 """
 struct PipelineSettings
@@ -70,11 +70,7 @@ const KNOWN_KEYS = Dict(
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
                 "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk"],
     "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
-    # force_cpu / max_vram_gb / os_vram_overhead_gb in [hardware] are
-    # DEPRECATED (accepted with a warning): use gpu_backend = "none" and the
-    # [safety] section respectively.
-    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk",
-                   "force_cpu", "max_vram_gb", "os_vram_overhead_gb"],
+    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
                  "os_vram_overhead_gb"],
     "parameter_bounds" => collect(PARAM_KEYS),
@@ -146,7 +142,7 @@ function load_and_validate_config(config_path::AbstractString)
     optimizer in (:ipnewton, :lbfgs_box, :lbfgs) ||
         error("[pipeline].optimizer must be one of ipnewton | lbfgs_box | lbfgs, got '$opt_str'")
     optimizer === :lbfgs &&
-        @warn "[pipeline].optimizer = \"lbfgs\" runs UNCONSTRAINED (legacy mode): " *
+        @warn "[pipeline].optimizer = \"lbfgs\" runs UNCONSTRAINED (diagnostic mode): " *
               "best fits may leave the physical parameter space."
     rng_seed = getint(pipeline, "rng_seed", 42, "pipeline")
 
@@ -164,7 +160,7 @@ function load_and_validate_config(config_path::AbstractString)
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
-    # Safe-by-default optimizer tolerances (2026-07-21 lesson): fits at the
+    # Safe-by-default optimizer tolerances: fits at the
     # numerical precision floor cannot reach very tight gradient norms and
     # would otherwise grind against the iteration cap; clean-region fits
     # converge in 16–40 Newton iterations, so 100 is generous.
@@ -255,10 +251,6 @@ function load_and_validate_config(config_path::AbstractString)
     gpu_backend = Symbol(lowercase(String(gpu_str)))
     gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
         error("[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'")
-    if haskey(hardware, "force_cpu")
-        @warn "[hardware].force_cpu is deprecated: use gpu_backend = \"none\" instead."
-        getbool(hardware, "force_cpu", false, "hardware") && (gpu_backend = :none)
-    end
     max_threads = getint(hardware, "max_threads", Threads.nthreads(), "hardware")
     max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
     hessian_chunk = getint(hardware, "hessian_chunk", 0, "hardware")
@@ -272,18 +264,8 @@ function load_and_validate_config(config_path::AbstractString)
     max_ram_gb = getnum(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
     gpu_bytes = getint(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
-    # VRAM budgets are [safety] keys; the historical [hardware] location is
-    # accepted with a deprecation warning ([safety] wins if both are present).
     max_vram_gb = getnum(safety, "max_vram_gb", 8.0, "safety")
     os_vram_gb = getnum(safety, "os_vram_overhead_gb", 1.0, "safety")
-    for key in ("max_vram_gb", "os_vram_overhead_gb")
-        if haskey(hardware, key)
-            @warn "[hardware].$key is deprecated: move it to the [safety] section."
-            haskey(safety, key) ||
-                (key == "max_vram_gb" ? (max_vram_gb = getnum(hardware, key, 8.0, "hardware")) :
-                                        (os_vram_gb = getnum(hardware, key, 1.0, "hardware")))
-        end
-    end
 
     bounds = try
         bounds_from_config(get(config, "parameter_bounds", Dict{String,Any}()))

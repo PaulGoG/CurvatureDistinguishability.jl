@@ -24,8 +24,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   `PipelineSettings`. Guardrails: descriptive hard errors for unusable input
   (bad ranges, duplicate names, base points outside the physical bounds),
   warnings for suspicious values, and warnings on **unknown keys** (typo
-  protection; historically a silently ignored `[mapping].n_angles` cost a
-  campaign its configured resolution). Physical parameters live *only* in the
+  protection. Physical parameters live *only* in the
   TOML; the source carries physical constants (arm length, AU, year) and
   published-fit defaults.
 - **`Physics.jl`** — the Robson et al. (2019) noise model: instrumental
@@ -38,7 +37,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   Doppler + low-frequency antenna patterns) and a fused single-pass
   `project_to_tdi`. Channels A and E by default; the identically zero null
   channel T is opt-in (`[physics].include_t_channel`) and exists only for
-  legacy comparisons — it adds dead compute.
+  diagnostic comparisons — it adds dead compute.
 - **`Bounds.jl`** — hard physical parameter bounds (`[parameter_bounds]`),
   deviation-space boxes around a base point (phase treated topologically,
   ``\pm\pi``), ray–box crossing distances for the polar capping, and
@@ -54,7 +53,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
 - **`Inference.jl`** — ``D^2`` minimization within the physical bounds.
   Optimizers: `IPNewton` (default; interior-point Newton using the exact
   ForwardDiff Hessian — fast convergence, low convergence floor),
-  `Fminbox(LBFGS)`, and the legacy unconstrained `lbfgs` for regression
+  `Fminbox(LBFGS)`, and the unconstrained `lbfgs` for diagnostic
   comparisons. The loss has two equivalent implementations, tested against
   each other: an allocation-free scalar CPU loop (avoids GC lock contention
   under 20+ threads) and a single KernelAbstractions kernel.
@@ -120,7 +119,7 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
    duplicated across modules.
 3. The GPU path supports the 2-channel (A, E) configuration; parameters
    cross the kernel boundary as isbits `NTuple`s so `ForwardDiff.Dual`
-   gradients compile to device code. The legacy failure mode (broadcasting
+   gradients compile to device code. The classic failure mode (broadcasting
    with `Ref(p)` over a heap `Vector{Dual}`) is designed out. Under AD the
    kernel uses the **lanes layout**: Dual arithmetic runs inside the kernel,
    but each scalar lane (value + partials, recursively — 7 for gradients,
