@@ -547,7 +547,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         try
             fig = zone_figure(angle, X, Y, collect(prior_lim);
                               px = px, py = py, box = box,
-                              prior_frac = prior_frac, degenerate_frac = degen_frac)
+                              prior_frac = prior_frac, degenerate_frac = degen_frac,
+                              x_math = r_math .* dircos, y_math = r_math .* dirsin)
             save_figure(fig, joinpath(out_dir, "confusion_zone"))
         catch err
             @warn "Map '$name': figure generation failed; numerical results are saved." exception = (err, catch_backtrace())

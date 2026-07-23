@@ -379,20 +379,24 @@ end
 
 """
     zone_figure(angle, x, y, prior_limited; px, py, box, prior_frac,
-                degenerate_frac) -> Figure
+                degenerate_frac, x_math, y_math) -> Figure
 
 Zone-of-confusion map from the capped boundary polygon. The filled zone is
-the exact intersection of the mathematical zone with the physical prior box;
-curvature-limited boundary segments are drawn solid, prior-limited segments
-follow the box and are drawn in a distinct style, and the (finite part of
-the) prior box itself is dashed — so a bound-limited zone is visually
-distinct from a curvature-limited one. `DataAspect` is applied only for
-same-unit planes (spin–spin).
+the exact intersection of the mathematical zone with the physical prior box,
+and its boundary is drawn SOLID throughout — blue where curvature-limited,
+red where it runs along a hard physical wall (|χ|≤1, positivity, phase ±π).
+Where the prior cuts the zone off, the *uncapped mathematical* contour
+(`x_math`/`y_math`, when provided) continues past the wall as an empty
+dashed line with no fill — showing what curvature alone would allow; along
+degenerate directions it is unbounded and simply runs off the frame. The
+(finite part of the) prior box itself is thin grey dashed. `DataAspect` is
+applied only for same-unit planes (spin–spin).
 """
 function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector,
                      prior_limited::AbstractVector{Bool};
                      px::Int, py::Int, box::NTuple{4,Float64},
-                     prior_frac::Real, degenerate_frac::Real)
+                     prior_frac::Real, degenerate_frac::Real,
+                     x_math = nothing, y_math = nothing)
     px == py && error("map plane must use two distinct parameters")
     same_units = (px in (5, 6) && py in (5, 6))
     with_theme(twd_theme()) do
@@ -405,6 +409,22 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         # symmetric limits waste most of the canvas on empty quadrants.
         xlo_d, xhi_d = extrema(x)
         ylo_d, yhi_d = extrema(y)
+        # extend the view towards the uncapped mathematical contour so its
+        # dashed continuation past the prior wall is visible — but never by
+        # more than ~40% of the physical zone's span per side (degenerate
+        # directions are unbounded; their dashed arcs just exit the frame)
+        if x_math !== nothing
+            xr = xhi_d - xlo_d
+            yr = yhi_d - ylo_d
+            fx = filter(isfinite, x_math)
+            fy = filter(isfinite, y_math)
+            if !isempty(fx) && !isempty(fy)
+                xlo_d = max(min(xlo_d, minimum(fx)), xlo_d - 0.4 * xr)
+                xhi_d = min(max(xhi_d, maximum(fx)), xhi_d + 0.4 * xr)
+                ylo_d = max(min(ylo_d, minimum(fy)), ylo_d - 0.4 * yr)
+                yhi_d = min(max(yhi_d, maximum(fy)), yhi_d + 0.4 * yr)
+            end
+        end
         padx = 0.08 * (xhi_d - xlo_d)
         pady = 0.08 * (yhi_d - ylo_d)
         xlo, xhi = xlo_d - padx, xhi_d + padx
@@ -437,17 +457,28 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
 
         poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
 
-        # Split the closed boundary into contiguous curvature-limited /
-        # prior-limited RUNS (not per-edge) so a dash pattern forms cleanly
-        # over each run. Curvature-limited (non-cutoff) runs are DASHED: the
-        # discernibility-threshold edge, soft and, along degenerate directions,
-        # unbounded in principle. Prior-limited (cutoff) runs are SOLID: hard
-        # physical walls (|χ|≤1, positivity, phase ±π) that terminate the zone.
+        # The boundary of the filled (physical) zone is SOLID throughout:
+        # curvature-limited runs in blue, prior-limited runs in red along the
+        # hard physical walls. Where the prior cuts the zone off, the uncapped
+        # MATHEMATICAL contour continues past the wall as an empty dashed line
+        # (no fill) — drawn first so the solid boundary sits on top of the
+        # junctions.
         n = length(x)
         edge_prior = [prior_limited[i] && prior_limited[mod1(i + 1, n)] for i in 1:n]
+        if x_math !== nothing && any(prior_limited)
+            # dilate the mask by one edge per side so each dashed arc joins the
+            # solid contour at the capping crossover (where r_math = r_capped);
+            # non-finite (degenerate) points break the polyline
+            xm = [isfinite(v) ? Float64(v) : NaN for v in x_math]
+            ym = [isfinite(v) ? Float64(v) : NaN for v in y_math]
+            edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
+            mx, my = _boundary_runs(xm, ym, edge_math, true)
+            isempty(mx) || lines!(ax, mx, my; color = (:dodgerblue4, 0.75),
+                                  linewidth = 2.4, linestyle = :dash)
+        end
         cx, cy = _boundary_runs(x, y, edge_prior, false)
         bx, by = _boundary_runs(x, y, edge_prior, true)
-        isempty(cx) || lines!(ax, cx, cy; color = :dodgerblue4, linewidth = 2.6, linestyle = :dash)
+        isempty(cx) || lines!(ax, cx, cy; color = :dodgerblue4, linewidth = 3.0)
         isempty(bx) || lines!(ax, bx, by; color = :firebrick, linewidth = 3.0)
 
         # the physical prior box (finite edges only)
