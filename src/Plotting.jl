@@ -329,28 +329,35 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         # flagged points at ratio ≈ 1 are genuine optima.
         ratio = d2_num ./ d2_theo
         hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
-        if isfinite(c1) && any(clean)
+        # points below the optimizer floor are discarded here — their ratio
+        # is floor-set and meaningless; the top panel shows them X-stricken
+        keep = pos .& .!floored
+        # symmetric, dynamically chosen y-limits around ratio 1: the smallest
+        # symmetry-appealing half-width that holds every kept point with
+        # ~15% headroom
+        spread = any(keep) ? maximum(abs, ratio[keep] .- 1.0) : 0.5
+        half = something(findfirst(h -> h >= 1.15 * spread,
+                                   (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
+        h = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half]
+        if isfinite(c1) && any(keep)
             # higher-order-terms fit in dashed dark blue (reads cleanly over
-            # the solid reference): from the first NON-excluded point all the
-            # way past the right margin (clipped by the frame)
-            dd = 10.0 .^ range(log10(minimum(deltas[clean])),
+            # the solid reference): starting slightly LEFT of the first kept
+            # point, reaching past the right margin (clipped by the frame)
+            dd = 10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
                                log10(maximum(deltas)) + 0.4, length = 200)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = :navy,
+            lines!(ax2, dd, clamp.(model, 1.0 - h, 1.0 + h); color = :navy,
                    linestyle = :dash, linewidth = 3.0)
             # coefficients always written out as mantissa × 10ⁿ
             ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
             isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
-            text!(ax2, maximum(deltas), 1.90;
+            text!(ax2, 0.985, 0.92; space = :relative,
                   text = latexstring(ctext),
                   align = (:right, :top), fontsize = 16, color = :navy)
         end
-        # points below the optimizer floor are discarded here — their ratio
-        # is floor-set and meaningless; the top panel shows them X-stricken
-        keep = pos .& .!floored
         scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
                  strokecolor = :black, strokewidth = 1.2, markersize = 17)
-        ylims!(ax2, 0.0, 2.1)
+        ylims!(ax2, 1.0 - h, 1.0 + h)
 
         # explicit x-limits from the DATA with a small log margin: the fit
         # curve and reference line intentionally overshoot the last point, and
