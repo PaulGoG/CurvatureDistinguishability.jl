@@ -376,9 +376,24 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         vb, _ = decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
-        # per-tick scientific notation (confusion-map axes; no axis-label
-        # multiplier) with a COMMON exponent across the axis — 5e-5 renders
-        # as 0.5×10⁻⁴, never mixing 10⁻⁴ with 10⁻⁵ labels on one axis
+        # offset ticks (confusion-map axes): one factored power of 10 with
+        # integer mantissas preferring multiples of 5, limits snapped outward
+        # so the frame ends exactly on the outermost labelled ticks
+        ot = TWD.Plotting.offset_ticks(-1.32e-3, 1.32e-3)
+        @test ot !== nothing
+        ovals, olabels, e10, lo_s, hi_s = ot
+        @test e10 == -4
+        @test ovals[1] == lo_s && ovals[end] == hi_s
+        @test lo_s <= -1.32e-3 && hi_s >= 1.32e-3
+        @test all(m -> m % 5 == 0, round.(Int, ovals ./ 10.0^e10))
+        @test occursin("15", olabels[end].s) && !occursin("10^", olabels[end].s)
+        ot2 = TWD.Plotting.offset_ticks(-1.15e-4, 1.8e-4) # asymmetric range
+        @test ot2 !== nothing
+        @test ot2[4] <= -1.15e-4 && ot2[5] >= 1.8e-4
+
+        # per-tick common-exponent scientific notation (fallback when no
+        # clean integer-mantissa grid exists) — 5e-5 renders as 0.5×10⁻⁴,
+        # never mixing 10⁻⁴ with 10⁻⁵ labels on one axis
         sl = TWD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
         @test occursin("-1.5", sl[1].s) && occursin("10^{-4}", sl[1].s)
         @test !occursin("times", sl[2].s) # zero renders as plain "0"
