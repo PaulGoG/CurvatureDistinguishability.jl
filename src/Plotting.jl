@@ -299,36 +299,43 @@ end
     residual_figure(spec, meta) -> Figure
 
 Residual-spectrum figure in true density units: top panel `d(SNR²)/df` of the
-two-source data and the best-fit single source (channels A and E, RMS line
-with min/max envelope), bottom panel the unabsorbed residual `d(D²)/df` with
-the per-bin unit-noise reference `1/df` — the integral of the bottom curves
-is the D² of the scaling law. `spec` is the (decimated) spectrum table;
-`meta` carries `delta_star`, `df`, and integral annotations.
+two-source data and the best-fit single source, bottom panel the unabsorbed
+residual `d(D²)/df` — the integral of the bottom curves is the D² of the
+scaling law. One grouped legend sits on top of the figure (channel A and
+channel E blocks, each with data / best fit / residual). Channel encodes hue
+(A blue, E warm); the best fit, which lies on top of the data, is a brighter
+dash-dotted line over the dark solid data line; min/max decimation envelopes
+shade both channels. Frame limits hug the plotted data. `spec` is the
+(log-uniformly decimated) spectrum table; `meta` carries `delta_star`, `df`,
+and the integral annotations.
 """
 function residual_figure(spec, meta)
     with_theme(twd_theme()) do
-        fig = Figure(size = (950, 850))
-        # Tick and limit the frequency axis from the true grid band, not the
-        # window-decimated spec.f: the first/last decimation-window means sit
-        # inside the band, so ticking off them drops the endpoint decade
-        # (e.g. the 1e-4 tick) and stops the frame short of the band edge.
-        fmin = get(meta, :f_min, minimum(spec.f))
-        fmax = get(meta, :f_max, maximum(spec.f))
+        fig = Figure(size = (950, 880))
+        # Limits and ticks hug the plotted data: with log-uniform decimation
+        # the first/last plotted frequencies sit at the band ends, so the
+        # frame ends on the data with no gap at either side.
+        fmin = minimum(spec.f)
+        fmax = maximum(spec.f)
         xt = decade_ticks(fmin, fmax)
+
+        # channel = hue (A blue, E warm), role = shade + line style: data is
+        # the dark solid line, the best fit — which sits right on top of it —
+        # is a brighter dash-dotted line over it, the residual a medium solid
+        col_data_A, col_bf_A, col_res_A = :steelblue4, :deepskyblue, :dodgerblue2
+        col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
                    ylabel = L"\mathrm{d}(\mathrm{SNR}^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
                    xticks = xt, yticklabelspace = 70.0)
-        band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (:black, 0.16))
-        lines!(ax1, spec.f, spec.sig_rms_A; color = :black, linewidth = 2.8,
-               label = "data, channel A")
-        lines!(ax1, spec.f, spec.sig_rms_E; color = :grey55, linewidth = 2.8,
-               label = "data, channel E")
-        lines!(ax1, spec.f, spec.bf_rms_A; color = :dodgerblue, linestyle = :dash,
-               linewidth = 3.0, label = "best fit, channel A")
-        lines!(ax1, spec.f, spec.bf_rms_E; color = :steelblue4, linestyle = :dash,
-               linewidth = 3.0, label = "best fit, channel E")
-        axislegend(ax1; position = :rt)
+        band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
+        band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
+        dA = lines!(ax1, spec.f, spec.sig_rms_A; color = col_data_A, linewidth = 3.6)
+        dE = lines!(ax1, spec.f, spec.sig_rms_E; color = col_data_E, linewidth = 3.6)
+        bA = lines!(ax1, spec.f, spec.bf_rms_A; color = col_bf_A,
+                    linestyle = :dashdot, linewidth = 3.0)
+        bE = lines!(ax1, spec.f, spec.bf_rms_E; color = col_bf_E,
+                    linestyle = :dashdot, linewidth = 3.0)
 
         # y-range of the residual panel comes from the residual DATA — the
         # per-bin noise reference 1/Δf can sit many decades above the curves,
@@ -345,11 +352,25 @@ function residual_figure(spec, meta)
                    ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
                    xticks = xt, yticks = decade_ticks(ylo2, yhi2),
                    yticklabelspace = 70.0)
-        band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A; color = (:crimson, 0.18))
-        lines!(ax2, spec.f, spec.res_rms_A; color = :crimson, linewidth = 2.8,
-               label = "residual, channel A")
-        lines!(ax2, spec.f, spec.res_rms_E; color = :darkorange3, linewidth = 2.8,
-               label = "residual, channel E")
+        band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A;
+              color = (col_res_A, 0.16))
+        band!(ax2, spec.f, max.(spec.res_min_E, 1e-300), spec.res_max_E;
+              color = (col_res_E, 0.16))
+        rA = lines!(ax2, spec.f, spec.res_rms_A; color = col_res_A, linewidth = 3.2)
+        rE = lines!(ax2, spec.f, spec.res_rms_E; color = col_res_E, linewidth = 3.2)
+
+        # one grouped legend on top of the figure (title position), spanning
+        # both panels: channel A and channel E blocks with data/best fit/
+        # residual entries each
+        Legend(fig[0, 1],
+               [[dA, bA, rA], [dE, bE, rE]],
+               [["data", "best fit", "residual"], ["data", "best fit", "residual"]],
+               ["channel A", "channel E"];
+               orientation = :horizontal, titleposition = :left,
+               framevisible = false, tellwidth = false, tellheight = true,
+               labelsize = 18, titlesize = 19, titlefont = :bold,
+               patchsize = (26, 4), groupgap = 18, patchlabelgap = 4,
+               colgap = 10, titlegap = 8, padding = (0, 0, 4, 0))
         if noise_in_frame
             hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
             text!(ax2, fmax, noise_level; text = "per-bin noise level",
@@ -363,7 +384,6 @@ function residual_figure(spec, meta)
                                      "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}"),
                   align = (:left, :center), fontsize = 15, color = :grey35)
         end
-        axislegend(ax2; position = :lb)
         # δ*/integral annotation top-left: the residual curves rise towards
         # high f, so the upper-left region is free once the y-range is tight.
         text!(ax2, 0.03, 0.90; space = :relative,
@@ -374,7 +394,7 @@ function residual_figure(spec, meta)
         ylims!(ax2, ylo2, yhi2)
 
         linkxaxes!(ax1, ax2)
-        xlims!(ax2, fmin, fmax) # frame ends exactly on the band (linked to ax1)
+        xlims!(ax2, fmin, fmax) # frame ends on the data — no gap at either side
         hidexdecorations!(ax1; grid = false, ticks = false)
         return fig
     end

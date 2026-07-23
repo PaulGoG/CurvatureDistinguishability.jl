@@ -386,10 +386,17 @@ function residual_spectrum(theta0, u_norm, q, d_star, best_fit,
 
     dens(x, i) = 4 * abs2(x) / ctx.Sn[i]
     n = length(ctx.freqs)
-    w = max(1, n ÷ 600)
-    m = n ÷ w
-    win(i) = ((i - 1) * w + 1):(i * w)
-    agg(v, f) = [f(view(v, win(i))) for i in 1:m]
+    # log-uniform decimation: ~equal plotted points per decade, and the first/
+    # last plotted frequencies sit at the band ends. (Linear windows left a
+    # half-window gap at the low end of the log axis and compressed the first
+    # decade into a handful of points.) Log-sparse low-frequency windows hold
+    # single bins and pass them through unaveraged; empty windows are skipped.
+    nwin = min(600, n)
+    edges = 10.0 .^ range(log10(ctx.freqs[1]), log10(ctx.freqs[end]), nwin + 1)
+    bnd = [searchsortedfirst(ctx.freqs, e) for e in edges]
+    bnd[end] = n + 1
+    wins = [bnd[i]:(bnd[i+1] - 1) for i in 1:nwin if bnd[i+1] > bnd[i]]
+    agg(v, f) = [f(view(v, r)) for r in wins]
     rms(v) = sqrt(mean(abs2, v))
 
     cols = Dict{Symbol,Vector{Float64}}(:f => agg(ctx.freqs, mean))
