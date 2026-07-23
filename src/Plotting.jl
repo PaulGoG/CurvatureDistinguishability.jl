@@ -209,10 +209,12 @@ end
                    clean, floor_level) -> Figure
 
 Quartic-scaling validation figure: log–log D²(δ) with the δ⁴ prediction, the
-`D² = ρ²` threshold line and δ_min marker, a shaded optimizer-floor band, and
-a linked ratio panel `D²_num/D²_theo` that makes prefactor agreement and
-higher-order departures visible. `clean` is the Bool mask of points used for
-the annotated slope fit.
+`D² = ρ²` threshold line and δ_min marker, a shaded optimizer-floor band
+(points inside it carry an X overlay — the floor, not the physics, sets
+them), and a linked ratio panel `D²_num/D²_theo` that makes prefactor
+agreement and higher-order departures visible. The legend sits on top of the
+figure: `D²_theo`, `D²_num`, and the fitted `D²_num` slope as a text-only
+entry. `clean` is the Bool mask of points used for the slope fit.
 """
 function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo::AbstractVector;
                         rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
@@ -230,12 +232,29 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
                    ylabel = L"D^2", xticks = xt, yticks = yt, yticklabelspace = 66.0)
 
-        lines!(ax1, deltas, d2_theo; color = :crimson, linestyle = :dash, linewidth = 3.2,
-               label = L"(1/16)\, K(u)\, \delta^4")
-        scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue, strokecolor = :black,
-                 strokewidth = 1.2, markersize = 15,
-                 label = @sprintf("numerical optimization\nfitted slope %.3f ± %.3f", slope, slope_err))
+        th = lines!(ax1, deltas, d2_theo; color = :crimson, linestyle = :dash,
+                    linewidth = 4.0)
+        sc = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
+                      strokecolor = :black, strokewidth = 1.4, markersize = 22)
+        # points inside the optimizer-floor band get a visible X on top of the
+        # normal symbol (no legend entry): the floor, not the physics, sets them
+        floored = isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
+                  falses(length(d2_num))
+        any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
+                                 marker = :xcross, color = :grey25, markersize = 15)
         ylims!(ax1, ylo, yhi)
+
+        # legend on top of the figure: short D² labels plus the fitted slope
+        # as a text-only entry (transparent patch)
+        Legend(fig[0, 1],
+               [th, sc, LineElement(color = :transparent)],
+               [L"D^2_{\mathrm{theo}} = (1/16)\, K(u)\, \delta^4", L"D^2_{\mathrm{num}}",
+                latexstring(@sprintf("D^2_{\\mathrm{num}}\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
+                                     slope, slope_err))];
+               orientation = :horizontal, framevisible = false,
+               tellwidth = false, tellheight = true, labelsize = 19,
+               patchsize = (30, 4), colgap = 12, patchlabelgap = 5,
+               padding = (0, 0, 4, 0))
 
         if isfinite(floor_level) && floor_level > ylo
             hspan!(ax1, ylo, floor_level; color = (:grey, 0.13))
@@ -255,21 +274,18 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                   align = (:left, :bottom), fontsize = 18, color = :grey35)
         end
 
-        # the fitted slope is part of the numerical-optimization legend entry
-        axislegend(ax1; position = :lt)
-
         ax2 = Axis(fig[2, 1]; xscale = log10,
                    xlabel = L"\mathrm{parameter\ separation}\ \delta",
                    ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
                    yticklabelspace = 66.0)
         ratio = d2_num ./ d2_theo
-        hlines!(ax2, [1.0]; color = :grey45, linewidth = 1.6)
+        hlines!(ax2, [1.0]; color = :grey45, linewidth = 2.2)
         if isfinite(c1)
             dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)), length = 160)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:purple, 0.9), linewidth = 2.6)
+            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:purple, 0.9), linewidth = 3.4)
             # top-right, clear of the off-scale floor markers at the top-left
-            text!(ax2, maximum(deltas), 1.98;
+            text!(ax2, maximum(deltas), 1.94;
                   text = latexstring("1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = ",
                                      sci_latex(c1)),
                   align = (:right, :top), fontsize = 16, color = :purple)
@@ -280,12 +296,12 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         offscale = excl .& (ratio .> 2.05)
         inrange = excl .& .!offscale
         any(inrange) && scatter!(ax2, deltas[inrange], ratio[inrange];
-                                 color = (:grey, 0.55), markersize = 12)
+                                 color = (:grey, 0.55), markersize = 17)
         any(offscale) && scatter!(ax2, deltas[offscale], fill(2.02, count(offscale));
                                   marker = :utriangle, color = :transparent,
-                                  strokecolor = :grey45, strokewidth = 1.6, markersize = 14)
+                                  strokecolor = :grey45, strokewidth = 1.8, markersize = 19)
         scatter!(ax2, deltas[clean], ratio[clean]; color = :dodgerblue,
-                 strokecolor = :black, strokewidth = 1.0, markersize = 12)
+                 strokecolor = :black, strokewidth = 1.2, markersize = 17)
         ylims!(ax2, 0.0, 2.1)
 
         linkxaxes!(ax1, ax2)
