@@ -360,8 +360,6 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         @test TWD.Plotting.axis_exponent(6e-4) == -4
         @test TWD.Plotting.axis_exponent(2.0) == 0
-        fmt = TWD.Plotting.scaled_tickformat(-4)
-        @test fmt([6e-4, 3e-4]) == ["6", "3"]
 
         # residual-band ticks: from the true band [1e-4, 0.05] every whole-power
         # decade is present, including the low endpoint (regression: ticking

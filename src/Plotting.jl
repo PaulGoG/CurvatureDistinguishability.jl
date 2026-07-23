@@ -8,7 +8,7 @@ using Statistics
 using ..Provenance: backup_existing!
 
 export twd_theme, save_figure, decade_ticks, pi_ticks, axis_exponent,
-       scaled_tickformat, scaling_figure, residual_figure, zone_figure,
+       scaling_figure, residual_figure, zone_figure,
        PARAM_LABELS
 
 """
@@ -166,14 +166,6 @@ function axis_exponent(maxabs::Real)
     e = floor(Int, log10(maxabs))
     return -2 <= e <= 3 ? 0 : e
 end
-
-"""
-    scaled_tickformat(e) -> Function
-
-Makie tick formatter dividing values by `10^e` (single per-axis exponent —
-never mixed exponents on one axis), 2–3 significant digits.
-"""
-scaled_tickformat(e::Int) = values -> [@sprintf("%.3g", v / 10.0^e) for v in values]
 
 """
     offset_ticks(lo, hi) -> (values, labels, exponent, lo_snap, hi_snap) or nothing
