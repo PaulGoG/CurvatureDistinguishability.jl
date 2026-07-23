@@ -112,6 +112,9 @@ if isdir(maps_dir)
                 X, Y = df_map.X_Bound, df_map.Y_Bound
                 prior = hasproperty(df_map, :Prior_Limited) ? collect(Bool, df_map.Prior_Limited) :
                         falses(nrow(df_map))
+                has_math = hasproperty(df_map, :R_Math) && hasproperty(df_map, :Dir_Cos)
+                xmath = has_math ? df_map.R_Math .* df_map.Dir_Cos : nothing
+                ymath = has_math ? df_map.R_Math .* df_map.Dir_Sin : nothing
             else
                 # exact threshold rescale from the persisted per-direction K:
                 # r_math = (16 ρ² / K)^{1/4}, re-capped at the stored prior box
@@ -129,6 +132,8 @@ if isdir(maps_dir)
                 ds = hasproperty(df_map, :Dir_Sin) ? df_map.Dir_Sin : sin.(df_map.Angle)
                 X = r_cap .* dc
                 Y = r_cap .* ds
+                xmath = r_math .* dc
+                ymath = r_math .* ds
                 prior = collect(isfinite.(df_map.R_Box) .& (r_math .>= df_map.R_Box))
                 out = DataFrame(Angle = df_map.Angle, X_Bound = X, Y_Bound = Y,
                                 Dir_Cos = dc, Dir_Sin = ds,
@@ -141,7 +146,8 @@ if isdir(maps_dir)
             fig = zone_figure(df_map.Angle, X, Y, prior;
                               px = px, py = py, box = box,
                               prior_frac = count(prior) / max(1, length(prior)),
-                              degenerate_frac = count(degen) / max(1, length(degen)))
+                              degenerate_frac = count(degen) / max(1, length(degen)),
+                              x_math = xmath, y_math = ymath)
             save_figure(fig, joinpath(dir, "confusion_zone" * suffix))
             global replotted += 1
             println("replotted map: $name$suffix")

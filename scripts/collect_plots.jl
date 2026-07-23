@@ -90,7 +90,8 @@ function render_map(label, run, case)
     fig = zone_figure(df.Angle, df.X_Bound, df.Y_Bound, prior;
                       px = px, py = py, box = box,
                       prior_frac = count(prior) / nrow(df),
-                      degenerate_frac = count(degen) / nrow(df))
+                      degenerate_frac = count(degen) / nrow(df),
+                      x_math = df.R_Math .* df.Dir_Cos, y_math = df.R_Math .* df.Dir_Sin)
     save(png_at("$(label)_map_$(case)"), fig; px_per_unit = 4); n += 1
     println("  map:   $label/$case")
 end
