@@ -1,9 +1,14 @@
-# Collect every campaign figure as a PNG into a single flat, human-browsable
+# Collect the campaign figures as PNGs into a single flat, human-browsable
 # folder (data/regenerated-plots), rendered fresh from the persisted CSVs with
 # the current plotting code. Descriptive filenames; the source run directories
 # are not modified.
 #
-#   julia --project scripts/collect_plots.jl [dest_dir]
+# By default only the CPU set is rendered — the GPU sweeps reproduce the CPU
+# figures to visual identity (slopes agree to 4 decimals; cross-validated at
+# the 1e-8 level), so duplicating them just doubles the inspection load.
+# Pass --all to also render the gpu_oneapi_* counterparts.
+#
+#   julia --project scripts/collect_plots.jl [dest_dir] [--all]
 #
 using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
@@ -16,7 +21,9 @@ using TwoWaveformDistinguishability.Bounds: deviation_box
 using TwoWaveformDistinguishability.Config: load_and_validate_config
 
 const OUT = joinpath(PROJECT_ROOT, "data", "outputs")
-const DEST = length(ARGS) >= 1 ? abspath(ARGS[1]) : joinpath(PROJECT_ROOT, "data", "regenerated-plots")
+const INCLUDE_GPU = "--all" in ARGS
+const POSARGS = filter(a -> a != "--all", ARGS)
+const DEST = length(POSARGS) >= 1 ? abspath(POSARGS[1]) : joinpath(PROJECT_ROOT, "data", "regenerated-plots")
 mkpath(DEST)
 
 # (label, run_dir, sweep_case_names, map_case_names)
@@ -89,6 +96,7 @@ function render_map(label, run, case)
 end
 
 for (label, run, sweeps, maps) in CAMPAIGN
+    label != "cpu" && !INCLUDE_GPU && continue
     for s in sweeps; render_sweep(label, run, s); end
     for mp in maps; render_map(label, run, mp); end
 end
