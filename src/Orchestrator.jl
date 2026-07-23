@@ -485,10 +485,94 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                               for i in 1:length(mids)])
             added += length(mids)
         end
-        finish!(prog)
         sort!(entries, by = e -> e.phi)
         logline(log_io, "        refinement added $added directions " *
                         "($(length(entries)) on the half-circle)")
+
+        # Exact corner vertices at capping crossovers. The boundary polygon
+        # chords over the direction where the mathematical contour pierces a
+        # prior wall (r_math = r_box), chamfering the zone's corners — and the
+        # neighbor-ratio refinement cannot see it, because the capped radius
+        # saturates at r_box on the wall side. Scan the FULL circle (the box
+        # need not be mirror-symmetric), bracket every capped/uncapped
+        # transition between consecutive directions, and bisect each bracket
+        # on the capping PREDICATE (robust to r_math = Inf on degenerate
+        # directions, where a sign-based bisection would hit Inf - Inf). All
+        # active brackets are evaluated as one batch per iteration.
+        if cfg.corner_bisect_iters > 0
+            capped_at = (alpha, K) -> begin
+                rb = r_box_of(alpha) # cos/sin of the full-circle angle
+                isfinite(rb) && r_math_of(K) >= rb
+            end
+            N = length(entries)
+            alphas = vcat([e.phi for e in entries], [e.phi + π for e in entries])
+            Kfull = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
+            caps = [capped_at(alphas[k], Kfull[k]) for k in 1:2N]
+            lo = Float64[]; hi = Float64[]; lo_capped = Bool[]
+            for k in 1:2N
+                j = mod1(k + 1, 2N)
+                caps[k] == caps[j] && continue
+                push!(lo, alphas[k])
+                push!(hi, alphas[j] + (j == 1 ? 2π : 0.0))
+                push!(lo_capped, caps[k])
+            end
+            if !isempty(lo)
+                for _ in 1:cfg.corner_bisect_iters
+                    mids = (lo .+ hi) ./ 2
+                    Kg_mid = eval_angles(mod.(mids, π), prog) # K is even
+                    for b in eachindex(mids)
+                        if capped_at(mids[b], Kg_mid[b][1]) == lo_capped[b]
+                            lo[b] = mids[b]
+                        else
+                            hi[b] = mids[b]
+                        end
+                    end
+                end
+                # fold onto the half-circle (the mirror adds the antipode);
+                # dedupe — a mirror-symmetric box yields the same φ twice
+                phis_new = Float64[]
+                for b in eachindex(lo)
+                    phic = mod((lo[b] + hi[b]) / 2, Float64(π))
+                    any(p -> abs(p - phic) < 1e-10, phis_new) && continue
+                    any(e -> abs(e.phi - phic) < 1e-10, entries) && continue
+                    push!(phis_new, phic)
+                end
+                if !isempty(phis_new)
+                    Kg_new = eval_angles(phis_new, prog)
+                    append!(entries, [(phi = phis_new[i], K = Kg_new[i][1], g = Kg_new[i][2])
+                                      for i in eachindex(phis_new)])
+                    sort!(entries, by = e -> e.phi)
+                end
+                logline(log_io, @sprintf("        corner bisection: %d crossover(s) located, %d exact corner vertex(es) inserted (%d iterations)",
+                                         length(lo), length(phis_new), cfg.corner_bisect_iters))
+            end
+
+            # Box-corner vertices: where two walls are simultaneously active,
+            # consecutive samples sit on different walls and their chord cuts
+            # the box corner. The corner direction is known analytically; if
+            # the ray through a finite box corner is capped there, the true
+            # boundary passes through that exact corner — insert it (one K
+            # evaluation per finite corner, at most four).
+            corner_alphas = [atan(cy, cx) for cx in (box[1], box[2]), cy in (box[3], box[4])
+                             if isfinite(cx) && isfinite(cy)]
+            if !isempty(corner_alphas)
+                Kg_c = eval_angles(mod.(corner_alphas, π), prog)
+                corner_new = Tuple{Float64,Float64,Float64}[]
+                for k in eachindex(corner_alphas)
+                    capped_at(corner_alphas[k], Kg_c[k][1]) || continue
+                    phic = mod(corner_alphas[k], Float64(π))
+                    any(e -> abs(e.phi - phic) < 1e-10, entries) && continue
+                    any(t -> abs(t[1] - phic) < 1e-10, corner_new) && continue
+                    push!(corner_new, (phic, Kg_c[k][1], Kg_c[k][2]))
+                end
+                if !isempty(corner_new)
+                    append!(entries, [(phi = t[1], K = t[2], g = t[3]) for t in corner_new])
+                    sort!(entries, by = e -> e.phi)
+                    logline(log_io, @sprintf("        box-corner vertices: %d inserted", length(corner_new)))
+                end
+            end
+        end
+        finish!(prog)
 
         # Mirror to the full circle: K and g are exactly even in the direction,
         # so r_math is mirrored bitwise; r_box is re-evaluated with the exactly

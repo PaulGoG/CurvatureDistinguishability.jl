@@ -290,6 +290,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             cfg_odd = @test_logs (:warn, r"odd; rounding up") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[mapping]\nn_angles = 33\n"))
             @test cfg_odd.map_n_angles == 34
+            @test cfg_odd.corner_bisect_iters == 25 # safe default: corners exact
+            cfg_nb = load_and_validate_config(
+                write_cfg(dir, "[mapping]\ncorner_bisect_iters = 0\n"))
+            @test cfg_nb.corner_bisect_iters == 0 # explicit opt-out allowed
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[mapping]\ncorner_bisect_iters = -1\n"))
 
             # amp_ratio and multi-start guardrails
             @test_throws ErrorException load_and_validate_config(
@@ -479,7 +485,27 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 @test all(cm.Angle[half+1:end] .≈ cm.Angle[1:half] .+ π)
                 @test isfile(joinpath(mdir, "confusion_zone.pdf"))
                 @test isfile(joinpath(mdir, "confusion_zone.png"))
+                # exact prior-crossover corners: at every capped/uncapped
+                # transition along the boundary polygon, one of the two rows
+                # must be the bisection-inserted vertex with r_math ≈ r_box —
+                # otherwise the polygon chord chamfers the zone corner
+                n_trans = 0
+                for i in 1:n
+                    j = mod1(i + 1, n)
+                    cm.Prior_Limited[i] == cm.Prior_Limited[j] && continue
+                    n_trans += 1
+                    rel = [abs(cm.R_Math[k] - cm.R_Box[k]) / cm.R_Box[k]
+                           for k in (i, j) if isfinite(cm.R_Box[k]) && isfinite(cm.R_Math[k])]
+                    @test any(<(1e-3), rel)
+                end
+                count(cm.Prior_Limited) in (0, n) || @test n_trans >= 2
             end
+
+            # exact box-corner vertex: both walls of the mass-time box are
+            # active, so the boundary must pass through their corner exactly
+            cmt = CSV.read(joinpath(out_base, "maps", "mini_mass_time", "confusion_contour.csv"),
+                           DataFrame)
+            @test any((abs.(cmt.X_Bound .+ 1.5) .< 1e-9) .& (abs.(cmt.Y_Bound .+ 2.0) .< 1e-9))
 
             # the spin map must be capped inside the physical box
             cm = CSV.read(joinpath(out_base, "maps", "mini_spin_map", "confusion_contour.csv"),
