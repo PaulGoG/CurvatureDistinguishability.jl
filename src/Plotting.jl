@@ -85,22 +85,39 @@ end
 """
     pi_ticks(lo, hi) -> (values, labels) or nothing
 
-Ticks at rational multiples of π with a *single* denominator chosen from
-(1, 2, 3, 4, 6, 8, 12) so that 3–7 uniformly spaced ticks fit in `[lo, hi]`.
-Returns `nothing` when no denominator fits (caller falls back to linear
-ticks).
+Ticks at rational multiples of π with a *single* denominator so that 5–9
+(or, failing that, 3–9) uniformly spaced ticks fit in `[lo, hi]`.
+Denominators are tried in readability order — halves/quarters before
+thirds — so a ±π range gets `π/4` ticks rather than the unusual `π/3`
+family. Returns `nothing` when no denominator fits (caller falls back to
+linear ticks).
 """
 function pi_ticks(lo::Real, hi::Real)
-    for den in (1, 2, 3, 4, 6, 8, 12)
+    for wanted in (5:9, 3:9), den in (4, 2, 6, 8, 1, 3, 12)
         step = π / den
         kmin = ceil(Int, lo / step - 1e-9)
         kmax = floor(Int, hi / step + 1e-9)
         n = kmax - kmin + 1
-        if 3 <= n <= 7
+        if n in wanted
             return [k * step for k in kmin:kmax], [pi_label(k, den) for k in kmin:kmax]
         end
     end
     return nothing
+end
+
+"""
+    sci_latex(v; sig = 3) -> String
+
+LaTeX fragment for a scalar: plain `%.4g` when the exponent is small,
+`m×10^e` otherwise — for annotations, never bare `1e-05` e-notation.
+"""
+function sci_latex(v::Real; sig::Int = 3)
+    v == 0 && return "0"
+    isfinite(v) || return string(v)
+    e = floor(Int, log10(abs(v)))
+    -3 <= e <= 3 && return @sprintf("%.4g", round(v, sigdigits = sig + 1))
+    m = round(v / 10.0^e, sigdigits = sig)
+    return string(@sprintf("%g", m), "\\times 10^{", e, "}")
 end
 
 function pi_label(k::Integer, den::Integer)
@@ -136,24 +153,23 @@ scaled_tickformat(e::Int) = values -> [@sprintf("%.3g", v / 10.0^e) for v in val
 """
     sci_tick_labels(values) -> Vector{LaTeXString}
 
-Per-tick scientific-notation labels (e.g. `1.5×10⁻⁴`). Used on confusion-map
-axes whose deviations are very small. Deliberately puts the exponent on each
-tick *individually* rather than factoring a common `(×10ⁿ)` into the axis
-label: the parameters are O(1)-rescaled Fisher coordinates, and a common
-axis multiplier would read as a physical rescaling and mislead the reader.
+Per-tick scientific-notation labels with a **common exponent** across the
+axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`). Used on confusion-map
+axes whose deviations are very small. The exponent is written on each tick
+individually rather than factored into the axis label — the parameters are
+O(1)-rescaled Fisher coordinates and a common axis multiplier would read as
+a physical rescaling — but it is the *same* exponent for every tick, so the
+axis never mixes 10⁻³ with 10⁻⁴ labels.
 """
 function sci_tick_labels(values)
-    out = LaTeXString[]
-    for v in values
-        if abs(v) < 1e-300
-            push!(out, L"0")
-        else
-            p = floor(Int, log10(abs(v)))
-            m = round(v / 10.0^p, sigdigits = 2)
-            push!(out, latexstring(@sprintf("%g", m), "\\times 10^{", p, "}"))
-        end
+    maxabs = maximum(abs, values; init = 0.0)
+    maxabs <= 0 && return [L"0" for _ in values]
+    e = floor(Int, log10(maxabs))
+    return map(values) do v
+        abs(v) < 1e-300 && return L"0"
+        m = round(v / 10.0^e, sigdigits = 3)
+        latexstring(@sprintf("%g", m), "\\times 10^{", e, "}")
     end
-    return out
 end
 
 # --- figure builders --------------------------------------------------------
@@ -222,14 +238,22 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
             dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)), length = 160)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
             lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:purple, 0.9), linewidth = 2.6)
-            # top-right, clear of the clamped floor points at the top-left
-            text!(ax2, maximum(deltas), 2.03;
-                  text = @sprintf("1 + c₁δ + c₂δ²,  c₁ = %.3g", c1),
+            # top-right, clear of the off-scale floor markers at the top-left
+            text!(ax2, maximum(deltas), 1.98;
+                  text = latexstring("1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = ",
+                                     sci_latex(c1)),
                   align = (:right, :top), fontsize = 16, color = :purple)
         end
+        # excluded (floor-dominated) points: in-range ones as faint grey dots,
+        # divergent ones as open triangles pinned at the top = "off scale above"
         excl = .!clean
-        any(excl) && scatter!(ax2, deltas[excl], clamp.(ratio[excl], 0.0, 2.05);
-                              color = (:grey, 0.55), markersize = 12)
+        offscale = excl .& (ratio .> 2.05)
+        inrange = excl .& .!offscale
+        any(inrange) && scatter!(ax2, deltas[inrange], ratio[inrange];
+                                 color = (:grey, 0.55), markersize = 12)
+        any(offscale) && scatter!(ax2, deltas[offscale], fill(2.02, count(offscale));
+                                  marker = :utriangle, color = :transparent,
+                                  strokecolor = :grey45, strokewidth = 1.6, markersize = 14)
         scatter!(ax2, deltas[clean], ratio[clean]; color = :dodgerblue,
                  strokecolor = :black, strokewidth = 1.0, markersize = 12)
         ylims!(ax2, 0.0, 2.1)
@@ -276,27 +300,48 @@ function residual_figure(spec, meta)
                linewidth = 3.0, label = "best fit, channel E")
         axislegend(ax1; position = :rt)
 
+        # y-range of the residual panel comes from the residual DATA — the
+        # per-bin noise reference 1/Δf can sit many decades above the curves,
+        # and forcing it into frame would crush the physics into a thin band.
+        res_pos = filter(>(0), vcat(spec.res_rms_A, spec.res_rms_E))
+        ylo2 = minimum(res_pos) / 6
+        yhi2 = max(maximum(spec.res_max_A), maximum(res_pos)) * 6
+        noise_level = 1.0 / meta.df
+        noise_in_frame = noise_level < 30 * yhi2
+        noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
+
         ax2 = Axis(fig[2, 1]; xscale = log10, yscale = log10,
                    xlabel = L"f\ \ [\mathrm{Hz}]",
                    ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-                   xticks = xt, yticklabelspace = 70.0)
+                   xticks = xt, yticks = decade_ticks(ylo2, yhi2),
+                   yticklabelspace = 70.0)
         band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A; color = (:crimson, 0.18))
         lines!(ax2, spec.f, spec.res_rms_A; color = :crimson, linewidth = 2.8,
                label = "residual, channel A")
         lines!(ax2, spec.f, spec.res_rms_E; color = :darkorange3, linewidth = 2.8,
                label = "residual, channel E")
-        noise_level = 1.0 / meta.df
-        hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
-        text!(ax2, fmax, noise_level; text = "per-bin noise level",
-              align = (:right, :top), fontsize = 16, color = :grey35)
-        axislegend(ax2; position = :rb)
-        # δ*/integral annotation in the empty middle band (relative coords):
-        # the residual curves sit at the bottom and the per-bin-noise line near
-        # the top, so ~60% up the left edge crosses neither.
-        text!(ax2, 0.03, 0.62; space = :relative,
-              text = @sprintf("δ* = %.3g;  ∫df = D² = %.3g  (theory %.3g)",
-                              meta.delta_star, meta.d2_num, meta.d2_theo),
+        if noise_in_frame
+            hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
+            text!(ax2, fmax, noise_level; text = "per-bin noise level",
+                  align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
+        else
+            # reference is off scale — state its value instead of distorting the
+            # axis; second annotation line under the δ*/integral line (top-left)
+            text!(ax2, 0.03, 0.81; space = :relative,
+                  text = latexstring("\\mathrm{noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+                                     sci_latex(noise_level),
+                                     "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}"),
+                  align = (:left, :center), fontsize = 15, color = :grey35)
+        end
+        axislegend(ax2; position = :lb)
+        # δ*/integral annotation top-left: the residual curves rise towards
+        # high f, so the upper-left region is free once the y-range is tight.
+        text!(ax2, 0.03, 0.90; space = :relative,
+              text = latexstring("\\delta^* = ", sci_latex(meta.delta_star),
+                                 ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
+                                 "\\;\\; (\\mathrm{theory}\\ ", sci_latex(meta.d2_theo), ")"),
               align = (:left, :center), fontsize = 17)
+        ylims!(ax2, ylo2, yhi2)
 
         linkxaxes!(ax1, ax2)
         xlims!(ax2, fmin, fmax) # frame ends exactly on the band (linked to ax1)
@@ -355,10 +400,17 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         fig = Figure(size = same_units ? (820, 830) : (960, 720))
 
         lox, hix, loy, hiy = box
-        xmax = maximum(abs, x)
-        ymax = maximum(abs, y)
-        ex = axis_exponent(xmax)
-        ey = axis_exponent(ymax)
+        # Limits fit the ZONE, not a symmetric ±max box: prior-capped zones are
+        # strongly asymmetric (e.g. spins live in the lower-left wedge) and
+        # symmetric limits waste most of the canvas on empty quadrants.
+        xlo_d, xhi_d = extrema(x)
+        ylo_d, yhi_d = extrema(y)
+        padx = 0.08 * (xhi_d - xlo_d)
+        pady = 0.08 * (yhi_d - ylo_d)
+        xlo, xhi = xlo_d - padx, xhi_d + padx
+        ylo, yhi = ylo_d - pady, yhi_d + pady
+        ex = axis_exponent(max(abs(xlo), abs(xhi)))
+        ey = axis_exponent(max(abs(ylo), abs(yhi)))
 
         # No `(×10ⁿ)` multiplier in the axis label — the deviations are
         # O(1)-rescaled Fisher coordinates; a common multiplier would read as a
@@ -366,18 +418,21 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         ax = Axis(fig[1, 1]; xlabel = deviation_label(px), ylabel = deviation_label(py))
         same_units && (ax.aspect = DataAspect())
 
-        # π ticks for phase axes, per-tick scientific notation for small values
+        # π ticks for phase axes, per-tick scientific notation for small values;
+        # tick selection sees the ACTUAL (asymmetric) axis range
         if px == 4
-            pt = pi_ticks(-1.06 * xmax, 1.06 * xmax)
+            pt = pi_ticks(xlo, xhi)
             pt !== nothing && (ax.xticks = pt)
-        elseif ex != 0
-            ax.xtickformat = sci_tick_labels
+        else
+            ax.xticks = LinearTicks(6)
+            ex != 0 && (ax.xtickformat = sci_tick_labels)
         end
         if py == 4
-            pt = pi_ticks(-1.06 * ymax, 1.06 * ymax)
+            pt = pi_ticks(ylo, yhi)
             pt !== nothing && (ax.yticks = pt)
-        elseif ey != 0
-            ax.ytickformat = sci_tick_labels
+        else
+            ax.yticks = LinearTicks(6)
+            ey != 0 && (ax.ytickformat = sci_tick_labels)
         end
 
         poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
@@ -401,17 +456,22 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         isfinite(loy) && hlines!(ax, [loy]; color = :grey35, linestyle = :dash, linewidth = 1.4)
         isfinite(hiy) && hlines!(ax, [hiy]; color = :grey35, linestyle = :dash, linewidth = 1.4)
 
-        pad = 0.07
-        xlims!(ax, -xmax * (1 + pad), xmax * (1 + pad))
-        ylims!(ax, -ymax * (1 + pad), ymax * (1 + pad))
+        xlims!(ax, xlo, xhi)
+        ylims!(ax, ylo, yhi)
 
         if prior_frac > 0
-            msg = @sprintf("%.0f%% of directions prior-limited", 100 * prior_frac)
+            # never round a nonzero fraction to "0%": the capped boundary run
+            # can be visually dominant yet contain few sampled directions
+            # (adaptive refinement leaves flat prior walls sparsely sampled)
+            pctstr(f) = 100f < 0.5 ? "<1%" : @sprintf("%.0f%%", 100f)
+            msg = pctstr(prior_frac) * " of directions prior-limited"
             degenerate_frac > 0 &&
-                (msg *= @sprintf(" (%.0f%% degenerate)", 100 * degenerate_frac))
-            # on top of the plot, outside the box (a thin Label row above the axis)
+                (msg *= " (" * pctstr(degenerate_frac) * " degenerate)")
+            # on top of the plot, outside the box (a thin Label row above the
+            # axis); tellwidth = false so the label's own width never dictates
+            # the column width — otherwise the axis collapses to a narrow strip
             Label(fig[0, 1], msg; fontsize = 18, color = :grey35, halign = :right,
-                  padding = (0, 4, 2, 0))
+                  padding = (0, 4, 2, 0), tellwidth = false)
         end
         return fig
     end
