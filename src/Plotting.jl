@@ -151,15 +151,45 @@ never mixed exponents on one axis), 2–3 significant digits.
 scaled_tickformat(e::Int) = values -> [@sprintf("%.3g", v / 10.0^e) for v in values]
 
 """
+    offset_ticks(lo, hi) -> (values, labels, exponent, lo_snap, hi_snap) or nothing
+
+Tick selection for small-value linear axes: every tick is an **integer
+mantissa** of one common power of 10 (the `exponent`, annotated once at the
+end of the axis by the caller), with mantissa steps preferring multiples of
+5 over 2 over 1, and the axis limits snapped *outward* to the outermost
+ticks so the frame ends exactly on labelled ticks. Two acceptance passes
+(4–8 ticks with ≤35% stretch, then 3–9 with ≤60%) keep the stretching
+modest; returns `nothing` when no clean grid exists (caller falls back to
+per-tick scientific notation).
+"""
+function offset_ticks(lo::Real, hi::Real)
+    span = hi - lo
+    (isfinite(span) && span > 0) || return nothing
+    kmid = floor(Int, log10(span))
+    for (nrange, cap) in ((4:8, 0.35), (3:9, 0.60))
+        for q in (5, 2, 1), k in (kmid - 2):(kmid + 1)
+            step = q * 10.0^k
+            lo_s = floor(lo / step + 1e-9) * step
+            hi_s = ceil(hi / step - 1e-9) * step
+            n = round(Int, (hi_s - lo_s) / step) + 1
+            n in nrange || continue
+            (hi_s - hi) + (lo - lo_s) <= cap * span || continue
+            vals = [lo_s + i * step for i in 0:(n - 1)]
+            labels = [latexstring(string(round(Int, v / 10.0^k))) for v in vals]
+            return (vals, labels, k, lo_s, hi_s)
+        end
+    end
+    return nothing
+end
+
+"""
     sci_tick_labels(values) -> Vector{LaTeXString}
 
 Per-tick scientific-notation labels with a **common exponent** across the
-axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`). Used on confusion-map
-axes whose deviations are very small. The exponent is written on each tick
-individually rather than factored into the axis label — the parameters are
-O(1)-rescaled Fisher coordinates and a common axis multiplier would read as
-a physical rescaling — but it is the *same* exponent for every tick, so the
-axis never mixes 10⁻³ with 10⁻⁴ labels.
+axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`) — the fallback for
+small-value axes where `offset_ticks` finds no clean integer-mantissa grid.
+The exponent is the *same* for every tick, so an axis never mixes 10⁻³
+with 10⁻⁴ labels.
 """
 function sci_tick_labels(values)
     maxabs = maximum(abs, values; init = 0.0)
@@ -426,34 +456,61 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
                 yhi_d = min(max(yhi_d, maximum(fy)), yhi_d + 0.4 * yr)
             end
         end
-        padx = 0.08 * (xhi_d - xlo_d)
-        pady = 0.08 * (yhi_d - ylo_d)
-        xlo, xhi = xlo_d - padx, xhi_d + padx
-        ylo, yhi = ylo_d - pady, yhi_d + pady
-        ex = axis_exponent(max(abs(xlo), abs(xhi)))
-        ey = axis_exponent(max(abs(ylo), abs(yhi)))
+        ex = axis_exponent(max(abs(xlo_d), abs(xhi_d)))
+        ey = axis_exponent(max(abs(ylo_d), abs(yhi_d)))
 
-        # No `(×10ⁿ)` multiplier in the axis label — the deviations are
-        # O(1)-rescaled Fisher coordinates; a common multiplier would read as a
-        # physical rescaling. Small deviations get per-tick scientific notation.
         ax = Axis(fig[1, 1]; xlabel = deviation_label(px), ylabel = deviation_label(py))
         same_units && (ax.aspect = DataAspect())
 
-        # π ticks for phase axes, per-tick scientific notation for small values;
-        # tick selection sees the ACTUAL (asymmetric) axis range
+        # Per-axis ticks and final limits. Phase axes: rational-π ticks over a
+        # padded range. Small-value axes: integer-mantissa ticks of ONE common
+        # power of 10 — the power annotated once at the end of the axis, never
+        # per tick and never inside the axis label — with mantissa steps
+        # preferring multiples of 5 and the limits snapped outward so the
+        # frame ends exactly on labelled ticks. Fallback when no clean grid
+        # exists: per-tick common-exponent scientific notation.
+        xlo, xhi = xlo_d - 0.08 * (xhi_d - xlo_d), xhi_d + 0.08 * (xhi_d - xlo_d)
+        ylo, yhi = ylo_d - 0.08 * (yhi_d - ylo_d), yhi_d + 0.08 * (yhi_d - ylo_d)
         if px == 4
             pt = pi_ticks(xlo, xhi)
             pt !== nothing && (ax.xticks = pt)
+        elseif ex != 0
+            ot = offset_ticks(xlo_d, xhi_d)
+            if ot === nothing
+                ax.xticks = LinearTicks(6)
+                ax.xtickformat = sci_tick_labels
+            else
+                vals, labels, e10, lo_s, hi_s = ot
+                ax.xticks = (vals, labels)
+                xlo, xhi = lo_s, hi_s
+                # common power of 10 at the end of the x axis: just right of
+                # the frame's bottom corner, clear of the last tick label
+                e10 != 0 && Label(fig[1, 2], latexstring("\\times 10^{", e10, "}");
+                                  fontsize = 20, halign = :left, valign = :bottom,
+                                  padding = (2, 0, 0, 0), tellheight = false)
+            end
         else
             ax.xticks = LinearTicks(6)
-            ex != 0 && (ax.xtickformat = sci_tick_labels)
         end
         if py == 4
             pt = pi_ticks(ylo, yhi)
             pt !== nothing && (ax.yticks = pt)
+        elseif ey != 0
+            ot = offset_ticks(ylo_d, yhi_d)
+            if ot === nothing
+                ax.yticks = LinearTicks(6)
+                ax.ytickformat = sci_tick_labels
+            else
+                vals, labels, e10, lo_s, hi_s = ot
+                ax.yticks = (vals, labels)
+                ylo, yhi = lo_s, hi_s
+                # common power of 10 at the end of the y axis: above the frame
+                e10 != 0 && Label(fig[0, 1], latexstring("\\times 10^{", e10, "}");
+                                  fontsize = 20, halign = :left, valign = :bottom,
+                                  padding = (0, 0, 2, 0), tellwidth = false)
+            end
         else
             ax.yticks = LinearTicks(6)
-            ey != 0 && (ax.ytickformat = sci_tick_labels)
         end
 
         poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
