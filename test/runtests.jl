@@ -9,9 +9,9 @@ using TOML
 using Logging
 
 const TWD = TwoWaveformDistinguishability
-const FIXDIR = joinpath(@__DIR__, "fixtures", "legacy")
+const FIXDIR = joinpath(@__DIR__, "fixtures", "reference")
 
-# Fixture context: the tiny 201-bin grid the legacy code was run on.
+# Fixture context: the tiny 201-bin grid the reference values were generated on.
 const FIX_DF = 1e-5
 const FIX_FREQS = collect(1e-3:FIX_DF:3e-3)
 const FIX_PHYS = (mass_scale = 10.0, time_scale = 100.0, amp_scale = 1e-21, eta = 0.25,
@@ -25,7 +25,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 @testset "TwoWaveformDistinguishability.jl" begin
 
     @testset "Noise PSD (Robson 2019)" begin
-        # instrumental part must reproduce the legacy values bitwise-tight
+        # instrumental part must reproduce the reference values bitwise-tight
         psd_fix = CSV.read(joinpath(FIXDIR, "psd.csv"), DataFrame; header = false)
         @test all(isapprox.(FIX_SN, psd_fix[:, 2]; rtol = 1e-14))
 
@@ -58,7 +58,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         h_sc = [strain_bin(f, A, Mc, tc, THETA0[4], beta, FIX_WP.amp_33_factor) for f in FIX_FREQS]
         @test h_bc == h_sc
         @test eltype(h_bc) <: Complex
-        # legacy keyword API routes to the same computation
+        # keyword API routes to the same computation
         @test scaled_waveform_model(THETA0, FIX_FREQS; FIX_PHYS...) == h_bc
         # type stability of the hot scalar core
         @test (@inferred strain_bin(1e-3, A, Mc, tc, 0.0, beta, 0.1)) isa ComplexF64
@@ -69,7 +69,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         A2, E2 = project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)
         @test length(A2) == length(FIX_FREQS) == length(E2)
 
-        # legacy 3-channel API: identical A/E plus an identically zero T
+        # 3-channel keyword API: identical A/E plus an identically zero T
         A3, E3, T3 = project_to_tdi(h, FIX_FREQS, THETA0; FIX_PHYS...)
         @test A3 == A2 && E3 == E2
         @test all(iszero, T3)
@@ -102,7 +102,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test d2h ≈ ForwardDiff.derivative(s -> ForwardDiff.derivative(gvec, s), 0.3) rtol = 1e-12
     end
 
-    @testset "Geometry A/B against legacy fixtures" begin
+    @testset "Geometry A/B against reference fixtures" begin
         # 1D sweep geometry
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
         u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
@@ -128,7 +128,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 end
                 if row.G_uu > 1e-6
                     @test g ≈ row.G_uu rtol = 1e-6
-                    # capped-mapping radius formula ≡ legacy x/y bounds (s(φ) cancels)
+                    # capped-mapping radius formula ≡ reference x/y bounds (s(φ) cancels)
                     r_math = (16.0 * 1.0 / K)^(1 / 4)
                     @test r_math ≈ hypot(row.X_Bound, row.Y_Bound) rtol = 1e-8
                 end
@@ -210,7 +210,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test_throws ErrorException loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
                                                   FIX_WP, FakeGPU())
 
-        # A/B against the legacy LBFGS fixtures on the clean separations
+        # A/B against the reference LBFGS fixtures on the clean separations
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
         u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
         K_u, g_uu = compute_extrinsic_curvature(THETA0, u_raw, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
@@ -314,7 +314,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
 
-            # safe-by-default optimizer tolerances (2026-07-21 stall lesson)
+            # safe-by-default optimizer tolerances
             cfg_def = load_and_validate_config(write_cfg(dir, ""))
             @test cfg_def.g_tol == 1e-10 && cfg_def.max_iterations == 100
             @test_logs (:warn, r"tighter than the numerical precision floor") match_mode = :any load_and_validate_config(
@@ -322,13 +322,6 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test_logs (:warn, r"floor fits burn the full cap") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nmax_iterations = 1000\n"))
 
-            # deprecated hardware keys are accepted with warnings and honored
-            cfg_fc = @test_logs (:warn, r"force_cpu is deprecated") match_mode = :any load_and_validate_config(
-                write_cfg(dir, "[hardware]\nforce_cpu = true\ngpu_backend = \"auto\"\n"))
-            @test cfg_fc.gpu_backend === :none
-            cfg_vr = @test_logs (:warn, r"max_vram_gb is deprecated") match_mode = :any load_and_validate_config(
-                write_cfg(dir, "[hardware]\nmax_vram_gb = 4.0\n"))
-            @test cfg_vr.max_vram_gb == 4.0
             cfg_vs = load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))
             @test cfg_vs.max_vram_gb == 6.0
         end

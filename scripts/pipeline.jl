@@ -28,11 +28,10 @@ isfile(config_path) || error("Configuration file not found: $config_path")
 const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
                           "metal" => "Metal", "oneapi" => "oneAPI")
 let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
-    force_cpu = get(hw, "force_cpu", false) === true
     requested = lowercase(String(get(hw, "gpu_backend", "auto")))
     wanted = requested == "auto" ? collect(keys(GPU_PACKAGES)) :
              haskey(GPU_PACKAGES, requested) ? [requested] : String[]
-    if !force_cpu
+    if lowercase(String(get(hw, "gpu_backend", "auto"))) != "none"
         for key in wanted
             pkgname = GPU_PACKAGES[key]
             if Base.find_package(pkgname) === nothing

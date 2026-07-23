@@ -108,7 +108,7 @@ struct DirDerivOuter end
     value_and_directional_derivs(g, s0) -> (h, dh, d2h)
 
 Value, first and second directional derivative of the vector map `g` at `s0`
-from a *single* evaluation with nested dual numbers (the legacy code paid a
+from a *single* evaluation with nested dual numbers (instead of paying a
 separate AD pass for `dh`).
 """
 function value_and_directional_derivs(g, s0::Float64)
@@ -174,7 +174,7 @@ function compute_extrinsic_curvature(theta_0::AbstractVector, u_dir::AbstractVec
     return compute_extrinsic_curvature_from_basis(theta_0, u_dir, basis, freqs, Sn_vals, df, wp)
 end
 
-# --- legacy-compatible keyword variants -------------------------------------
+# --- keyword convenience variants -------------------------------------------
 
 function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
                                Sn_vals::AbstractVector, df::Real; kwargs...)

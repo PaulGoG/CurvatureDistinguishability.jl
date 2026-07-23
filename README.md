@@ -40,7 +40,7 @@ TwoWaveformDistinguishability/
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
-│   └── fixtures/legacy/    # committed regression fixtures (legacy-code outputs)
+│   └── fixtures/reference/ # committed golden-value regression fixtures
 ├── benchmarks/             # BenchmarkTools scripts (own environment)
 ├── docs/                   # Documenter.jl sources
 └── data/{logs,outputs}/    # run artifacts (git-ignored)
@@ -115,7 +115,7 @@ overwritten.
 
 | Component | Status |
 |---|---|
-| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed legacy fixtures |
+| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
 | Robson (2019) confusion noise (Eq. 14, Table 1) | **fixed** — the pre-2026 campaign ran with an inert confusion term (coefficient transcription bug), i.e. instrumental noise only |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box`/`lbfgs` fallbacks) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |

@@ -50,7 +50,7 @@ end
 """
     tdi_modulation(f, p; kwargs...) -> (mod_A, mod_E, mod_T)
 
-Legacy-compatible wrapper around [`tdi_modulation_bin`](@ref) taking the
+Keyword convenience wrapper around [`tdi_modulation_bin`](@ref) taking the
 scaled parameter vector `p`; `mod_T` is identically zero (null channel).
 """
 function tdi_modulation(f::Real, p::AbstractVector; kwargs...)
@@ -63,7 +63,7 @@ end
     project_to_tdi(h_strain, freqs, p, wp::WaveformParams)
 
 Project a frequency-domain strain into the TDI response channels in a single
-fused pass (one loop, one allocation per channel — replaces the legacy
+fused pass (one loop, one allocation per channel — instead of a
 four-broadcast tuple-unpacking implementation). Returns `(A, E)` or
 `(A, E, T)` depending on `wp.include_t_channel`; `T` is identically zero.
 """
@@ -90,7 +90,7 @@ end
 """
     project_to_tdi(h_strain, freqs, p; kwargs...) -> (A, E, T)
 
-Legacy-compatible keyword variant; always returns the full 3-channel tuple
+Keyword convenience variant; always returns the full 3-channel tuple
 with an identically zero `T`.
 """
 function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector; kwargs...)

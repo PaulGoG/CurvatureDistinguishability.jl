@@ -118,7 +118,7 @@ end
 
 Build a [`WaveformParams`](@ref) from a keyword soup, silently ignoring any
 keys that are not fields (so pipeline call sites can splat a mixed
-configuration NamedTuple through legacy keyword APIs).
+configuration NamedTuple through the keyword APIs).
 """
 function waveform_params(; kwargs...)
     known = filter(p -> first(p) in fieldnames(WaveformParams), pairs(kwargs))
