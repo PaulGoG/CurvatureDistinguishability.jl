@@ -51,16 +51,22 @@ function render_sweep(label, run, case)
     res = CSV.read(joinpath(d, "results.csv"), DataFrame)
     m = TOML.parsefile(joinpath(d, "sweep_meta.toml"))
     ratio = res.D2_Numerical ./ res.D2_Theoretical
-    conv = hasproperty(res, :Converged) ? res.Converged : trues(nrow(res))
-    clean = (ratio .> 0.5) .& (ratio .< 2.0) .& conv
     fl = Float64(get(m, "floor_level", -1.0)); fl < 0 && (fl = NaN)
+    # display-time refit under the above-floor fit rule (the persisted
+    # sweep_meta.toml keeps the campaign-era values untouched): fits use only
+    # points strictly above the optimizer floor; convergence flags do not
+    # exclude a point
+    TWDO = TwoWaveformDistinguishability.Orchestrator
+    clean = isnan(fl) ? (res.D2_Numerical .> 0) : (res.D2_Numerical .> fl)
+    slope, slope_err = count(clean) >= 3 ?
+        TWDO.loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
+    c1, _, c2 = TWDO.ratio_correction_fit(res.Delta[clean], ratio[clean])
     fig = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
                          rho_sq = Float64(get(m, "rho_sq", 1.0)),
                          delta_min = Float64(get(m, "delta_min", NaN)),
-                         slope = Float64(get(m, "slope", NaN)),
-                         slope_err = Float64(get(m, "slope_err", NaN)),
+                         slope = slope, slope_err = slope_err,
                          clean = collect(clean), floor_level = fl,
-                         c1 = Float64(get(m, "c1", NaN)), c2 = Float64(get(m, "c2", NaN)))
+                         c1 = c1, c2 = c2)
     save(png_at("$(label)_sweep_$(case)_scaling"), fig; px_per_unit = 4); n += 1
     sp = joinpath(d, "residual_spectrum.csv")
     if isfile(sp)

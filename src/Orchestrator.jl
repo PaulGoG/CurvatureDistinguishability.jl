@@ -291,11 +291,18 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
         ratio = D2_num ./ D2_theo
-        clean = (ratio .> 0.5) .& (ratio .< 2.0)
-        floor_pts = findall(i -> !clean[i] && ratio[i] >= 2.0, 1:n)
+        # Optimizer-floor bootstrap: grossly inflated points (ratio ≥ 2) are
+        # floor-dominated and define floor_level; the slope and ratio fits
+        # then use only points strictly ABOVE the floor — borderline points
+        # inside the floor band are excluded even when their ratio looks
+        # tame, and non-convergence flags do not exclude a point (the
+        # iteration/tolerance caps are strict enough that flagged points at
+        # ratio ≈ 1 are genuine optima).
+        floor_pts = findall(>=(2.0), ratio)
         floor_level = isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
+        clean = isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
         slope, slope_err = count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
-        logline(log_io, @sprintf("        clean points %d/%d; fitted log-log slope %.4f ± %.4f",
+        logline(log_io, @sprintf("        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
                                  count(clean), n, slope, slope_err))
         c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
         delta_valid = (isfinite(c1) && abs(c1) > 1e-12) ? 0.1 / abs(c1) : Inf

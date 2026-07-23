@@ -376,6 +376,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         vb, _ = decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
+        # 10⁰ always renders as plain "1" — on decade ticks and the 1-2-5 series
+        _, l0 = decade_ticks(0.5, 50.0)
+        @test l0[1].s == "\$1\$"
+        v125, l125 = TWD.Plotting.log_ticks_125(5e-2, 6.0)
+        @test any(≈(1.0), v125) && any(≈(2e-1), v125)
+        @test l125[findfirst(≈(1.0), v125)].s == "\$1\$"
+        @test !any(l -> occursin("10^{0}", l.s), l125)
+
         # offset ticks (confusion-map axes): one factored power of 10 with
         # integer mantissas preferring multiples of 5, limits snapped outward
         # so the frame ends exactly on the outermost labelled ticks
