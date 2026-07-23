@@ -270,20 +270,19 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         floored = isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
                   falses(length(d2_num))
         any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
-                                 marker = '×', color = :grey15, markersize = 34)
+                                 marker = '×', color = :grey15, markersize = 42)
         ylims!(ax1, ylo, yhi)
 
-        # legend on top of the figure: theory line, numerical points, and the
-        # fitted slope as a text-only entry (transparent patch) — no formula,
-        # no repeated symbols
+        # legend on top of the figure: two entries only — the fitted slope is
+        # part of the D²_numerical label, not a separate item
         Legend(fig[0, 1],
-               [th, sc, LineElement(color = :transparent)],
-               [L"D^2_{\mathrm{theoretical}}", L"D^2_{\mathrm{numerical}}",
-                latexstring(@sprintf("\\mathrm{slope:}\\ %.3f \\pm %.3f",
+               [th, sc],
+               [L"D^2_{\mathrm{theoretical}}",
+                latexstring(@sprintf("D^2_{\\mathrm{numerical}},\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
                                      slope, slope_err))];
                orientation = :horizontal, framevisible = false,
                tellwidth = false, tellheight = true, labelsize = 19,
-               patchsize = (30, 4), colgap = 12, patchlabelgap = 5,
+               patchsize = (30, 4), colgap = 16, patchlabelgap = 5,
                padding = (0, 0, 4, 0))
 
         if isfinite(floor_level) && floor_level > ylo
@@ -316,11 +315,11 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         # flagged points at ratio ≈ 1 are genuine optima.
         ratio = d2_num ./ d2_theo
         hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
-        if isfinite(c1)
-            # higher-order-terms fit in dark blue: from the first point on the
-            # left all the way past the right margin (clipped by the frame)
-            dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)) + 0.4,
-                               length = 200)
+        if isfinite(c1) && any(clean)
+            # higher-order-terms fit in dark blue: from the first NON-excluded
+            # point all the way past the right margin (clipped by the frame)
+            dd = 10.0 .^ range(log10(minimum(deltas[clean])),
+                               log10(maximum(deltas)) + 0.4, length = 200)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
             lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = :navy, linewidth = 3.0)
             # top-right, clear of the clamped floor markers at the top-left
@@ -333,8 +332,15 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         scatter!(ax2, deltas[pos], rat_c[pos]; color = :dodgerblue,
                  strokecolor = :black, strokewidth = 1.2, markersize = 17)
         any(floored) && scatter!(ax2, deltas[floored], rat_c[floored];
-                                 marker = '×', color = :grey15, markersize = 27)
+                                 marker = '×', color = :grey15, markersize = 34)
         ylims!(ax2, 0.0, 2.1)
+
+        # explicit x-limits from the DATA with a small log margin: the fit
+        # curve and reference line intentionally overshoot the last point, and
+        # autolimits would otherwise stretch the frame after them
+        logspan = log10(maximum(deltas)) - log10(minimum(deltas))
+        xpad = 10.0^(0.04 * logspan)
+        xlims!(ax2, minimum(deltas) / xpad, maximum(deltas) * xpad)
 
         linkxaxes!(ax1, ax2)
         hidexdecorations!(ax1; grid = false, ticks = false)
