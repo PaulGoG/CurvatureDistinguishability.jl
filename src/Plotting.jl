@@ -208,6 +208,20 @@ function offset_ticks(lo::Real, hi::Real)
 end
 
 """
+    coef_latex(v) -> String
+
+Fit-coefficient formatting: ALWAYS mantissa × power-of-10 with two decimal
+places (`1.07×10⁻³`); the ×10⁰ factor alone is omitted.
+"""
+function coef_latex(v::Real)
+    v == 0 && return "0"
+    isfinite(v) || return string(v)
+    e = floor(Int, log10(abs(v)))
+    m = @sprintf("%.2f", v / 10.0^e)
+    return e == 0 ? m : string(m, "\\times 10^{", e, "}")
+end
+
+"""
     sci_tick_labels(values) -> Vector{LaTeXString}
 
 Per-tick scientific-notation labels with a **common exponent** across the
@@ -278,7 +292,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         Legend(fig[0, 1],
                [th, sc],
                [L"D^2_{\mathrm{theoretical}}",
-                latexstring(@sprintf("D^2_{\\mathrm{numerical}},\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
+                latexstring(@sprintf("D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
                                      slope, slope_err))];
                orientation = :horizontal, framevisible = false,
                tellwidth = false, tellheight = true, labelsize = 19,
@@ -316,23 +330,26 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         ratio = d2_num ./ d2_theo
         hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
         if isfinite(c1) && any(clean)
-            # higher-order-terms fit in dark blue: from the first NON-excluded
-            # point all the way past the right margin (clipped by the frame)
+            # higher-order-terms fit in dashed dark blue (reads cleanly over
+            # the solid reference): from the first NON-excluded point all the
+            # way past the right margin (clipped by the frame)
             dd = 10.0 .^ range(log10(minimum(deltas[clean])),
                                log10(maximum(deltas)) + 0.4, length = 200)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = :navy, linewidth = 3.0)
-            # top-right, clear of the clamped floor markers at the top-left
+            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = :navy,
+                   linestyle = :dash, linewidth = 3.0)
+            # coefficients always written out as mantissa × 10ⁿ
+            ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
+            isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
             text!(ax2, maximum(deltas), 1.90;
-                  text = latexstring("1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = ",
-                                     sci_latex(c1)),
+                  text = latexstring(ctext),
                   align = (:right, :top), fontsize = 16, color = :navy)
         end
-        rat_c = clamp.(ratio, 0.0, 2.02)
-        scatter!(ax2, deltas[pos], rat_c[pos]; color = :dodgerblue,
+        # points below the optimizer floor are discarded here — their ratio
+        # is floor-set and meaningless; the top panel shows them X-stricken
+        keep = pos .& .!floored
+        scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
                  strokecolor = :black, strokewidth = 1.2, markersize = 17)
-        any(floored) && scatter!(ax2, deltas[floored], rat_c[floored];
-                                 marker = '×', color = :grey15, markersize = 34)
         ylims!(ax2, 0.0, 2.1)
 
         # explicit x-limits from the DATA with a small log margin: the fit
