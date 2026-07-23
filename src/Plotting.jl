@@ -71,15 +71,16 @@ function decade_ticks(lo::Real, hi::Real; maxticks::Int = 7)
         throw(ArgumentError("decade_ticks requires finite positive bounds, got ($lo, $hi)"))
     pmin = ceil(Int, log10(lo) - 1e-9)
     pmax = floor(Int, log10(hi) + 1e-9)
+    decade_label(p) = p == 0 ? L"1" : L"10^{%$p}" # 10⁰ always shows as 1
     if pmax < pmin # no integer decade inside the range
         p = round(Int, log10(sqrt(lo * hi)))
-        return [10.0^p], [L"10^{%$p}"]
+        return [10.0^p], [decade_label(p)]
     end
     step = max(1, ceil(Int, (pmax - pmin + 1) / maxticks))
     first_p = step * cld(pmin, step)
     ps = collect(first_p:step:pmax)
     isempty(ps) && (ps = [pmin])
-    return 10.0 .^ ps, [L"10^{%$p}" for p in ps]
+    return 10.0 .^ ps, [decade_label(p) for p in ps]
 end
 
 """
@@ -98,8 +99,10 @@ function log_ticks_125(lo::Real, hi::Real)
         v = m * 10.0^p
         (lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)) || continue
         push!(vals, v)
-        push!(labels, m == 1 ? latexstring("10^{", p, "}") :
-                              latexstring(m, "\\times 10^{", p, "}"))
+        # 10⁰ never appears as a factor: 1, 2, 5 in the unit decade
+        push!(labels, p == 0 ? latexstring(m) :
+                      m == 1 ? latexstring("10^{", p, "}") :
+                               latexstring(m, "\\times 10^{", p, "}"))
     end
     return vals, labels
 end
@@ -230,13 +233,17 @@ end
     scaling_figure(deltas, d2_num, d2_theo; rho_sq, delta_min, slope, slope_err,
                    clean, floor_level) -> Figure
 
-Quartic-scaling validation figure: log–log D²(δ) with the δ⁴ prediction, the
-`D² = ρ²` threshold line and δ_min marker, a shaded optimizer-floor band
-(points inside it carry an X overlay — the floor, not the physics, sets
-them), and a linked ratio panel `D²_num/D²_theo` that makes prefactor
-agreement and higher-order departures visible. The legend sits on top of the
-figure: `D²_theo`, `D²_num`, and the fitted `D²_num` slope as a text-only
-entry. `clean` is the Bool mask of points used for the slope fit.
+Quartic-scaling validation figure: log–log D²(δ) with the δ⁴ prediction
+(solid dark red), the `D² = ρ²` threshold line and δ_min marker, a shaded
+optimizer-floor band, and a linked ratio panel `D²_num/D²_theo` that makes
+prefactor agreement and higher-order departures visible (navy fitted
+departure curve, from the first point to the right margin). Both panels use
+one vocabulary: blue dots, and floor-band points stricken through by a thin
+X (clamped at the ratio-panel top, where their true ratio diverges);
+non-convergence carries no special mark. The legend sits on top:
+`D²_theoretical`, `D²_numerical`, and the fitted slope as a text-only
+entry. `clean` is the Bool mask of points used for the fits — the caller
+should pass the above-optimizer-floor mask.
 """
 function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo::AbstractVector;
                         rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
@@ -254,24 +261,25 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
                    ylabel = L"D^2", xticks = xt, yticks = yt, yticklabelspace = 66.0)
 
-        th = lines!(ax1, deltas, d2_theo; color = :crimson, linestyle = :dash,
-                    linewidth = 4.0)
+        th = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
         sc = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
                       strokecolor = :black, strokewidth = 1.4, markersize = 22)
-        # points inside the optimizer-floor band get a visible X on top of the
-        # normal symbol (no legend entry): the floor, not the physics, sets them
+        # points inside the optimizer-floor band are stricken through by a
+        # thin X stretching over the symbol (no legend entry): the floor, not
+        # the physics, sets them
         floored = isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
                   falses(length(d2_num))
         any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
-                                 marker = :xcross, color = :grey25, markersize = 15)
+                                 marker = '×', color = :grey15, markersize = 34)
         ylims!(ax1, ylo, yhi)
 
-        # legend on top of the figure: short D² labels plus the fitted slope
-        # as a text-only entry (transparent patch)
+        # legend on top of the figure: theory line, numerical points, and the
+        # fitted slope as a text-only entry (transparent patch) — no formula,
+        # no repeated symbols
         Legend(fig[0, 1],
                [th, sc, LineElement(color = :transparent)],
-               [L"D^2_{\mathrm{theo}} = (1/16)\, K(u)\, \delta^4", L"D^2_{\mathrm{num}}",
-                latexstring(@sprintf("D^2_{\\mathrm{num}}\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
+               [L"D^2_{\mathrm{theoretical}}", L"D^2_{\mathrm{numerical}}",
+                latexstring(@sprintf("\\mathrm{slope:}\\ %.3f \\pm %.3f",
                                      slope, slope_err))];
                orientation = :horizontal, framevisible = false,
                tellwidth = false, tellheight = true, labelsize = 19,
@@ -279,10 +287,10 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                padding = (0, 0, 4, 0))
 
         if isfinite(floor_level) && floor_level > ylo
-            hspan!(ax1, ylo, floor_level; color = (:grey, 0.13))
+            hspan!(ax1, ylo, floor_level; color = (:grey, 0.30))
             # bottom-right, well clear of the rising δ⁴ line (which is high there)
             text!(ax1, maximum(deltas), floor_level;
-                  text = "optimizer floor", align = (:right, :bottom),
+                  text = "Optimizer floor", align = (:right, :bottom),
                   fontsize = 17, color = :grey35)
         end
         if ylo < rho_sq < yhi
@@ -300,41 +308,32 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                    xlabel = L"\mathrm{parameter\ separation}\ \delta",
                    ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
                    yticklabelspace = 66.0)
-        # The ratio panel reuses the TOP panel's vocabulary. Crimson dashed =
-        # the theory reference (D²_num/D²_theo = 1, same style as the D²_theo
-        # line above); blue dots = points used in the slope fit; blue dots
-        # with a grey X = excluded points (same X as above); open grey
-        # triangles pin excluded points whose ratio lies above the scale. The
-        # fitted departure 1 + c₁δ + c₂δ² is annotated in the theory color and
-        # its curve is drawn only when it visibly leaves the reference line.
+        # The ratio panel repeats the TOP panel's vocabulary exactly: dark-red
+        # solid reference at 1 (the theory), blue dots, and floor-band points
+        # stricken through by the same thin X — their true ratio diverges, so
+        # they sit clamped at the panel top. Non-converged points carry no
+        # special mark: the iteration/tolerance caps are strict enough that
+        # flagged points at ratio ≈ 1 are genuine optima.
         ratio = d2_num ./ d2_theo
-        hlines!(ax2, [1.0]; color = :crimson, linestyle = :dash, linewidth = 3.0)
+        hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
         if isfinite(c1)
-            dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)), length = 160)
+            # higher-order-terms fit in dark blue: from the first point on the
+            # left all the way past the right margin (clipped by the frame)
+            dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)) + 0.4,
+                               length = 200)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            maximum(abs, model .- 1.0) > 0.02 &&
-                lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:crimson, 0.9),
-                       linewidth = 3.0)
-            # top-right, clear of the off-scale markers at the top-left
-            text!(ax2, maximum(deltas), 1.94;
+            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = :navy, linewidth = 3.0)
+            # top-right, clear of the clamped floor markers at the top-left
+            text!(ax2, maximum(deltas), 1.90;
                   text = latexstring("1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = ",
                                      sci_latex(c1)),
-                  align = (:right, :top), fontsize = 16, color = :crimson)
+                  align = (:right, :top), fontsize = 16, color = :navy)
         end
-        excl = .!clean
-        offscale = excl .& (ratio .> 2.05)
-        inrange = excl .& .!offscale
-        if any(inrange)
-            scatter!(ax2, deltas[inrange], ratio[inrange]; color = :dodgerblue,
-                     strokecolor = :black, strokewidth = 1.2, markersize = 17)
-            scatter!(ax2, deltas[inrange], ratio[inrange]; marker = :xcross,
-                     color = :grey25, markersize = 12)
-        end
-        any(offscale) && scatter!(ax2, deltas[offscale], fill(2.02, count(offscale));
-                                  marker = :utriangle, color = :transparent,
-                                  strokecolor = :grey45, strokewidth = 1.8, markersize = 19)
-        scatter!(ax2, deltas[clean], ratio[clean]; color = :dodgerblue,
+        rat_c = clamp.(ratio, 0.0, 2.02)
+        scatter!(ax2, deltas[pos], rat_c[pos]; color = :dodgerblue,
                  strokecolor = :black, strokewidth = 1.2, markersize = 17)
+        any(floored) && scatter!(ax2, deltas[floored], rat_c[floored];
+                                 marker = '×', color = :grey15, markersize = 27)
         ylims!(ax2, 0.0, 2.1)
 
         linkxaxes!(ax1, ax2)
@@ -379,7 +378,7 @@ function residual_figure(spec, meta)
         col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-                   ylabel = L"\mathrm{d}(\mathrm{SNR}^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+                   ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
                    xticks = xt, yticklabelspace = 70.0)
         band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
         band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
@@ -407,26 +406,25 @@ function residual_figure(spec, meta)
         noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
 
         # annotations sit BETWEEN the panels — above the bottom plot, outside
-        # its frame: the δ*/integral line always, the off-scale noise note
-        # only when the 1/Δf reference cannot be drawn inside the frame
+        # its frame, on ONE line: the δ*/integral text left-aligned, and the
+        # off-scale noise note right-aligned in the same row (only when the
+        # 1/Δf reference cannot be drawn inside the frame)
         Label(fig[2, 1],
               latexstring("\\delta^* = ", sci_latex(meta.delta_star),
                           ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
-                          "\\;\\; (\\mathrm{theory}\\ ", sci_latex(meta.d2_theo), ")");
-              fontsize = 17, halign = :left, tellwidth = false, tellheight = true,
+                          "\\;\\; (\\mathrm{th.}\\ ", sci_latex(meta.d2_theo), ")");
+              fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
               padding = (4, 0, 2, 8))
-        ax2_row = 3
         if !noise_in_frame
-            Label(fig[3, 1],
-                  latexstring("\\mathrm{noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+            Label(fig[2, 1],
+                  latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
                               sci_latex(noise_level),
                               "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
-                  fontsize = 15, color = :grey35, halign = :left,
-                  tellwidth = false, tellheight = true, padding = (4, 0, 2, 2))
-            ax2_row = 4
+                  fontsize = 14, color = :grey35, halign = :right,
+                  tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
         end
 
-        ax2 = Axis(fig[ax2_row, 1]; xscale = log10, yscale = log10,
+        ax2 = Axis(fig[3, 1]; xscale = log10, yscale = log10,
                    xlabel = L"f\ \ [\mathrm{Hz}]",
                    ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
                    xticks = xt, yticks = decade_ticks(ylo2, yhi2),
