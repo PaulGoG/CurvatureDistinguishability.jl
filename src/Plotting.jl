@@ -83,6 +83,28 @@ function decade_ticks(lo::Real, hi::Real; maxticks::Int = 7)
 end
 
 """
+    log_ticks_125(lo, hi) -> (values, labels)
+
+Dense log-axis ticks on the 1–2–5 mantissa series inside `[lo, hi]`: whole
+decades labelled `10ⁿ`, intermediate ticks `2×10ⁿ` / `5×10ⁿ`. For log axes
+spanning a few decades where whole-power ticks alone are too sparse.
+"""
+function log_ticks_125(lo::Real, hi::Real)
+    (lo > 0 && hi > lo && isfinite(hi)) ||
+        throw(ArgumentError("log_ticks_125 requires finite bounds 0 < lo < hi, got ($lo, $hi)"))
+    vals = Float64[]
+    labels = LaTeXStrings.LaTeXString[]
+    for p in floor(Int, log10(lo)):ceil(Int, log10(hi)), m in (1, 2, 5)
+        v = m * 10.0^p
+        (lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)) || continue
+        push!(vals, v)
+        push!(labels, m == 1 ? latexstring("10^{", p, "}") :
+                              latexstring(m, "\\times 10^{", p, "}"))
+    end
+    return vals, labels
+end
+
+"""
     pi_ticks(lo, hi) -> (values, labels) or nothing
 
 Ticks at rational multiples of π with a *single* denominator so that 5–9
@@ -332,19 +354,23 @@ scaling law. One grouped legend sits on top of the figure (channel A and
 channel E blocks, each with data / best fit / residual). Channel encodes hue
 (A blue, E warm); the best fit, which lies on top of the data, is a brighter
 dash-dotted line over the dark solid data line; min/max decimation envelopes
-shade both channels. Frame limits hug the plotted data. `spec` is the
-(log-uniformly decimated) spectrum table; `meta` carries `delta_star`, `df`,
-and the integral annotations.
+shade both channels and are covered by the bottom panel's y-range (depth-
+capped so a cancellation spike cannot squish the curves). Frame limits hug
+the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
+off-scale-noise annotations sit between the panels, outside the frames.
+`spec` is the (log-uniformly decimated) spectrum table; `meta` carries
+`delta_star`, `df`, and the integral annotations.
 """
 function residual_figure(spec, meta)
     with_theme(twd_theme()) do
-        fig = Figure(size = (950, 880))
+        fig = Figure(size = (950, 950))
         # Limits and ticks hug the plotted data: with log-uniform decimation
         # the first/last plotted frequencies sit at the band ends, so the
-        # frame ends on the data with no gap at either side.
+        # frame ends on the data with no gap at either side. Dense 1–2–5
+        # log ticks — whole decades alone are too sparse over ~3 decades.
         fmin = minimum(spec.f)
         fmax = maximum(spec.f)
-        xt = decade_ticks(fmin, fmax)
+        xt = log_ticks_125(fmin, fmax)
 
         # channel = hue (A blue, E warm), role = shade + line style: data is
         # the dark solid line, the best fit — which sits right on top of it —
@@ -364,17 +390,43 @@ function residual_figure(spec, meta)
         bE = lines!(ax1, spec.f, spec.bf_rms_E; color = col_bf_E,
                     linestyle = :dashdot, linewidth = 3.0)
 
-        # y-range of the residual panel comes from the residual DATA — the
-        # per-bin noise reference 1/Δf can sit many decades above the curves,
-        # and forcing it into frame would crush the physics into a thin band.
+        # y-range of the residual panel: cover the lines AND the min/max
+        # shadings — but cap the extra depth at ~1.6 decades below the rms
+        # floor, so a near-cancellation spike in a single decimation window
+        # cannot squish the curves into a sliver (the band then clips only
+        # inside the dip). The per-bin noise reference 1/Δf can sit many
+        # decades above the curves and is never allowed to distort the range.
         res_pos = filter(>(0), vcat(spec.res_rms_A, spec.res_rms_E))
-        ylo2 = minimum(res_pos) / 6
-        yhi2 = max(maximum(spec.res_max_A), maximum(res_pos)) * 6
+        band_pos = filter(>(0), vcat(spec.res_min_A, spec.res_min_E))
+        band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
+        ylo2 = max(band_lo / 2, minimum(res_pos) / 40)
+        yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
+                   maximum(res_pos)) * 4
         noise_level = 1.0 / meta.df
         noise_in_frame = noise_level < 30 * yhi2
         noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
 
-        ax2 = Axis(fig[2, 1]; xscale = log10, yscale = log10,
+        # annotations sit BETWEEN the panels — above the bottom plot, outside
+        # its frame: the δ*/integral line always, the off-scale noise note
+        # only when the 1/Δf reference cannot be drawn inside the frame
+        Label(fig[2, 1],
+              latexstring("\\delta^* = ", sci_latex(meta.delta_star),
+                          ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
+                          "\\;\\; (\\mathrm{theory}\\ ", sci_latex(meta.d2_theo), ")");
+              fontsize = 17, halign = :left, tellwidth = false, tellheight = true,
+              padding = (4, 0, 2, 8))
+        ax2_row = 3
+        if !noise_in_frame
+            Label(fig[3, 1],
+                  latexstring("\\mathrm{noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+                              sci_latex(noise_level),
+                              "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
+                  fontsize = 15, color = :grey35, halign = :left,
+                  tellwidth = false, tellheight = true, padding = (4, 0, 2, 2))
+            ax2_row = 4
+        end
+
+        ax2 = Axis(fig[ax2_row, 1]; xscale = log10, yscale = log10,
                    xlabel = L"f\ \ [\mathrm{Hz}]",
                    ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
                    xticks = xt, yticks = decade_ticks(ylo2, yhi2),
@@ -392,37 +444,23 @@ function residual_figure(spec, meta)
         Legend(fig[0, 1],
                [[dA, bA, rA], [dE, bE, rE]],
                [["data", "best fit", "residual"], ["data", "best fit", "residual"]],
-               ["channel A", "channel E"];
+               ["channel A:", "channel E:"];
                orientation = :horizontal, titleposition = :left,
                framevisible = false, tellwidth = false, tellheight = true,
                labelsize = 18, titlesize = 19, titlefont = :bold,
-               patchsize = (26, 4), groupgap = 18, patchlabelgap = 4,
+               patchsize = (26, 4), groupgap = 48, patchlabelgap = 4,
                colgap = 10, titlegap = 8, padding = (0, 0, 4, 0))
         if noise_in_frame
             hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
             text!(ax2, fmax, noise_level; text = "per-bin noise level",
                   align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
-        else
-            # reference is off scale — state its value instead of distorting the
-            # axis; second annotation line under the δ*/integral line (top-left)
-            text!(ax2, 0.03, 0.81; space = :relative,
-                  text = latexstring("\\mathrm{noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
-                                     sci_latex(noise_level),
-                                     "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}"),
-                  align = (:left, :center), fontsize = 15, color = :grey35)
         end
-        # δ*/integral annotation top-left: the residual curves rise towards
-        # high f, so the upper-left region is free once the y-range is tight.
-        text!(ax2, 0.03, 0.90; space = :relative,
-              text = latexstring("\\delta^* = ", sci_latex(meta.delta_star),
-                                 ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
-                                 "\\;\\; (\\mathrm{theory}\\ ", sci_latex(meta.d2_theo), ")"),
-              align = (:left, :center), fontsize = 17)
         ylims!(ax2, ylo2, yhi2)
 
         linkxaxes!(ax1, ax2)
         xlims!(ax2, fmin, fmax) # frame ends on the data — no gap at either side
         hidexdecorations!(ax1; grid = false, ticks = false)
+        rowgap!(fig.layout, 8) # keep the between-panel annotation block compact
         return fig
     end
 end
