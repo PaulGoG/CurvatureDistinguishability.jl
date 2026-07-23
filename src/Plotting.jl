@@ -278,25 +278,36 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                    xlabel = L"\mathrm{parameter\ separation}\ \delta",
                    ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
                    yticklabelspace = 66.0)
+        # The ratio panel reuses the TOP panel's vocabulary. Crimson dashed =
+        # the theory reference (D²_num/D²_theo = 1, same style as the D²_theo
+        # line above); blue dots = points used in the slope fit; blue dots
+        # with a grey X = excluded points (same X as above); open grey
+        # triangles pin excluded points whose ratio lies above the scale. The
+        # fitted departure 1 + c₁δ + c₂δ² is annotated in the theory color and
+        # its curve is drawn only when it visibly leaves the reference line.
         ratio = d2_num ./ d2_theo
-        hlines!(ax2, [1.0]; color = :grey45, linewidth = 2.2)
+        hlines!(ax2, [1.0]; color = :crimson, linestyle = :dash, linewidth = 3.0)
         if isfinite(c1)
             dd = 10.0 .^ range(log10(minimum(deltas)), log10(maximum(deltas)), length = 160)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:purple, 0.9), linewidth = 3.4)
-            # top-right, clear of the off-scale floor markers at the top-left
+            maximum(abs, model .- 1.0) > 0.02 &&
+                lines!(ax2, dd, clamp.(model, 0.0, 2.1); color = (:crimson, 0.9),
+                       linewidth = 3.0)
+            # top-right, clear of the off-scale markers at the top-left
             text!(ax2, maximum(deltas), 1.94;
                   text = latexstring("1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = ",
                                      sci_latex(c1)),
-                  align = (:right, :top), fontsize = 16, color = :purple)
+                  align = (:right, :top), fontsize = 16, color = :crimson)
         end
-        # excluded (floor-dominated) points: in-range ones as faint grey dots,
-        # divergent ones as open triangles pinned at the top = "off scale above"
         excl = .!clean
         offscale = excl .& (ratio .> 2.05)
         inrange = excl .& .!offscale
-        any(inrange) && scatter!(ax2, deltas[inrange], ratio[inrange];
-                                 color = (:grey, 0.55), markersize = 17)
+        if any(inrange)
+            scatter!(ax2, deltas[inrange], ratio[inrange]; color = :dodgerblue,
+                     strokecolor = :black, strokewidth = 1.2, markersize = 17)
+            scatter!(ax2, deltas[inrange], ratio[inrange]; marker = :xcross,
+                     color = :grey25, markersize = 12)
+        end
         any(offscale) && scatter!(ax2, deltas[offscale], fill(2.02, count(offscale));
                                   marker = :utriangle, color = :transparent,
                                   strokecolor = :grey45, strokewidth = 1.8, markersize = 19)
