@@ -19,7 +19,6 @@ makedocs(
         "Scientific Context" => "science.md",
         "Waveform Physics" => "physics.md",
         "Complex Run Parameters" => "parameters.md",
-        "GPU Postmortem" => "gpu_lessons.md",
         "Roadmap" => "roadmap.md",
         "API Reference" => "api.md"
     ]
