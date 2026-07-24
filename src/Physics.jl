@@ -160,17 +160,12 @@ model, the CPU inference loop and the GPU kernel — generic over `Real`
 end
 
 """
-    scaled_waveform_model(theta, freq_grid; kwargs...)
     scaled_waveform_model(theta, freq_grid, wp::WaveformParams)
 
 Frequency-domain inspiral waveform over `freq_grid` for the O(1)-scaled
 6-parameter vector `theta = [A, M_c, t_c, φ_c, χ₁, χ₂]`. Physical units are
 restored internally via the scales in `wp`. Broadcasts [`strain_bin`](@ref).
 """
-function scaled_waveform_model(theta::AbstractVector, freq_grid::AbstractVector; kwargs...)
-    return scaled_waveform_model(theta, freq_grid, waveform_params(; kwargs...))
-end
-
 function scaled_waveform_model(theta::AbstractVector, freq_grid::AbstractVector, wp::WaveformParams)
     A = theta[1] * wp.amp_scale
     Mc = theta[2] * wp.mass_scale

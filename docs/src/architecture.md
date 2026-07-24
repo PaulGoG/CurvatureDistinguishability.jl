@@ -53,8 +53,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
 - **`Inference.jl`** — ``D^2`` minimization within the physical bounds.
   Optimizers: `IPNewton` (default; interior-point Newton using the exact
   ForwardDiff Hessian — fast convergence, low convergence floor),
-  `Fminbox(LBFGS)`, and the unconstrained `lbfgs` for diagnostic
-  comparisons. The loss has two equivalent implementations, tested against
+  `Fminbox(LBFGS)`. The loss has two equivalent implementations, tested against
   each other: an allocation-free scalar CPU loop (avoids GC lock contention
   under 20+ threads) and a single KernelAbstractions kernel.
 - **`Backends.jl`** — a backend probe registry populated by **package

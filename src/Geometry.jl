@@ -174,24 +174,4 @@ function compute_extrinsic_curvature(theta_0::AbstractVector, u_dir::AbstractVec
     return compute_extrinsic_curvature_from_basis(theta_0, u_dir, basis, freqs, Sn_vals, df, wp)
 end
 
-# --- keyword convenience variants -------------------------------------------
-
-function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
-                               Sn_vals::AbstractVector, df::Real; kwargs...)
-    return compute_tangent_basis(theta_0, freqs, Sn_vals, df, waveform_params(; kwargs...))
-end
-
-function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector, u_dir::AbstractVector,
-                                                basis::Vector, freqs::AbstractVector,
-                                                Sn_vals::AbstractVector, df::Real; kwargs...)
-    return compute_extrinsic_curvature_from_basis(theta_0, u_dir, basis, freqs, Sn_vals, df,
-                                                  waveform_params(; kwargs...))
-end
-
-function compute_extrinsic_curvature(theta_0::AbstractVector, u_dir::AbstractVector,
-                                     freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
-                                     kwargs...)
-    return compute_extrinsic_curvature(theta_0, u_dir, freqs, Sn_vals, df, waveform_params(; kwargs...))
-end
-
 end # module

@@ -116,7 +116,7 @@ overwritten.
 |---|---|
 | Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
 | Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
-| Box-constrained optimization (`IPNewton`; `lbfgs_box`/`lbfgs` fallbacks) | tested, physical bounds enforced |
+| Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
 | GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the maintainer notes (GPU-LESSONS.md, kept outside the package) |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |

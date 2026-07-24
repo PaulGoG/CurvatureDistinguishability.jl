@@ -58,8 +58,6 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         h_sc = [strain_bin(f, A, Mc, tc, THETA0[4], beta, FIX_WP.amp_33_factor) for f in FIX_FREQS]
         @test h_bc == h_sc
         @test eltype(h_bc) <: Complex
-        # keyword API routes to the same computation
-        @test scaled_waveform_model(THETA0, FIX_FREQS; FIX_PHYS...) == h_bc
         # type stability of the hot scalar core
         @test (@inferred strain_bin(1e-3, A, Mc, tc, 0.0, beta, 0.1)) isa ComplexF64
     end
@@ -69,18 +67,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         A2, E2 = project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)
         @test length(A2) == length(FIX_FREQS) == length(E2)
 
-        # 3-channel keyword API: identical A/E plus an identically zero T
-        A3, E3, T3 = project_to_tdi(h, FIX_FREQS, THETA0; FIX_PHYS...)
+        # 3-channel variant (include_t_channel): identical A/E plus a zero T
+        wp3 = waveform_params(; FIX_PHYS..., include_t_channel = true)
+        A3, E3, T3 = project_to_tdi(h, FIX_FREQS, THETA0, wp3)
         @test A3 == A2 && E3 == E2
         @test all(iszero, T3)
 
         # fused projection ≡ per-bin modulation
-        mA, mE, mT = tdi_modulation(FIX_FREQS[7], THETA0; FIX_PHYS...)
-        @test mA * h[7] ≈ A2[7] rtol = 1e-14
-        @test mE * h[7] ≈ E2[7] rtol = 1e-14
-        @test mT == 0
         Mc = THETA0[2] * FIX_WP.mass_scale
         tc = THETA0[3] * FIX_WP.time_scale
+        mA, mE = tdi_modulation_bin(FIX_FREQS[7], Mc, tc, FIX_WP)
+        @test mA * h[7] ≈ A2[7] rtol = 1e-14
+        @test mE * h[7] ≈ E2[7] rtol = 1e-14
         @test (@inferred tdi_modulation_bin(1e-3, Mc, tc, FIX_WP)) isa NTuple{2,ComplexF64}
     end
 
@@ -210,7 +208,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test_throws ErrorException loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
                                                   FIX_WP, FakeGPU())
 
-        # A/B against the reference LBFGS fixtures on the clean separations
+        # A/B against the committed reference fixtures on the clean separations
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
         u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
         K_u, g_uu = compute_extrinsic_curvature(THETA0, u_raw, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
@@ -224,9 +222,6 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             dstream = map((a, b) -> a .+ b, c1, cc2)
             guess = THETA0 .+ (0.5 * d) .* u_norm
             guess[1] *= 2.0
-            d_leg, _, _ = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN, FIX_DF;
-                                                       optimizer = :lbfgs, FIX_PHYS...)
-            @test d_leg ≈ row.D2_Numerical rtol = 1e-3
             d_new, bf, res = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN, FIX_DF;
                                                           optimizer = :ipnewton, FIX_PHYS...)
             @test d_new ≈ row.D2_Numerical rtol = 1e-2
@@ -339,13 +334,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     end
 
     @testset "Plotting utilities" begin
-        vals, labels = decade_ticks(2e-22, 3e-4)
+        vals, labels = TWD.Plotting.decade_ticks(2e-22, 3e-4)
         @test all(2e-22 .<= vals .<= 3e-4)
         ps = round.(Int, log10.(vals))
         @test all(diff(ps) .== ps[2] - ps[1]) # uniform decade step
         @test all(p -> mod(p, ps[2] - ps[1]) == 0, ps) # family-consistent anchor
 
-        pt = pi_ticks(-π / 2 - 0.1, π / 6 + 0.1)
+        pt = TWD.Plotting.pi_ticks(-π / 2 - 0.1, π / 6 + 0.1)
         @test pt !== nothing
         vals_π, _ = pt
         steps = diff(vals_π)
@@ -353,7 +348,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # coverage: a ±0.78π range must be ticked out to ±3π/4, not stop at
         # ±π/2 (regression: sparse π ticks left the axis ends bare)
-        vc, _ = pi_ticks(-0.78π, 0.78π)
+        vc, _ = TWD.Plotting.pi_ticks(-0.78π, 0.78π)
         @test length(vc) >= 5
         @test maximum(vc) ≈ 3π / 4 atol = 1e-12
         @test minimum(vc) ≈ -3π / 4 atol = 1e-12
@@ -364,11 +359,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # residual-band ticks: from the true band [1e-4, 0.05] every whole-power
         # decade is present, including the low endpoint (regression: ticking
         # off the decimated spec.f range dropped the 1e-4 tick, leaving 2).
-        vb, _ = decade_ticks(1e-4, 0.05)
+        vb, _ = TWD.Plotting.decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
         # 10⁰ always renders as plain "1" — on decade ticks and the 1-2-5 series
-        _, l0 = decade_ticks(0.5, 50.0)
+        _, l0 = TWD.Plotting.decade_ticks(0.5, 50.0)
         @test l0[1].s == "\$1\$"
         v125, l125 = TWD.Plotting.log_ticks_125(5e-2, 6.0)
         @test any(≈(1.0), v125) && any(≈(2e-1), v125)

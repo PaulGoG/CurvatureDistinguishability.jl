@@ -21,7 +21,6 @@ TwoWaveformDistinguishability.Physics.scaled_waveform_model
 
 ```@docs
 TwoWaveformDistinguishability.Detector.tdi_modulation_bin
-TwoWaveformDistinguishability.Detector.tdi_modulation
 TwoWaveformDistinguishability.Detector.project_to_tdi
 TwoWaveformDistinguishability.Detector.n_channels
 ```

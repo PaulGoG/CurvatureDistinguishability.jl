@@ -7,9 +7,7 @@ using Printf
 using Statistics
 using ..Provenance: backup_existing!
 
-export twd_theme, save_figure, decade_ticks, pi_ticks, axis_exponent,
-       scaling_figure, residual_figure, zone_figure,
-       PARAM_LABELS
+export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
 
 """
 Short LaTeX axis labels for the six model parameters (deviation form is

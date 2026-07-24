@@ -14,7 +14,7 @@
 run_1d_sweeps = true
 run_2d_mapping = true
 # ipnewton (box-constrained exact-Hessian interior-point Newton, recommended) |
-# lbfgs_box (Fminbox gradient-only) | lbfgs (UNCONSTRAINED, diagnostic only)
+# lbfgs_box (Fminbox gradient-only fallback)
 optimizer = "ipnewton"
 # seed for all stochastic components (multi-start perturbations); recorded in
 # run metadata for reproducibility
@@ -96,6 +96,7 @@ spin1 = [-1.0, 1.0]
 spin2 = [-1.0, 1.0]
 
 [hardware]
+# (backend dispatch is implemented by src/Backends.jl)
 # gpu_backend: none (CPU reference run) | auto | cuda | amdgpu | metal | oneapi.
 # GPU backends activate by installing/loading the matching package; GPU runs
 # are automatically pinned to a single task (concurrent driver access is
