@@ -14,7 +14,7 @@ function parse_commandline()
             default = "config.toml"
         "--output-dir"
             help = "Directory to save outputs (relative to project root)"
-            default = "data/outputs"
+            default = "data"
     end
     return parse_args(s)
 end

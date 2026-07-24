@@ -61,7 +61,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   extensions** (`ext/TWD{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
   `isdefined(Main, …)` reflection. Loading e.g. `CUDA` in the session
   registers the probe; `get_best_backend()` returns the first functional
-  device or the multi-threaded `CPU()` fallback. `scripts/pipeline.jl` loads
+  device or the multi-threaded `CPU()` fallback. `scripts/run_pipeline.jl` loads
   the GPU package requested by `[hardware].gpu_backend` only if it is
   actually installed, with loud diagnostics.
 - **`Provenance.jl`** — run IDs from the SHA-256 of the configuration

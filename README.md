@@ -33,10 +33,9 @@ TwoWaveformDistinguishability/
 │   └── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
 ├── ext/                    # TWDCUDAExt, TWDAMDGPUExt, TWDMetalExt, TWDoneAPIExt
 ├── scripts/
-│   ├── pipeline.jl         # CLI entry point (loads GPU package per config)
-│   ├── launch_campaign.jl  # detached launcher via Base.julia_cmd()
+│   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)
+│   ├── launch_run.jl       # detached launcher via Base.julia_cmd()
 │   ├── replot.jl           # regenerate all figures from a run's CSVs
-│   └── audit_bounds.jl     # audit a run's maps against the physical bounds
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
@@ -68,18 +67,17 @@ since the device serializes kernels anyway.
 
 ```bash
 # foreground run (progress bars on a TTY)
-julia --project --threads=auto scripts/pipeline.jl --config config.toml
+julia --project --threads=auto scripts/run_pipeline.jl --config config.toml
 
 # detached campaign with ANSI-free logs
-julia --project scripts/launch_campaign.jl
+julia --project scripts/launch_run.jl
 
 # regenerate every figure of a finished run from its CSVs (no recomputation);
 # --rho R additionally rescales all maps/threshold markers to a new
 # discernibility threshold using the persisted per-direction curvature
-julia --project scripts/replot.jl data/outputs/run_<hash> [--rho R]
+julia --project scripts/replot.jl data/run_<hash> [--rho R]
 
 # audit a run's confusion maps against the physical bounds
-julia --project scripts/audit_bounds.jl data/outputs/run_<hash>
 ```
 
 Everything tunable lives in `config.toml` (grid, physics, Robson-2019 noise
@@ -87,7 +85,7 @@ coefficients, mapping resolution/refinement, `[parameter_bounds]`, optimizer,
 `[safety]` memory budgets). The configuration is validated up front: unusable
 values abort with a descriptive error, suspicious ones warn, and **unknown
 keys warn** (typo protection). Each run lands in
-`data/outputs/run_<confighash>/` with a config snapshot, `metadata.toml`
+`data/run_<confighash>/` with a config snapshot, `metadata.toml`
 (git commit, backend, timings) and a structured, ANSI-free `run.log`; reruns
 get suffixed directories and `safesave`-style backups — results are never
 overwritten.

@@ -17,8 +17,7 @@ TwoWaveformDistinguishability/
 │   ├── Plotting.jl         # CairoMakie figures, family tick policy
 │   └── Orchestrator.jl     # sweeps + capped mirrored mapping driver
 ├── ext/                    # CUDA / AMDGPU / Metal / oneAPI extensions
-├── scripts/                # pipeline.jl, launch_campaign.jl, replot.jl,
-│                           #   audit_bounds.jl
+├── scripts/                # run_pipeline.jl, launch_run.jl, replot.jl,
 ├── test/                   # physics validation, A/B fixtures, E2E
 ├── benchmarks/             # BenchmarkTools suite (own environment)
 └── data/{logs,outputs}/    # run artifacts (git-ignored)
@@ -51,15 +50,14 @@ the figures mark those boundary segments distinctly.
 ## Usage
 
 ```bash
-julia --project --threads=auto scripts/pipeline.jl --config config.toml   # foreground
-julia --project scripts/launch_campaign.jl                                # detached
-julia --project scripts/replot.jl data/outputs/run_<hash>                 # figures from CSVs
-julia --project scripts/audit_bounds.jl data/outputs/run_<hash>           # bound audit
+julia --project --threads=auto scripts/run_pipeline.jl --config config.toml   # foreground
+julia --project scripts/launch_run.jl                                # detached
+julia --project scripts/replot.jl data/run_<hash>                 # figures from CSVs
 ```
 
 Every physical and numerical parameter comes from `config.toml`, which is
 validated up front (descriptive hard errors, warnings for suspicious values,
-unknown-key typo protection). Runs land in `data/outputs/run_<confighash>/`
+unknown-key typo protection). Runs land in `data/run_<confighash>/`
 with a configuration snapshot, provenance metadata (git commit, backend,
 timings), a structured ANSI-free `run.log`, and `safesave`-style collision
 handling — results are never overwritten.

@@ -1,6 +1,7 @@
 # run outputs and logs (never version-controlled)
 data/inputs/
-data/outputs/
+data/
+plots/
 data/logs/
 *.log
 # generated data/figure formats — EXCEPT committed regression fixtures
