@@ -57,13 +57,13 @@ TwoWaveformDistinguishability.Inference.calculate_numerical_distance
 TwoWaveformDistinguishability.Inference.optimization_diagnostics
 ```
 
-## Hardware
+## Backends
 
 ```@docs
-TwoWaveformDistinguishability.Hardware.get_best_backend
-TwoWaveformDistinguishability.Hardware.to_backend
-TwoWaveformDistinguishability.Hardware.backend_name
-TwoWaveformDistinguishability.Hardware.register_backend!
+TwoWaveformDistinguishability.Backends.get_best_backend
+TwoWaveformDistinguishability.Backends.to_backend
+TwoWaveformDistinguishability.Backends.backend_name
+TwoWaveformDistinguishability.Backends.register_backend!
 ```
 
 ## Configuration

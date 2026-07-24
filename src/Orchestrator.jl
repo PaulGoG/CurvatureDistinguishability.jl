@@ -12,7 +12,7 @@ using Logging
 using LoggingExtras
 using KernelAbstractions
 
-using ..Hardware
+using ..Backends
 using ..Physics
 using ..Detector
 using ..Geometry

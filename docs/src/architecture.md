@@ -57,7 +57,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   comparisons. The loss has two equivalent implementations, tested against
   each other: an allocation-free scalar CPU loop (avoids GC lock contention
   under 20+ threads) and a single KernelAbstractions kernel.
-- **`Hardware.jl`** — a backend probe registry populated by **package
+- **`Backends.jl`** — a backend probe registry populated by **package
   extensions** (`ext/TWD{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
   `isdefined(Main, …)` reflection. Loading e.g. `CUDA` in the session
   registers the probe; `get_best_backend()` returns the first functional

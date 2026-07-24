@@ -1,13 +1,13 @@
 module TWDoneAPIExt
 
 using oneAPI
-using TwoWaveformDistinguishability.Hardware
+using TwoWaveformDistinguishability.Backends
 
 function __init__()
-    Hardware.register_backend!(:oneapi, () -> oneAPI.functional() ? oneAPIBackend() : nothing)
+    Backends.register_backend!(:oneapi, () -> oneAPI.functional() ? oneAPIBackend() : nothing)
 end
 
-Hardware.to_backend(data::AbstractArray, ::oneAPIBackend) = oneArray(data)
-Hardware.backend_name(::oneAPIBackend) = "Intel oneAPI GPU"
+Backends.to_backend(data::AbstractArray, ::oneAPIBackend) = oneArray(data)
+Backends.backend_name(::oneAPIBackend) = "Intel oneAPI GPU"
 
 end

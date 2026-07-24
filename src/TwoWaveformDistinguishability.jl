@@ -14,8 +14,8 @@ publication plotting (`Plotting`) and the pipeline driver (`Orchestrator`).
 """
 module TwoWaveformDistinguishability
 
-include("Hardware.jl")
-using .Hardware
+include("Backends.jl")
+using .Backends
 export get_best_backend, to_backend, backend_name
 
 include("Physics.jl")
