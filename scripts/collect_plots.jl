@@ -26,7 +26,7 @@ mkpath(DEST)
 runs = isempty(RUNSEL) ?
     sort(filter(d -> startswith(d, "run_") && isdir(joinpath(OUT, d)), readdir(OUT))) :
     RUNSEL
-const CAMPAIGN = [(run, run,
+const RUNS = [(run, run,
                    isdir(joinpath(OUT, run, "sweeps")) ? sort(readdir(joinpath(OUT, run, "sweeps"))) : String[],
                    isdir(joinpath(OUT, run, "maps")) ? sort(readdir(joinpath(OUT, run, "maps"))) : String[])
                   for run in runs]
@@ -44,7 +44,7 @@ function render_sweep(label, run, case)
     ratio = res.D2_Numerical ./ res.D2_Theoretical
     fl = Float64(get(m, "floor_level", -1.0)); fl < 0 && (fl = NaN)
     # display-time refit under the above-floor fit rule (the persisted
-    # sweep_meta.toml keeps the campaign-era values untouched): fits use only
+    # sweep_meta.toml keeps the run-time values untouched): fits use only
     # points strictly above the optimizer floor; convergence flags do not
     # exclude a point
     TWDO = TwoWaveformDistinguishability.Orchestrator
@@ -93,7 +93,7 @@ function render_map(label, run, case)
     println("  map:   $label/$case")
 end
 
-for (label, run, sweeps, maps) in CAMPAIGN
+for (label, run, sweeps, maps) in RUNS
     for s in sweeps; render_sweep(label, run, s); end
     for mp in maps; render_map(label, run, mp); end
 end

@@ -42,7 +42,8 @@ TwoWaveformDistinguishability/
 │   └── fixtures/reference/ # committed golden-value regression fixtures
 ├── benchmarks/             # BenchmarkTools scripts (own environment)
 ├── docs/                   # Documenter.jl sources
-└── data/{logs,outputs}/    # run artifacts (git-ignored)
+├── data/run_<hash>/        # provenance-stamped pipeline runs (git-ignored)
+└── plots/                  # flat regenerable PNG browsing view (git-ignored)
 ```
 
 ## Environment setup
@@ -69,7 +70,7 @@ since the device serializes kernels anyway.
 # foreground run (progress bars on a TTY)
 julia --project --threads=auto scripts/run_pipeline.jl --config config.toml
 
-# detached campaign with ANSI-free logs
+# detached long run with ANSI-free logs
 julia --project scripts/launch_run.jl
 
 # regenerate every figure of a finished run from its CSVs (no recomputation);
@@ -114,7 +115,7 @@ overwritten.
 | Component | Status |
 |---|---|
 | Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
-| Robson (2019) confusion noise (Eq. 14, Table 1) | **fixed** — the pre-2026 campaign ran with an inert confusion term (coefficient transcription bug), i.e. instrumental noise only |
+| Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box`/`lbfgs` fallbacks) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
 | GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the maintainer notes (GPU-LESSONS.md, kept outside the package) |

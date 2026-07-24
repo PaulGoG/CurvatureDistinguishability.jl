@@ -432,7 +432,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     name = String(map_cfg["name"])
     px = Int(map_cfg["param_x"])
     py = Int(map_cfg["param_y"])
-    # per-map override; defaults to the campaign-wide threshold
+    # per-map override; defaults to the pipeline-wide threshold
     rho_sq = Float64(get(map_cfg, "rho_thresh", cfg.sweep_rho_thresh))^2
     theta0 = Float64.(map_cfg["theta_0"])
     n_angles = Int(get(map_cfg, "n_angles", cfg.map_n_angles))

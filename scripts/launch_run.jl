@@ -8,10 +8,10 @@ const LOG_DIR = joinpath(PROJECT_ROOT, "data", "logs")
 mkpath(LOG_DIR)
 
 timestamp = Dates.format(now(), "yyyymmdd_HHMMSS")
-console_log = joinpath(LOG_DIR, "campaign_$(timestamp).log")
+console_log = joinpath(LOG_DIR, "run_$(timestamp).log")
 
 println("=" ^ 78)
-println("  Launching Two-Waveform Distinguishability campaign (detached)")
+println("  Launching Two-Waveform Distinguishability pipeline run (detached)")
 println("=" ^ 78)
 println("  project root : $PROJECT_ROOT")
 println("  console log  : $console_log")
