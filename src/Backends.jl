@@ -1,4 +1,4 @@
-module Hardware
+module Backends
 
 using KernelAbstractions
 

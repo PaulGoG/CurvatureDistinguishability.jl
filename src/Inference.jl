@@ -5,7 +5,7 @@ using ForwardDiff
 using KernelAbstractions
 using ..Physics
 using ..Detector
-using ..Hardware
+using ..Backends
 using ..Bounds
 
 export calculate_numerical_distance, optimization_diagnostics, loss_function

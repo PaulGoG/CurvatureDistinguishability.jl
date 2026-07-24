@@ -21,7 +21,7 @@ TwoWaveformDistinguishability/
 ├── config.toml             # the single source of all run parameters
 ├── src/
 │   ├── TwoWaveformDistinguishability.jl  # top module, exports
-│   ├── Hardware.jl         # backend registry; CPU fallback; GPU via extensions
+│   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
 │   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
 │   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping

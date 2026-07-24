@@ -1,13 +1,13 @@
 module TWDMetalExt
 
 using Metal
-using TwoWaveformDistinguishability.Hardware
+using TwoWaveformDistinguishability.Backends
 
 function __init__()
-    Hardware.register_backend!(:metal, () -> Metal.functional() ? MetalBackend() : nothing)
+    Backends.register_backend!(:metal, () -> Metal.functional() ? MetalBackend() : nothing)
 end
 
-Hardware.to_backend(data::AbstractArray, ::MetalBackend) = MtlArray(data)
-Hardware.backend_name(::MetalBackend) = "Apple Metal GPU"
+Backends.to_backend(data::AbstractArray, ::MetalBackend) = MtlArray(data)
+Backends.backend_name(::MetalBackend) = "Apple Metal GPU"
 
 end
