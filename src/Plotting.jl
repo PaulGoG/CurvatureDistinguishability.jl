@@ -543,20 +543,23 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         # symmetric limits waste most of the canvas on empty quadrants.
         xlo_d, xhi_d = extrema(x)
         ylo_d, yhi_d = extrema(y)
-        # extend the view towards the uncapped mathematical contour so its
-        # dashed continuation past the prior wall is visible — but never by
-        # more than ~40% of the physical zone's span per side (degenerate
-        # directions are unbounded; their dashed arcs just exit the frame)
+        # extend the view towards the uncapped mathematical contour with a
+        # SOFT clamp: when the full contour lies only modestly beyond the
+        # zone (≤ 80% of the zone span per side) include it entirely —
+        # grasping the whole picture is worth a slightly larger frame; only
+        # beyond that (unbounded degenerate directions) clamp at 40% of the
+        # span and let the dashed curve run off the frame
         if x_math !== nothing
             xr = xhi_d - xlo_d
             yr = yhi_d - ylo_d
             fx = filter(isfinite, x_math)
             fy = filter(isfinite, y_math)
             if !isempty(fx) && !isempty(fy)
-                xlo_d = max(min(xlo_d, minimum(fx)), xlo_d - 0.4 * xr)
-                xhi_d = min(max(xhi_d, maximum(fx)), xhi_d + 0.4 * xr)
-                ylo_d = max(min(ylo_d, minimum(fy)), ylo_d - 0.4 * yr)
-                yhi_d = min(max(yhi_d, maximum(fy)), yhi_d + 0.4 * yr)
+                soft(need, span) = need <= 0.8 * span ? need : 0.4 * span
+                xlo_d -= soft(max(0.0, xlo_d - minimum(fx)), xr)
+                xhi_d += soft(max(0.0, maximum(fx) - xhi_d), xr)
+                ylo_d -= soft(max(0.0, ylo_d - minimum(fy)), yr)
+                yhi_d += soft(max(0.0, maximum(fy) - yhi_d), yr)
             end
         end
         ex = axis_exponent(max(abs(xlo_d), abs(xhi_d)))
