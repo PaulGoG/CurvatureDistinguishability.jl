@@ -91,3 +91,29 @@ FP32 doubles consumer-GPU throughput ~64× for this kernel, but ``D^2`` spans
 A viable scheme needs Kahan/Neumaier compensation in the bin reduction *and*
 an error model validated against FP64 on the target grid (the fixture harness
 is the right tool). Pursue only if a concrete GPU-bound campaign demands it.
+
+## 5. Derivative-free optimizer fallback (only when differentiability breaks)
+
+Deliberately **not** part of v1.0. The current loss is a C^∞ pure-Julia
+least-squares objective in six dimensions with exact ForwardDiff gradients
+and Hessians; the exact-Hessian interior-point Newton locates minima
+precisely enough to resolve ``D^2 \sim 10^{-19}`` in 16–40 iterations. A
+simplex-type method converges linearly, stalls near parameter accuracy
+``\sqrt{\varepsilon} \approx 10^{-8}``, and would raise the optimizer floor
+by roughly eight to ten decades while costing *more* wall time (hundreds of
+1.57M-bin evaluations vs ~30 Hessian steps). Robustness is already covered
+elsewhere: AD correctness is A/B-locked against the committed fixtures, and
+basin robustness is handled by seeded multi-start.
+
+**Trigger condition:** an objective the AD cannot penetrate — production
+waveform families called through external C libraries (LALSuite-style), or
+non-smooth statistics from the noise-realization study (item 2).
+
+**Chosen candidates (in order):** `PRIMA.jl` **BOBYQA** — registered,
+actively maintained modern reimplementation of Powell's methods, natively
+bound-constrained, quadratic-model-based (far superior to Nelder–Mead on
+smooth-ish low-dimensional problems); and, for a zero-new-dependency sanity
+cross-check available today, `Fminbox(NelderMead())` from Optim.jl (already
+in the dependency tree). Wire either through the existing
+`[pipeline].optimizer` validation and the `calculate_numerical_distance`
+dispatch; expect and document a raised floor in the scaling figures.
