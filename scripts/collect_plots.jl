@@ -1,11 +1,11 @@
 # Collect every figure of one or more pipeline runs as PNGs into a single
-# flat, human-browsable folder (data/regenerated-plots by default), rendered
+# flat, human-browsable folder (plots/ by default), rendered
 # fresh from the persisted CSVs with the current plotting code. The source
 # run directories are not modified.
 #
 #   julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
 #
-# With no run_id arguments, every data/outputs/run_* directory is rendered;
+# With no run_id arguments, every data/run_* directory is rendered;
 # figure files are prefixed with the run id (run_<hash>_...).
 using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
@@ -17,9 +17,9 @@ using TwoWaveformDistinguishability
 using TwoWaveformDistinguishability.Bounds: deviation_box
 using TwoWaveformDistinguishability.Config: load_and_validate_config
 
-const OUT = joinpath(PROJECT_ROOT, "data", "outputs")
+const OUT = joinpath(PROJECT_ROOT, "data")
 const DESTARG = !isempty(ARGS) && !startswith(ARGS[1], "run_")
-const DEST = DESTARG ? abspath(ARGS[1]) : joinpath(PROJECT_ROOT, "data", "regenerated-plots")
+const DEST = DESTARG ? abspath(ARGS[1]) : joinpath(PROJECT_ROOT, "plots")
 const RUNSEL = filter(a -> startswith(a, "run_"), ARGS)
 mkpath(DEST)
 

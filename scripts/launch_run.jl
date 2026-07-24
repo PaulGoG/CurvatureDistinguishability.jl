@@ -3,7 +3,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 using Dates
 
-const PIPELINE_SCRIPT = joinpath(@__DIR__, "pipeline.jl")
+const PIPELINE_SCRIPT = joinpath(@__DIR__, "run_pipeline.jl")
 const LOG_DIR = joinpath(PROJECT_ROOT, "data", "logs")
 mkpath(LOG_DIR)
 
