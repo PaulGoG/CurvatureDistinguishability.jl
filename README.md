@@ -119,5 +119,5 @@ overwritten.
 | Robson (2019) confusion noise (Eq. 14, Table 1) | **fixed** — the pre-2026 campaign ran with an inert confusion term (coefficient transcription bug), i.e. instrumental noise only |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box`/`lbfgs` fallbacks) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in `docs/src/gpu_lessons.md` — read it before any GPU development |
+| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the maintainer notes (GPU-LESSONS.md, kept outside the package) |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
