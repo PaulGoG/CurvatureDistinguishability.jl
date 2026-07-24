@@ -101,7 +101,4 @@ with $P_{\mathrm{OMS}}$ (Eq. 10) the optical-metrology noise and $P_{\mathrm{acc
 $$ S_c(f) = A\, f^{-7/3}\, e^{-f^{\alpha} + \beta f \sin(\kappa f)} \left[ 1 + \tanh\!\big(\gamma (f_k - f)\big) \right], \qquad A = 9\times 10^{-45}, $$
 with $(\alpha, \beta, \kappa, \gamma, f_k)$ from Table 1, selected by the observation time (1 yr: $\alpha=0.171$, $\beta=292$, $\kappa=1020$, $\gamma=1680$, $f_k=2.15$ mHz) and overridable via the `[noise]` config section.
 
-!!! warning "Historical bug"
-    Before the 2026-07 remediation, the confusion term was transcribed incorrectly — the 1-yr coefficient $\beta = 292$ was used as an *exponent*, $e^{-(f/f_k)^{292}}$, which underflows to zero across the entire band. Every result produced by the original campaign (`run_12645ac2`) is therefore an **instrumental-noise-only** result; `[noise].confusion_enabled = false` reproduces that behavior explicitly.
-
 By utilizing this framework, the pipeline ensures the "Zone of Confusion" mappings are directly applicable to genuine space-based gravitational wave astronomy.
