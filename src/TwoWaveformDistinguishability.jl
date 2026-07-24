@@ -26,7 +26,7 @@ export NoiseParams, robson_confusion_params, analytic_noise_psd,
 
 include("Detector.jl")
 using .Detector
-export tdi_modulation_bin, tdi_modulation, project_to_tdi, n_channels
+export tdi_modulation_bin, project_to_tdi, n_channels
 
 include("Bounds.jl")
 using .Bounds
@@ -52,8 +52,7 @@ export PipelineSettings, load_and_validate_config
 
 include("Plotting.jl")
 using .Plotting
-export twd_theme, save_figure, decade_ticks, pi_ticks, scaling_figure,
-       residual_figure, zone_figure
+export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
 
 include("Orchestrator.jl")
 using .Orchestrator

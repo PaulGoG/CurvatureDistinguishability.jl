@@ -47,12 +47,7 @@ The pipeline implements a highly complex, 6-parameter Frequency-Domain inspiral 
 
 ## 4. Detector Dynamics: Time Delay Interferometry (TDI)
 
-The `Detector.jl` module moves the simulation from a stationary microphone to a realistic space-based observatory (e.g., LISA). 
-
-*   **Orbital Modulation:** Using the Stationary Phase Approximation (SPA) time-frequency relation $t(f)$, the pipeline calculates exactly where the detector is in its 1-year, 1 AU orbit for every frequency bin.
-*   **Doppler Shifting:** It applies the precise Doppler phase shift ($e^{i \Delta \Phi_{\mathrm{Doppler}}}$) caused by the detector moving toward or away from the source.
-*   **Antenna Patterns:** It evaluates the dynamic, time-dependent sensitivity to the "plus" ($F_+$) and "cross" ($F_\times$) polarizations as the detector cartwheels.
-*   **Multi-Channel Projection:** The raw source-frame strain is projected into the orthogonal, noise-independent A, E, and T TDI channels. The Extrinsic Curvature is computed by summing the inner products across all active channels.
+`Detector.jl` projects the source-frame strain into the LISA TDI observables — orbital Doppler modulation, time-dependent antenna patterns, and the noise-orthogonal A/E channels — evaluated per frequency bin through the stationary-phase time–frequency relation. The full detector model is documented in [Deep Dive: Physics and Waveform Modeling](physics.md).
 
 ## 5. Physical Bounds and the Capped Zone of Confusion
 
@@ -62,11 +57,4 @@ The pipeline therefore computes, per direction $\varphi$, both the mathematical 
 
 ## 6. Computational Architecture (Software Engineering)
 
-To resolve the $D^2 \approx 10^{-20}$ distances required to validate the quartic scaling law without catastrophic precision loss:
-
-1.  **$\mathcal{O}(1)$ Scaled Manifolds:** All physical parameters are internally scaled to $\mathcal{O}(1)$, keeping the Fisher Information Matrix well-conditioned.
-2.  **Exact Automatic Differentiation:** `Geometry.jl` uses `ForwardDiff.jl` dual numbers; the directional value, first and second derivatives come from a single fused nested-dual evaluation.
-3.  **Mirrored, refined mapping:** $K(u)$ is exactly even in $u$, so the angular sweep computes only $[0, \pi)$ and mirrors — the boundary symmetry is enforced by construction — with adaptive refinement where the capped radius varies rapidly.
-4.  **Box-constrained inference:** the best-fit template is found with an interior-point Newton method (exact AD Hessian) inside the physical bounds; the optimizer can no longer wander to negative masses or $|\chi|>1$ (the historical unconstrained L-BFGS is retained as an option for comparisons).
-5.  **Allocation-free CPU loop + one GPU kernel:** the loss exists as an allocation-free scalar loop (no GC contention at 20+ threads) and as a single KernelAbstractions kernel with isbits parameters (ForwardDiff-compatible on device); the two are tested to agree to machine precision. GPU backends activate via package extensions (CUDA, AMDGPU, Metal, oneAPI) with a mandatory CPU fallback.
-6.  **Validated configuration & provenance:** everything tunable lives in `config.toml` (hard-fail validation, unknown-key warnings); every run snapshots its config and records git state, backend, and timings, with `safesave`-style collision handling.
+Resolving distances down to $D^2 \sim 10^{-20}$ without precision loss rests on four pillars: $\mathcal{O}(1)$-rescaled parameters, fused nested-dual automatic differentiation, mirrored and adaptively refined angular mapping with exact corner vertices, and box-constrained interior-point Newton optimization inside the physical priors. The implementation is documented in [Architecture](architecture.md).

@@ -69,8 +69,8 @@ println("\n[6] ForwardDiff gradient of the loss (CPU loop)")
 display(@benchmark ForwardDiff.gradient!($G, $loss, $p0))
 println()
 
-println("\n[7] Full bounded optimization: IPNewton vs Fminbox(LBFGS) vs unconstrained LBFGS")
-for opt in (:ipnewton, :lbfgs_box, :lbfgs)
+println("\n[7] Full bounded optimization: IPNewton vs Fminbox(LBFGS)")
+for opt in (:ipnewton, :lbfgs_box)
     t0 = time()
     d2, _, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
                                               optimizer = opt,

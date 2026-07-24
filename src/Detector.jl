@@ -2,7 +2,7 @@ module Detector
 
 using ..Physics: WaveformParams, waveform_params, SECONDS_PER_YEAR
 
-export tdi_modulation_bin, tdi_modulation, project_to_tdi, n_channels
+export tdi_modulation_bin, project_to_tdi, n_channels
 
 const R_ORBIT_SEC = 499.00478383615643 # 1 AU in light-seconds
 
@@ -48,18 +48,6 @@ over `Real` (including `ForwardDiff.Dual`); safe inside GPU kernels.
 end
 
 """
-    tdi_modulation(f, p; kwargs...) -> (mod_A, mod_E, mod_T)
-
-Keyword convenience wrapper around [`tdi_modulation_bin`](@ref) taking the
-scaled parameter vector `p`; `mod_T` is identically zero (null channel).
-"""
-function tdi_modulation(f::Real, p::AbstractVector; kwargs...)
-    wp = waveform_params(; kwargs...)
-    mod_A, mod_E = tdi_modulation_bin(f, p[2] * wp.mass_scale, p[3] * wp.time_scale, wp)
-    return mod_A, mod_E, zero(mod_A)
-end
-
-"""
     project_to_tdi(h_strain, freqs, p, wp::WaveformParams)
 
 Project a frequency-domain strain into the TDI response channels in a single
@@ -85,20 +73,6 @@ function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::Abst
         return A, E, zeros(CT, length(freqs))
     end
     return A, E
-end
-
-"""
-    project_to_tdi(h_strain, freqs, p; kwargs...) -> (A, E, T)
-
-Keyword convenience variant; always returns the full 3-channel tuple
-with an identically zero `T`.
-"""
-function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector; kwargs...)
-    wp0 = waveform_params(; kwargs...)
-    wp = WaveformParams(wp0.mass_scale, wp0.time_scale, wp0.amp_scale, wp0.eta,
-                        wp0.amp_33_factor, wp0.sky_theta, wp0.sky_phi,
-                        wp0.inclination, wp0.polarization, true)
-    return project_to_tdi(h_strain, freqs, p, wp)
 end
 
 end # module

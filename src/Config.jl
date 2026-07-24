@@ -139,11 +139,8 @@ function load_and_validate_config(config_path::AbstractString)
     run_maps = getbool(pipeline, "run_2d_mapping", true, "pipeline")
     opt_str = get(pipeline, "optimizer", "ipnewton")
     optimizer = Symbol(lowercase(String(opt_str)))
-    optimizer in (:ipnewton, :lbfgs_box, :lbfgs) ||
-        error("[pipeline].optimizer must be one of ipnewton | lbfgs_box | lbfgs, got '$opt_str'")
-    optimizer === :lbfgs &&
-        @warn "[pipeline].optimizer = \"lbfgs\" runs UNCONSTRAINED (diagnostic mode): " *
-              "best fits may leave the physical parameter space."
+    optimizer in (:ipnewton, :lbfgs_box) ||
+        error("[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'")
     rng_seed = getint(pipeline, "rng_seed", 42, "pipeline")
 
     ss = get(pipeline, "sweep_settings", Dict{String,Any}())

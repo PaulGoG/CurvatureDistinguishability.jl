@@ -232,7 +232,6 @@ physical `bounds`:
 - `:ipnewton` (default): interior-point Newton using the exact ForwardDiff
   Hessian — fast convergence and a much lower convergence floor than L-BFGS.
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
-- `:lbfgs`: unconstrained L-BFGS (diagnostic comparisons only).
 
 Physics keywords (`mass_scale`, `sky_theta`, …) are accepted via `kwargs`.
 Returns `(D², best_fit, optim_result)`.
@@ -270,9 +269,6 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
         x0 = clamp_interior(theta_guess, bounds)
         obj = OnceDifferentiable(loss, g!, x0)
         optimize(obj, collect(bounds.lower), collect(bounds.upper), x0, Fminbox(LBFGS()), opts)
-    elseif optimizer === :lbfgs
-        obj = TwiceDifferentiable(loss, g!, h!, collect(float.(theta_guess)))
-        optimize(obj, collect(float.(theta_guess)), LBFGS(), opts)
     else
         error("Unknown optimizer :$optimizer (expected :ipnewton, :lbfgs_box or :lbfgs)")
     end
