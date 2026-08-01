@@ -1,30 +1,18 @@
-# =============================================================================
-# Production configuration (CPU reference run)
-#
-# Case naming is physical (source properties and probed parameter plane). The
-# seven sweeps validate the quartic distinguishability law across
-# qualitatively different directions of the 6-parameter manifold — including
-# a partially degenerate chirp-mass/spin-orbit compensation direction and a
-# near-null antisymmetric-spin direction; the seven maps chart prior-capped
-# zones of confusion around three reference sources: a massive aligned-spin
-# equal-mass binary, a light-seed binary, and a low-mass late-merging system.
-# =============================================================================
+# Production configuration (CPU reference run). Physical rationale for the
+# sweep/map cases and the grid: docs/src/parameters.md.
 
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
-# ipnewton (box-constrained exact-Hessian interior-point Newton, recommended) |
-# lbfgs_box (Fminbox gradient-only fallback)
+# one of: "ipnewton" (box-constrained exact-Hessian interior-point Newton,
+# recommended) | "lbfgs_box" (Fminbox gradient-only fallback)
 optimizer = "ipnewton"
-# seed for all stochastic components (multi-start perturbations); recorded in
-# run metadata for reproducibility
+# seed for all stochastic components (multi-start perturbations)
 rng_seed = 42
 
 [pipeline.sweep_settings]
-# 30 log-spaced separations over 4.6 decades (~6.5 per decade). The top end
-# extends to delta = 10^-0.2 ~ 0.63 to probe the onset of higher-order
-# corrections; every sweep base/direction below keeps the second source
-# inside the physical bounds at delta_max.
+# log-spaced separations delta in [10^min_log_delta, 10^max_log_delta]
+# (Fisher-normalized units)
 n_deltas = 30
 min_log_delta = -4.8
 max_log_delta = -0.2
@@ -32,20 +20,16 @@ max_log_delta = -0.2
 rho_thresh = 1.0
 # directions with Fisher norm below this are reported as degenerate
 g_uu_degenerate = 1e-6
-# two optimizer starts per separation: canonical + one seeded restart, for
-# secondary-minimum detection (MultiStartGain column)
+# optimizer starts per separation (secondary-minimum detection when > 1)
 n_starts = 2
-# optimizer convergence. Do NOT tighten g_tol below ~1e-10: small-separation
-# fits sit on the numerical precision floor where tighter gradient norms are
-# unreachable and every such fit burns the full iteration cap (wall time, not
-# accuracy — floor points are excluded from all fits). Clean fits converge in
-# 16–40 Newton iterations.
+# optimizer convergence; do not tighten g_tol below ~1e-10 (numerical
+# precision floor of small-separation fits — see docs)
 g_tol = 1e-10
 max_iterations = 60
 
 [grid]
 # df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
-# (1 Julian yr, 0.05 Hz -> ~1.57 M bins; checked against [safety].max_ram_gb).
+# (checked against [safety].max_ram_gb). T_obs in s, frequencies in Hz.
 T_obs = 3.15576e7
 f_min = 1.0e-4
 f_max = 0.05
@@ -60,35 +44,31 @@ sky_theta = 1.047
 sky_phi = 3.1415
 inclination = 0.523
 polarization = 0.785
-# the T channel is identically zero in this low-frequency model; enabling it
-# only adds dead compute (and is unsupported on GPU backends)
+# the T channel is identically zero in this model (dead compute; unsupported
+# on GPU backends)
 include_t_channel = false
 
 [noise]
 # Galactic confusion noise: Robson, Cornish & Liu (2019) Eq. 14. Coefficients
 # default to the Table 1 column nearest [grid].T_obs; override any of
 # confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
-# confusion_gamma / confusion_fk here. Set false for instrumental-only
-# noise studies.
+# confusion_gamma / confusion_fk here. false = instrumental-only noise.
 confusion_enabled = true
 
 [mapping]
-# total directions around the full circle before refinement (even; the solver
-# computes half and mirrors — K(u) is exactly even in u). 8192 gives smooth
-# publication-grade boundaries; adaptive refinement adds more near spikes.
+# directions around the full circle before refinement (even; half is computed
+# and mirrored). 8192 gives smooth publication-grade boundaries.
 n_angles = 8192
 # adjacent-direction capped-radius ratio that triggers angular refinement
 neighbor_ratio_tol = 1.25
 max_refine_levels = 6
-# bisection iterations locating the exact direction where the mathematical
-# contour pierces a prior wall (r_math = r_box); the found direction is
-# inserted as a boundary vertex so zone corners are exact instead of
-# chamfered by a polygon chord. 0 disables the pass.
+# bisection iterations locating exact prior-wall crossover vertices
+# (0 disables the pass)
 corner_bisect_iters = 25
 
 [parameter_bounds]
 # hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
-# The phase is periodic (deviations capped at ±pi) regardless of this table.
+# The phase is periodic (deviations capped at +-pi) regardless of this table.
 amplitude = [0.0, inf]
 chirp_mass = [0.0, inf]
 time = [0.0, inf]
@@ -96,98 +76,68 @@ spin1 = [-1.0, 1.0]
 spin2 = [-1.0, 1.0]
 
 [hardware]
-# (backend dispatch is implemented by src/Backends.jl)
-# gpu_backend: none (CPU reference run) | auto | cuda | amdgpu | metal | oneapi.
-# GPU backends activate by installing/loading the matching package; GPU runs
-# are automatically pinned to a single task (concurrent driver access is
-# unsafe and kernels serialize on the device regardless).
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
+# "oneapi"; GPU backends require the matching package installed
 gpu_backend = "none"
 max_threads = 22
-# ForwardDiff Hessian chunking for GPU compilers that reject the full 49-lane
+# ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
 hessian_chunk = 0
 
 [safety]
-# all memory budgets live here; the pipeline refuses to start (or downscales
+# memory budgets in GB; the pipeline refuses to start (or downscales
 # concurrency) beyond them
 max_ram_gb = 24.0
 max_vram_gb = 32.0
 os_vram_overhead_gb = 4.0
-# per-bin VRAM footprint of the single GPU optimization task
+# per-bin VRAM footprint of the single GPU optimization task, in bytes
 bytes_per_bin_per_task_gpu = 1000
 
 
-# =============================================================================
-# 1D parameter sweeps (validating the delta^4 scaling law)
-# =============================================================================
+# 1D sweeps and 2D maps (docs/src/parameters.md for the physical rationale)
 
 [[sweeps]]
 name = "six_dimensional_diagonal_stress"
-# Hardest test of the tensorial law: a highly spinning asymmetric binary with
-# the second source displaced simultaneously in mass, time, phase and BOTH
-# spins — no coordinate axis is special.
+# simultaneous displacement in mass, time, phase and both spins
 theta_0 = [1.0, 1.25, 300.0, 1.57, 0.6, -0.4]
 u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
 
 [[sweeps]]
 name = "massive_binary_mass_time"
-# Reference massive aligned-spin equal-mass binary (Mc ~ 3x10^6 Msun); the
-# classic chirp-rate/arrival-time direction that dominates real catalogs.
+# chirp-rate/arrival-time direction of the reference massive binary
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 
 [[sweeps]]
 name = "unequal_amplitude_mass_time"
-# Same base and direction as massive_binary_mass_time, but the second source
-# carries half the amplitude: validates the A_harm = 2A1A2/(A1+A2) prefactor,
-# D^2 = (1/16) K delta^4 (2q/(1+q))^2 with q = A2/A1. Note: for q != 1 the
-# odd O(delta^5) term is not midpoint-suppressed, so the quartic-law validity
-# range is intrinsically shorter (quantified by the c1 fit).
+# A_harm prefactor validation at amplitude ratio q = A2/A1 = 0.5
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 amp_ratio = 0.5
 
 [[sweeps]]
 name = "extreme_spin_orbit_coupling"
-# Strongly anti-aligned spins maximize the 1.5PN spin-orbit phase twist; the
-# direction sweeps phase and both spins (base spins chosen so the second
-# source stays inside |chi| <= 1 at delta_max).
+# phase and both spins at the strongly anti-aligned high-spin base
 theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
 u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
 
 [[sweeps]]
 name = "low_mass_time_shift"
-# Low-mass, late-merging system displaced purely in coalescence time: isolates
-# the orbital-Doppler/TDI response (a time shift moves the detector along its
-# solar orbit at every contributing frequency).
+# pure coalescence-time displacement (orbital Doppler/TDI response)
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
 
 [[sweeps]]
 name = "seed_binary_mass_spin_compensation"
-# Light-seed binary probed along the classic 1.5PN chirp-mass/spin-orbit
-# compensation direction (raising Mc while lowering both aligned spins keeps
-# the phasing nearly stationary): the quartic coefficient K(u) is suppressed
-# by the partial degeneracy, testing the law where curvature is weak.
+# 1.5PN chirp-mass/spin-orbit compensation direction of the light-seed binary
 theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]
 u_dir = [0.0, 0.6, 0.0, 0.0, -0.55, -0.55]
 
 [[sweeps]]
 name = "near_degenerate_antisymmetric_spin"
-# Dominantly the exactly flat antisymmetric-spin combination (the waveform
-# depends on spins only through chi_eff) with a 15% chirp-mass admixture,
-# tuned so the second source stays physical at delta_max while the Fisher
-# norm g(u,u) lies orders of magnitude below the well-measured directions —
-# the sharpest stress test of the quartic law near a null direction.
+# near-null antisymmetric-spin direction with a 15% chirp-mass admixture
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
 u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
-
-
-# =============================================================================
-# 2D zone-of-confusion maps (discernibility boundaries, prior-capped).
-# The threshold defaults to [pipeline.sweep_settings].rho_thresh; add a
-# per-map rho_thresh only to override it.
-# =============================================================================
 
 [[maps]]
 name = "mass_vs_time_degeneracy"
@@ -221,17 +171,14 @@ theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 
 [[maps]]
 name = "time_vs_spin1_high_spin"
-# t_c-spin correlation at the strongly anti-aligned high-spin base: the
-# spin-orbit phase twist trades against arrival time.
+# t_c-spin correlation at the strongly anti-aligned high-spin base
 param_x = 3
 param_y = 5
 theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
 
 [[maps]]
 name = "phase_vs_spin1_seed"
-# Phase-spin plane of the light-seed binary: the 1.5PN spin-orbit twist
-# trades against the orbital phase, capped by the periodic +-pi phase wall
-# and the |chi| <= 1 spin prior.
+# phase-spin plane of the light-seed binary (periodic and spin walls)
 param_x = 4
 param_y = 5
 theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]

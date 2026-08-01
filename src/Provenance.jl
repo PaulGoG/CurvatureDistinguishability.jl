@@ -12,10 +12,15 @@ export run_id_from_config, unique_run_dir, snapshot_config, backup_existing!,
     run_id_from_config(config_path) -> String
 
 Deterministic run identifier: the first 8 hex characters of the SHA-256 of
-the configuration file *contents* (not the wall clock), so identical
-configurations map to identical IDs and reruns are recognizable.
+the canonically serialized *parsed* configuration (keys sorted, values
+only — never the wall clock), so identical physical/numerical content maps
+to identical IDs and reruns are recognizable. Comments and formatting do
+not affect a run's identity.
 """
-run_id_from_config(config_path::AbstractString) = "run_" * first(bytes2hex(sha256(read(config_path))), 8)
+function run_id_from_config(config_path::AbstractString)
+    canonical = sprint(io -> TOML.print(io, TOML.parsefile(config_path); sorted = true))
+    return "run_" * first(bytes2hex(sha256(canonical)), 8)
+end
 
 """
     unique_run_dir(base_dir, run_id) -> String

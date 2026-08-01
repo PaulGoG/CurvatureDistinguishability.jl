@@ -63,9 +63,10 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   device or the multi-threaded `CPU()` fallback. `scripts/run_pipeline.jl` loads
   the GPU package requested by `[hardware].gpu_backend` only if it is
   actually installed, with loud diagnostics.
-- **`Provenance.jl`** — run IDs from the SHA-256 of the configuration
-  contents (reruns of identical configs are recognizable; never
-  wall-clock-derived), config snapshots into the run directory,
+- **`Provenance.jl`** — run IDs from the SHA-256 of the canonically
+  serialized parsed configuration (reruns of identical physical/numerical
+  content are recognizable; comments, formatting and the wall clock never
+  affect identity), config snapshots into the run directory,
   `metadata.toml` (git state via DrWatson, Julia version, backend, threads,
   timings), and `safesave`-semantics backups for all output formats.
 - **`Plotting.jl`** — CairoMakie figures under one publication theme

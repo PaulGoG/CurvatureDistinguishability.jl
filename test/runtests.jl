@@ -329,6 +329,22 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         end
     end
 
+    @testset "Provenance: comment-invariant run identifiers" begin
+        mktempdir() do dir
+            a = joinpath(dir, "a.toml")
+            b = joinpath(dir, "b.toml")
+            c = joinpath(dir, "c.toml")
+            write(a, "[grid]\nT_obs = 1.0e5\nf_min = 1.0e-3\n")
+            # same values: reordered keys, comments, blank lines
+            write(b, "# leading comment\n[grid]\n\nf_min = 1.0e-3 # trailing\nT_obs = 1.0e5\n")
+            # one value changed
+            write(c, "[grid]\nT_obs = 2.0e5\nf_min = 1.0e-3\n")
+            @test run_id_from_config(a) == run_id_from_config(b)
+            @test run_id_from_config(a) != run_id_from_config(c)
+            @test startswith(run_id_from_config(a), "run_")
+        end
+    end
+
     @testset "Ratio-correction fit (O(δ⁵) quantification)" begin
         d = [0.01, 0.05, 0.1, 0.2, 0.3]
         r = 1.0 .+ 0.3 .* d .- 0.1 .* d .^ 2
