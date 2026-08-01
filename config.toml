@@ -49,10 +49,13 @@ polarization = 0.785
 include_t_channel = false
 
 [noise]
-# Galactic confusion noise: Robson, Cornish & Liu (2019) Eq. 14. Coefficients
+# Robson, Cornish & Liu (2019) noise model. Confusion (Eq. 14) coefficients
 # default to the Table 1 column nearest [grid].T_obs; override any of
 # confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
 # confusion_gamma / confusion_fk here. false = instrumental-only noise.
+# Instrumental (Eq. 10-12) parameters are overridable likewise: arm_length
+# [m], oms_amplitude [m Hz^-1/2], oms_reddening_freq [Hz], acc_amplitude
+# [m s^-2 Hz^-1/2], acc_knee_low / acc_knee_high [Hz]; all > 0.
 confusion_enabled = true
 
 [mapping]

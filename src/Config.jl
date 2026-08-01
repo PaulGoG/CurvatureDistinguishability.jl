@@ -48,6 +48,8 @@ struct PipelineSettings
     bytes_per_bin_per_task_gpu::Int
     max_vram_gb::Float64
     os_vram_overhead_gb::Float64
+    # monitoring
+    monitoring_enabled::Bool
     # bounds & work items
     bounds::ParameterBounds
     sweeps::Vector{Dict{String,Any}}
@@ -56,7 +58,8 @@ end
 
 const KNOWN_KEYS = Dict(
     "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
-           "safety", "parameter_bounds", "sweeps", "maps"],
+           "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
+    "monitoring" => ["enabled"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
                    "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
@@ -67,7 +70,9 @@ const KNOWN_KEYS = Dict(
                   "sky_theta", "sky_phi", "inclination", "polarization",
                   "include_t_channel"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
-                "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk"],
+                "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk",
+                "arm_length", "oms_amplitude", "oms_reddening_freq",
+                "acc_amplitude", "acc_knee_low", "acc_knee_high"],
     "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
     "hardware" => ["gpu_backend", "max_threads", "hessian_chunk"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
@@ -220,7 +225,18 @@ function load_and_validate_config(config_path::AbstractString)
         confusion_kappa = getnum(noise_cfg, "confusion_kappa", base_noise.confusion_kappa, "noise"),
         confusion_gamma = getnum(noise_cfg, "confusion_gamma", base_noise.confusion_gamma, "noise"),
         confusion_fk = getnum(noise_cfg, "confusion_fk", base_noise.confusion_fk, "noise"),
+        arm_length = getnum(noise_cfg, "arm_length", base_noise.arm_length, "noise"),
+        oms_amplitude = getnum(noise_cfg, "oms_amplitude", base_noise.oms_amplitude, "noise"),
+        oms_reddening_freq = getnum(noise_cfg, "oms_reddening_freq", base_noise.oms_reddening_freq, "noise"),
+        acc_amplitude = getnum(noise_cfg, "acc_amplitude", base_noise.acc_amplitude, "noise"),
+        acc_knee_low = getnum(noise_cfg, "acc_knee_low", base_noise.acc_knee_low, "noise"),
+        acc_knee_high = getnum(noise_cfg, "acc_knee_high", base_noise.acc_knee_high, "noise"),
     )
+    for field in (:arm_length, :oms_amplitude, :oms_reddening_freq,
+                  :acc_amplitude, :acc_knee_low, :acc_knee_high)
+        getfield(noise, field) > 0 ||
+            error("[noise].$field must be > 0, got $(getfield(noise, field))")
+    end
     noise.confusion_amp >= 0 || error("[noise].confusion_amp must be >= 0")
 
     mapping = get(config, "mapping", Dict{String,Any}())
@@ -324,6 +340,10 @@ function load_and_validate_config(config_path::AbstractString)
     (run_maps && isempty(maps)) &&
         @warn "[pipeline].run_2d_mapping = true but no [[maps]] entries are defined."
 
+    monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
+    warn_unknown_keys(monitoring_cfg, "monitoring")
+    monitoring_enabled = getbool(monitoring_cfg, "enabled", false, "monitoring")
+
     return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
                             n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
                             g_tol, max_iterations,
@@ -331,6 +351,7 @@ function load_and_validate_config(config_path::AbstractString)
                             map_n_angles, ratio_tol, refine_levels, corner_iters,
                             gpu_backend, max_threads, hessian_chunk,
                             max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
+                            monitoring_enabled,
                             bounds, sweeps, maps)
 end
 
