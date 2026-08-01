@@ -4,6 +4,10 @@ Core functionality exported by `TwoWaveformDistinguishability.jl`, decoupled
 into physics, detector response, bounds, geometry, inference, backends,
 configuration, provenance, plotting and orchestration.
 
+```@docs
+TwoWaveformDistinguishability
+```
+
 ## Physics
 
 ```@docs
@@ -15,6 +19,7 @@ TwoWaveformDistinguishability.Physics.waveform_params
 TwoWaveformDistinguishability.Physics.spin_beta
 TwoWaveformDistinguishability.Physics.strain_bin
 TwoWaveformDistinguishability.Physics.scaled_waveform_model
+TwoWaveformDistinguishability.Physics.SECONDS_PER_YEAR
 ```
 
 ## Detector
@@ -34,6 +39,7 @@ TwoWaveformDistinguishability.Bounds.bounds_from_config
 TwoWaveformDistinguishability.Bounds.deviation_box
 TwoWaveformDistinguishability.Bounds.ray_box_crossing
 TwoWaveformDistinguishability.Bounds.clamp_interior
+TwoWaveformDistinguishability.Bounds.PARAM_KEYS
 ```
 
 ## Geometry
@@ -46,6 +52,7 @@ TwoWaveformDistinguishability.Geometry.compute_tangent_basis
 TwoWaveformDistinguishability.Geometry.value_and_directional_derivs
 TwoWaveformDistinguishability.Geometry.compute_extrinsic_curvature_from_basis
 TwoWaveformDistinguishability.Geometry.compute_extrinsic_curvature
+TwoWaveformDistinguishability.Geometry.GS_NORM_TOL
 ```
 
 ## Inference

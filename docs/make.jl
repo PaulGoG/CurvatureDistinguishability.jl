@@ -13,7 +13,8 @@ makedocs(
         assets = String[],
     ),
     modules = [TwoWaveformDistinguishability],
-    warnonly = true,
+    checkdocs = :exports,
+    warnonly = false,
     pages = [
         "Home" => "index.md",
         "System Architecture" => "architecture.md",
