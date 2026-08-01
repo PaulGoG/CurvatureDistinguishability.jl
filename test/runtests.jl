@@ -181,10 +181,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test ForwardDiff.gradient(dl, p) ≈ g_loop rtol = 1e-12
         # lanes path: nested (Hessian) duals through the same kernel layout
         @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
-        # flatten/rebuild round-trip on a nested dual (lane-order contract)
+        # flatten/rebuild round-trip on a nested dual (lane-order contract);
+        # the local reference flattening states the contract the kernel's
+        # per-scalar stores and `rebuild_dual` must both follow: value first,
+        # then partials 1..N, recursively
+        flatten_dual(x::Float64) = (x,)
+        flatten_dual(d::ForwardDiff.Dual) =
+            (flatten_dual(ForwardDiff.value(d))...,
+             (Tuple(Iterators.flatten(flatten_dual(p) for p in ForwardDiff.partials(d))))...)
         nd = ForwardDiff.Dual{:o}(ForwardDiff.Dual{:i}(1.0, 2.0, 3.0),
                                   ForwardDiff.Dual{:i}(4.0, 5.0, 6.0))
-        fl = TWD.Inference.flatten_dual(nd)
+        fl = flatten_dual(nd)
         @test fl == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
         rb, _ = TWD.Inference.rebuild_dual(typeof(nd), collect(fl), 1)
         @test rb === nd
@@ -314,7 +321,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test cfg_def.g_tol == 1e-10 && cfg_def.max_iterations == 100
             @test_logs (:warn, r"tighter than the numerical precision floor") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 1e-12\n"))
-            @test_logs (:warn, r"floor fits burn the full cap") match_mode = :any load_and_validate_config(
+            @test_logs (:warn, r"floor fits exhaust the full cap") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nmax_iterations = 1000\n"))
 
             cfg_vs = load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))

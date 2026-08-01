@@ -95,10 +95,9 @@ end
     WaveformParams(; kwargs...)
 
 Immutable, isbits container for every physical parameter of the waveform and
-detector-response model. This is the single source of defaults (previously
-triplicated across `Physics`, `Detector` and `Inference` signatures) and is
-safe to pass into GPU kernels. Values are overridden by the `[physics]`
-section of `config.toml`.
+detector-response model; the single source of parameter defaults, safe to
+pass into GPU kernels. Values are overridden by the `[physics]` section of
+`config.toml`.
 """
 Base.@kwdef struct WaveformParams{T<:Real}
     mass_scale::T = 10.0
@@ -116,8 +115,8 @@ end
 """
     waveform_params(; kwargs...) -> WaveformParams
 
-Build a [`WaveformParams`](@ref) from a keyword soup, silently ignoring any
-keys that are not fields (so pipeline call sites can splat a mixed
+Build a [`WaveformParams`](@ref) from keyword arguments, silently ignoring
+any keys that are not fields (so pipeline call sites can splat a mixed
 configuration NamedTuple through the keyword APIs).
 """
 function waveform_params(; kwargs...)

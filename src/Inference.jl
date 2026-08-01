@@ -35,12 +35,12 @@ between the 2-channel (A, E) data and the single-source model at parameters
 end
 
 # GPU execution is serialized library-wide and device buffers are cached:
-# concurrent multi-task access to a GPU driver from Julia tasks segfaulted in
-# production (Level Zero), and per-call device allocations at
-# ~10³–10⁴ per sweep triggered a long-session oneAPI "freed reference" bug.
-# The lock costs nothing on CPU paths (not taken) and nothing real on GPUs
-# (kernels serialize on the device anyway); the cache bounds device
-# allocation churn to a handful of buffers per (eltype, shape).
+# GPU drivers are not reliably safe under concurrent multi-task access
+# (observed Level Zero segmentation fault), and per-evaluation device
+# allocation at ~10³–10⁴ calls per sweep destabilizes long sessions
+# (observed oneAPI freed-reference failure). The lock is never taken on CPU
+# paths and adds no GPU-side cost, since the device serializes kernels; the
+# cache reduces device allocations to one buffer per (backend, eltype, shape).
 const GPU_LOCK = ReentrantLock()
 const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
 
@@ -80,16 +80,6 @@ end
 # plain n × M matrix; the M standard reductions then run on every backend and
 # the scalar Dual is reassembled on the host.
 
-@inline flatten_dual(x::Float64) = (x,)
-@inline function flatten_dual(d::ForwardDiff.Dual{T,V,N}) where {T,V,N}
-    return (flatten_dual(ForwardDiff.value(d))...,
-            _flatten_partials(ForwardDiff.partials(d), Val(N))...)
-end
-@inline _flatten_partials(ps, ::Val{0}) = ()
-@inline function _flatten_partials(ps, ::Val{K}) where {K}
-    return (_flatten_partials(ps, Val(K - 1))..., flatten_dual(ps[K])...)
-end
-
 rebuild_dual(::Type{Float64}, s, i::Int) = (s[i], i + 1)
 function rebuild_dual(::Type{ForwardDiff.Dual{T,V,N}}, s, i::Int) where {T,V,N}
     v, j = rebuild_dual(V, s, i)
@@ -107,7 +97,7 @@ end
 # the 49-lane tuple of a nested Hessian dual makes some GPU compilers fall back
 # to heap allocation (`gpu_malloc` InvalidIRError on IGC); writing each lane as
 # it is produced keeps the kernel allocation-free. Lane order matches
-# `flatten_dual`/`rebuild_dual`: value first, then partials 1..N, recursively.
+# `rebuild_dual`: value first, then partials 1..N, recursively.
 @inline function _store_dual!(out, i, k::Int, x::Float64)
     @inbounds out[i, k] = x
     return k + 1
@@ -249,7 +239,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
 
     g!(G, x) = ForwardDiff.gradient!(G, loss, x)
     # hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes per
-    # kernel launch instead of 49 — the escape hatch for GPU compilers whose
+    # kernel launch instead of 49 — the fallback for GPU compilers whose
     # module build fails on the full nested-dual kernel (see docs/roadmap).
     h!(H, x) = hessian_chunk > 0 ?
         ForwardDiff.hessian!(H, loss, x,
@@ -270,7 +260,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
         obj = OnceDifferentiable(loss, g!, x0)
         optimize(obj, collect(bounds.lower), collect(bounds.upper), x0, Fminbox(LBFGS()), opts)
     else
-        error("Unknown optimizer :$optimizer (expected :ipnewton, :lbfgs_box or :lbfgs)")
+        error("Unknown optimizer :$optimizer (expected :ipnewton or :lbfgs_box)")
     end
 
     return Optim.minimum(opt_res), Optim.minimizer(opt_res), opt_res

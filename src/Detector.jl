@@ -1,6 +1,6 @@
 module Detector
 
-using ..Physics: WaveformParams, waveform_params, SECONDS_PER_YEAR
+using ..Physics: WaveformParams, SECONDS_PER_YEAR
 
 export tdi_modulation_bin, project_to_tdi, n_channels
 
@@ -51,8 +51,7 @@ end
     project_to_tdi(h_strain, freqs, p, wp::WaveformParams)
 
 Project a frequency-domain strain into the TDI response channels in a single
-fused pass (one loop, one allocation per channel — instead of a
-four-broadcast tuple-unpacking implementation). Returns `(A, E)` or
+fused pass (one loop, one allocation per channel). Returns `(A, E)` or
 `(A, E, T)` depending on `wp.include_t_channel`; `T` is identically zero.
 """
 function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector, wp::WaveformParams)

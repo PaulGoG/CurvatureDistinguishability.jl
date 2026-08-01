@@ -4,7 +4,6 @@ using CairoMakie
 using MathTeXEngine
 using LaTeXStrings
 using Printf
-using Statistics
 using ..Provenance: backup_existing!
 
 export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
@@ -374,8 +373,8 @@ channel E blocks, each with data / best fit / residual). Channel encodes hue
 (A blue, E warm); the best fit, which lies on top of the data, is a brighter
 dash-dotted line over the dark solid data line; min/max decimation envelopes
 shade both channels and are covered by the bottom panel's y-range (depth-
-capped so a cancellation spike cannot squish the curves). Frame limits hug
-the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
+capped so a cancellation spike cannot compress the curves). Frame limits
+follow the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
 `spec` is the (log-uniformly decimated) spectrum table; `meta` carries
 `delta_star`, `df`, and the integral annotations.
@@ -383,7 +382,7 @@ off-scale-noise annotations sit between the panels, outside the frames.
 function residual_figure(spec, meta)
     with_theme(twd_theme()) do
         fig = Figure(size = (950, 950))
-        # Limits and ticks hug the plotted data: with log-uniform decimation
+        # Limits and ticks follow the plotted data: with log-uniform decimation
         # the first/last plotted frequencies sit at the band ends, so the
         # frame ends on the data with no gap at either side. Dense 1–2–5
         # log ticks — whole decades alone are too sparse over ~3 decades.
@@ -412,7 +411,7 @@ function residual_figure(spec, meta)
         # y-range of the residual panel: cover the lines AND the min/max
         # shadings — but cap the extra depth at ~1.6 decades below the rms
         # floor, so a near-cancellation spike in a single decimation window
-        # cannot squish the curves into a sliver (the band then clips only
+        # cannot compress the curves into a negligible band (the band then clips only
         # inside the dip). The per-bin noise reference 1/Δf can sit many
         # decades above the curves and is never allowed to distort the range.
         res_pos = filter(>(0), vcat(spec.res_rms_A, spec.res_rms_E))
@@ -544,9 +543,9 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         xlo_d, xhi_d = extrema(x)
         ylo_d, yhi_d = extrema(y)
         # extend the view towards the uncapped mathematical contour with a
-        # SOFT clamp: when the full contour lies only modestly beyond the
+        # soft clamp: when the full contour lies only modestly beyond the
         # zone (≤ 80% of the zone span per side) include it entirely —
-        # grasping the whole picture is worth a slightly larger frame; only
+        # showing the complete contour justifies a slightly larger frame; only
         # beyond that (unbounded degenerate directions) clamp at 40% of the
         # span and let the dashed curve run off the frame
         if x_math !== nothing

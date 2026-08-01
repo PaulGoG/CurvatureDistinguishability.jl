@@ -29,7 +29,7 @@ end
 
 Return the best available compute backend. GPU backends become available by
 loading their package (e.g. `using CUDA`) in the session, which activates the
-corresponding package extension — there is no `Main`-reflection involved.
+corresponding package extension.
 `prefer` may name a specific backend (`:cuda`, `:amdgpu`, `:metal`,
 `:oneapi`), request `:none` to force the CPU, or `:auto` to take the first
 functional GPU. Falls back to the multi-threaded `CPU()` backend.
