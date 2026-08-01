@@ -70,19 +70,19 @@ if the driver bug still bites in very long sessions, split the campaign
 into shorter per-sweep processes, which the per-stage guardrails and
 config-hash run directories make lossless).
 
-**Compiler-limit escape hatch (validated on the Meteor Lake iGPU under FP64
-emulation):** if a backend's compiler rejects the full 49-lane Hessian kernel
-(observed: IGC `ZE_RESULT_ERROR_MODULE_BUILD_FAILURE` — the emulation
-instruction blow-up exceeds an internal limit; value and 7-lane gradient
-kernels build fine), evaluate the Hessian in chunks: passing
-`ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk{3}())` to
-`ForwardDiff.hessian` splits the outer duals so each kernel launch carries
-(1+3)·(1+6) = 28 lanes. Measured on the iGPU: chunk-3 Hessian in 0.91 s at
+**Compiler-limit fallback (implemented; validated on the Meteor Lake iGPU
+under FP64 emulation):** if a backend's compiler rejects the full 49-lane
+Hessian kernel (observed: IGC `ZE_RESULT_ERROR_MODULE_BUILD_FAILURE` — the
+emulation instruction blow-up exceeds an internal limit; value and 7-lane
+gradient kernels build fine), the Hessian is evaluated in chunks: the
+config key `[hardware].hessian_chunk` (0 = full chunk) threads
+`ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk{c}())` through
+`calculate_numerical_distance`'s `h!`, so each kernel launch carries
+(1+c)·(1+6) lanes. Measured on the iGPU at chunk 3: Hessian in 0.91 s at
 the production grid with machine-epsilon agreement (2e-16) against the CPU
-reference — making a full production-size IPNewton solve ≈ 16 s on the
-emulated iGPU versus 161 s on 22 CPU threads. If GPU sweeps become a
-production path, plumb an optional `hessian_chunk` through
-`calculate_numerical_distance`'s `h!`.
+reference — a full production-size IPNewton solve ≈ 16 s on the emulated
+iGPU versus 161 s on 22 CPU threads. The chunked path is exercised in the
+test suite.
 
 ## 4. Float32 + compensated summation (only with a validated error model)
 

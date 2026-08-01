@@ -176,9 +176,9 @@ u_dir = [0.0, 0.6, 0.0, 0.0, -0.55, -0.55]
 name = "near_degenerate_antisymmetric_spin"
 # Dominantly the exactly flat antisymmetric-spin combination (the waveform
 # depends on spins only through chi_eff) with a 15% chirp-mass admixture,
-# tuned so the second source stays physical at delta_max while K(u) remains
-# orders of magnitude below the well-measured directions — the sharpest
-# stress test of the quartic law near a null direction of the manifold.
+# tuned so the second source stays physical at delta_max while the Fisher
+# norm g(u,u) lies orders of magnitude below the well-measured directions —
+# the sharpest stress test of the quartic law near a null direction.
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
 u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
 

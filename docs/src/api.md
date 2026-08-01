@@ -1,7 +1,7 @@
 # API Reference & Module Documentation
 
 Core functionality exported by `TwoWaveformDistinguishability.jl`, decoupled
-into physics, detector response, bounds, geometry, inference, hardware,
+into physics, detector response, bounds, geometry, inference, backends,
 configuration, provenance, plotting and orchestration.
 
 ## Physics

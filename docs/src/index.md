@@ -17,10 +17,11 @@ TwoWaveformDistinguishability/
 │   ├── Plotting.jl         # CairoMakie figures, family tick policy
 │   └── Orchestrator.jl     # sweeps + capped mirrored mapping driver
 ├── ext/                    # CUDA / AMDGPU / Metal / oneAPI extensions
-├── scripts/                # run_pipeline.jl, launch_run.jl, replot.jl,
+├── scripts/                # run_pipeline.jl, launch_run.jl, replot.jl, collect_plots.jl
 ├── test/                   # physics validation, A/B fixtures, E2E
 ├── benchmarks/             # BenchmarkTools suite (own environment)
-└── data/{logs,outputs}/    # run artifacts (git-ignored)
+├── data/run_<hash>/        # provenance-stamped pipeline runs (git-ignored)
+└── plots/                  # flat regenerable PNG browsing view (git-ignored)
 ```
 
 This project is a Julia simulation pipeline that validates the theoretical
@@ -53,6 +54,7 @@ the figures mark those boundary segments distinctly.
 julia --project --threads=auto scripts/run_pipeline.jl --config config.toml   # foreground
 julia --project scripts/launch_run.jl                                # detached
 julia --project scripts/replot.jl data/run_<hash>                 # figures from CSVs
+julia --project scripts/collect_plots.jl                     # PNG browsing view
 ```
 
 Every physical and numerical parameter comes from `config.toml`, which is
