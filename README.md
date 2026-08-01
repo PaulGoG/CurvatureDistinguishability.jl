@@ -85,9 +85,12 @@ julia --project scripts/replot.jl data/run_<hash> [--rho R]
 julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
 ```
 
-Everything tunable lives in `config.toml` (grid, physics, Robson-2019 noise
-coefficients, mapping resolution/refinement, `[parameter_bounds]`, optimizer,
-`[safety]` memory budgets). The configuration is validated up front: unusable
+Everything tunable lives in `config.toml` (grid, physics, the full
+Robson-2019 noise model — confusion and instrumental parameters alike —
+mapping resolution/refinement, `[parameter_bounds]`, optimizer, `[safety]`
+memory budgets). `[monitoring].enabled = true` additionally prints an
+in-terminal UnicodePlots diagnostic after each completed sweep and map (TTY
+sessions only; detached logs stay clean). The configuration is validated up front: unusable
 values abort with a descriptive error, suspicious ones warn, and **unknown
 keys warn** (typo protection). Each run lands in
 `data/run_<confighash>/` with a config snapshot, `metadata.toml`

@@ -47,6 +47,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         @test analytic_noise_psd(0.0) == 1e-30
         @test analytic_noise_psd(-1.0) == 1e-30
+
+        # instrumental parameters (Eq. 10-12) are configurable; defaults are
+        # bit-identical to the published model (fixture test above), and the
+        # OMS term must respond quadratically where it dominates (high f)
+        f_hi = 2e-2
+        s_def = analytic_noise_psd(f_hi; noise = FIX_NOISE_OFF)
+        s_oms = analytic_noise_psd(f_hi;
+            noise = NoiseParams(confusion_enabled = false, oms_amplitude = 3.0e-11))
+        @test s_oms > 3 * s_def
+        @test analytic_noise_psd(1e-3;
+            noise = NoiseParams(confusion_enabled = false, arm_length = 5.0e9)) != s_def
     end
 
     @testset "Waveform scalar core" begin
@@ -316,9 +327,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
 
-            # safe-by-default optimizer tolerances
+            # safe-by-default optimizer tolerances; monitoring opt-in (off)
             cfg_def = load_and_validate_config(write_cfg(dir, ""))
             @test cfg_def.g_tol == 1e-10 && cfg_def.max_iterations == 100
+            @test cfg_def.monitoring_enabled == false
+            cfg_mon = load_and_validate_config(write_cfg(dir, "[monitoring]\nenabled = true\n"))
+            @test cfg_mon.monitoring_enabled == true
             @test_logs (:warn, r"tighter than the numerical precision floor") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 1e-12\n"))
             @test_logs (:warn, r"floor fits exhaust the full cap") match_mode = :any load_and_validate_config(
@@ -326,6 +340,16 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
             cfg_vs = load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))
             @test cfg_vs.max_vram_gb == 6.0
+
+            # instrumental-noise overrides thread through to NoiseParams and
+            # must be strictly positive
+            cfg_n = load_and_validate_config(
+                write_cfg(dir, "[noise]\narm_length = 5.0e9\nacc_amplitude = 2.4e-15\n"))
+            @test cfg_n.noise.arm_length == 5.0e9
+            @test cfg_n.noise.acc_amplitude == 2.4e-15
+            @test cfg_n.noise.oms_amplitude == 1.5e-11
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[noise]\narm_length = 0.0\n"))
         end
     end
 
@@ -343,6 +367,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test run_id_from_config(a) != run_id_from_config(c)
             @test startswith(run_id_from_config(a), "run_")
         end
+    end
+
+    @testset "Monitoring diagnostic panels" begin
+        d = 10 .^ range(-3, -1, length = 8)
+        th = d .^ 4
+        num = th .* 1.01
+        panel = TWD.Orchestrator.sweep_diagnostic_panel(d, num, th, trues(8), 4.0, 0.01)
+        @test occursin("fitted slope", panel) && occursin("8/8", panel)
+        @test occursin("theory", panel)
+        empty_panel = TWD.Orchestrator.sweep_diagnostic_panel(d, zeros(8), th, falses(8), NaN, NaN)
+        @test occursin("no positive", empty_panel)
+        mp = TWD.Orchestrator.map_diagnostic_panel(collect(range(0, 2π, length = 16)),
+                                                   fill(1.0, 16), 0.25)
+        @test occursin("prior-limited directions: 25.0%", mp)
     end
 
     @testset "Ratio-correction fit (O(δ⁵) quantification)" begin

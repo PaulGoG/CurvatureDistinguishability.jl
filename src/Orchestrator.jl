@@ -11,6 +11,7 @@ using ProgressMeter
 using Logging
 using LoggingExtras
 using KernelAbstractions
+using UnicodePlots: UnicodePlots
 
 using ..Backends
 using ..Physics
@@ -136,6 +137,45 @@ genuine optima.
 """
 above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
     isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
+
+"""
+    sweep_diagnostic_panel(deltas, D2_num, D2_theo, clean, slope, slope_err) -> String
+
+In-terminal diagnostic of a completed sweep: log-log `D²` against the
+theoretical prediction (UnicodePlots), followed by the clean-point count and
+fitted slope. Opt-in via `[monitoring].enabled`; printed to stdout on TTY
+sessions only, never into the file logs.
+"""
+function sweep_diagnostic_panel(deltas::AbstractVector, D2_num::AbstractVector,
+                                D2_theo::AbstractVector, clean::AbstractVector{Bool},
+                                slope::Real, slope_err::Real)
+    pos = D2_num .> 0
+    any(pos) || return "sweep diagnostic: no positive D² values"
+    plt = UnicodePlots.lineplot(log10.(collect(deltas)), log10.(collect(D2_theo));
+                                name = "theory", xlabel = "log₁₀ δ",
+                                ylabel = "log₁₀ D²", width = 64, height = 14)
+    UnicodePlots.scatterplot!(plt, log10.(collect(deltas[pos])), log10.(D2_num[pos]);
+                              name = "numerical")
+    footer = @sprintf("clean points %d/%d; fitted slope %.4f ± %.4f",
+                      count(clean), length(clean), slope, slope_err)
+    return sprint(io -> show(io, plt)) * "\n" * footer
+end
+
+"""
+    map_diagnostic_panel(angle, r_cap, prior_frac) -> String
+
+In-terminal diagnostic of a completed confusion map: capped boundary radius
+against direction angle (UnicodePlots), followed by the prior-limited
+fraction. Opt-in via `[monitoring].enabled`; stdout on TTY sessions only.
+"""
+function map_diagnostic_panel(angle::AbstractVector, r_cap::AbstractVector,
+                              prior_frac::Real)
+    plt = UnicodePlots.lineplot(collect(angle), collect(r_cap);
+                                xlabel = "φ [rad]", ylabel = "r_cap",
+                                width = 64, height = 14)
+    footer = @sprintf("prior-limited directions: %.1f%%", 100 * prior_frac)
+    return sprint(io -> show(io, plt)) * "\n" * footer
+end
 
 """
     plan_resources(cfg, n_bins, nch, backend) -> (active_threads, est_gb)
@@ -346,6 +386,11 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                   "$(count(atbound))/$n separations (see AtBound column)."
         all(conv) || @warn "Sweep '$name': optimizer did not converge for " *
                            "$(count(!, conv))/$n separations (see Converged column)."
+
+        if cfg.monitoring_enabled && progress_enabled()
+            println(stdout, sweep_diagnostic_panel(deltas, D2_num, D2_theo, clean,
+                                                   slope, slope_err))
+        end
 
         logline(log_io, "  [3/3] persisting results and figures")
         df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
@@ -660,6 +705,10 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                             "χ_eff = (χ₁+χ₂)/2; along the anti-symmetric combination the " *
                             "manifold is flat, so the zone there is limited by the physical " *
                             "spin prior [-1, 1], not by curvature.")
+        end
+
+        if cfg.monitoring_enabled && progress_enabled()
+            println(stdout, map_diagnostic_panel(angle, r_cap, prior_frac))
         end
 
         df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
