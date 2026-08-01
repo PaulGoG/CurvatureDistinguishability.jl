@@ -4,15 +4,15 @@ Pkg.develop(PackageSpec(path = joinpath(@__DIR__, "..")); io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using Documenter
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 
 makedocs(
-    sitename = "TwoWaveformDistinguishability.jl",
+    sitename = "CurvatureDistinguishability.jl",
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
         assets = String[],
     ),
-    modules = [TwoWaveformDistinguishability],
+    modules = [CurvatureDistinguishability],
     checkdocs = :exports,
     warnonly = false,
     pages = [

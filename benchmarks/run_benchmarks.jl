@@ -5,14 +5,14 @@
 #
 using Pkg
 Pkg.activate(@__DIR__; io = devnull)
-haskey(Pkg.project().dependencies, "TwoWaveformDistinguishability") ||
+haskey(Pkg.project().dependencies, "CurvatureDistinguishability") ||
     Pkg.develop(path = dirname(@__DIR__); io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using BenchmarkTools
 using ForwardDiff
 using KernelAbstractions
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 
 # Moderate grid: large enough to be representative, small enough to finish fast.
 T_obs = 3.15576e7
@@ -32,7 +32,7 @@ H2 = project_to_tdi(h2, freqs, theta_0 .+ 1e-4 .* u_dir, wp)
 data = map((a, b) -> a .+ b, H1, H2)
 
 println("=====================================================")
-println("  Benchmarks: TwoWaveformDistinguishability")
+println("  Benchmarks: CurvatureDistinguishability")
 println("  grid: $(length(freqs)) bins, $(Threads.nthreads()) threads")
 println("=====================================================")
 
@@ -60,7 +60,7 @@ display(@benchmark $loss($p0))
 println()
 
 println("\n[5] Loss value: KernelAbstractions kernel on the CPU backend")
-display(@benchmark TwoWaveformDistinguishability.Inference.device_loss($p0, $freqs, $Sn_vals,
+display(@benchmark CurvatureDistinguishability.Inference.device_loss($p0, $freqs, $Sn_vals,
                                                                        $(data[1]), $(data[2]),
                                                                        $df, $wp, $(CPU())))
 println()

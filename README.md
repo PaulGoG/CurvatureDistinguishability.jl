@@ -1,4 +1,4 @@
-# TwoWaveformDistinguishability.jl
+# CurvatureDistinguishability.jl
 
 Computational proof of the **quartic distinguishability law** for space-based
 gravitational-wave interferometry: the squared noise-weighted distance between
@@ -15,12 +15,12 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 ## File structure
 
 ```text
-TwoWaveformDistinguishability/
+CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
 ├── Manifest.toml           # version-controlled — portability guarantee
 ├── config.toml             # the single source of all run parameters
 ├── src/
-│   ├── TwoWaveformDistinguishability.jl  # top module, exports
+│   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
 │   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
 │   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
@@ -32,7 +32,7 @@ TwoWaveformDistinguishability/
 │   ├── Plotting.jl         # CairoMakie figures; family-wide tick policy
 │   ├── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
 │   └── RunFigures.jl       # figure regeneration from persisted run CSVs
-├── ext/                    # TWDCUDAExt, TWDAMDGPUExt, TWDMetalExt, TWDoneAPIExt
+├── ext/                    # CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext
 ├── scripts/
 │   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)
 │   ├── launch_run.jl       # detached launcher via Base.julia_cmd()

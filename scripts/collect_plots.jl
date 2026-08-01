@@ -18,7 +18,7 @@ Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using CairoMakie
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 
 const DATA_ROOT = joinpath(PROJECT_ROOT, "data")
 

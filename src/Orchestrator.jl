@@ -806,7 +806,7 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
                        confusion_noise = cfg.noise.confusion_enabled)
 
     println("=" ^ 78)
-    println("  Two-Waveform Distinguishability Pipeline")
+    println("  CurvatureDistinguishability Pipeline")
     println("=" ^ 78)
     @info "Run directory: $out_base"
     @info "Grid: $(length(freqs)) bins ($(cfg.f_min) – $(cfg.f_max) Hz, df = $df); channels: $nch"

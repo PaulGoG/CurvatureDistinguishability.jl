@@ -1,7 +1,7 @@
 # Deep Dive: Physics and Waveform Modeling
-**Context:** LISA Two-Waveform Distinguishability Simulation
+**Context:** LISA Two-Source Distinguishability Simulation
 
-This document provides a highly detailed, equation-level breakdown of the physical models and signal generation architecture used in the `TwoWaveformDistinguishability` pipeline. 
+This document provides a highly detailed, equation-level breakdown of the physical models and signal generation architecture used in the `CurvatureDistinguishability` pipeline. 
 
 While full Numerical Relativity (NR) or complete Effective One-Body (EOB) waveforms are computationally prohibitive for millions of geometric manifold evaluations, our pipeline utilizes a customized, highly optimized **Frequency-Domain TaylorF2-analog** inspiral model. This model selectively incorporates the exact non-linear physical effects—such as spin-orbit coupling, higher harmonics, and orbital Doppler shifts—that are most critical for testing parameter degeneracies and the Extrinsic Curvature of the signal manifold.
 

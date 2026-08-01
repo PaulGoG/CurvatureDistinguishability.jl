@@ -1,7 +1,7 @@
-module TWDAMDGPUExt
+module CurvatureDistinguishabilityAMDGPUExt
 
 using AMDGPU
-using TwoWaveformDistinguishability.Backends
+using CurvatureDistinguishability.Backends
 
 function __init__()
     Backends.register_backend!(:amdgpu, () -> AMDGPU.functional() ? ROCBackend() : nothing)
