@@ -1,8 +1,6 @@
 # run outputs and logs (never version-controlled)
-data/inputs/
 data/
 plots/
-data/logs/
 *.log
 # generated data/figure formats — EXCEPT committed regression fixtures
 *.csv
@@ -13,5 +11,6 @@ data/logs/
 !test/fixtures/**
 .DS_Store
 docs/build/
-# Manifest.toml IS version-controlled (portability guarantee across machines)
+# the package Manifest.toml IS version-controlled (portability guarantee);
+# the benchmarks environment regenerates its own on demand
 benchmarks/Manifest.toml

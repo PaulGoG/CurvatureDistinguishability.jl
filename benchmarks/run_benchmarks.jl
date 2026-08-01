@@ -1,5 +1,5 @@
-# Performance benchmarks (kept out of the test suite; see §6 of the agent
-# guidelines). Uses its own environment with the package dev'd in.
+# Performance benchmarks, kept out of the test suite by design (benchmarks
+# measure, tests assert). Uses its own environment with the package dev'd in.
 #
 #   julia --threads=auto benchmarks/run_benchmarks.jl
 #

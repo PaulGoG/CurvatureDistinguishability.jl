@@ -1,6 +1,7 @@
 using Pkg
-Pkg.activate(@__DIR__)
-Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
+Pkg.activate(@__DIR__; io = devnull)
+Pkg.develop(PackageSpec(path = joinpath(@__DIR__, "..")); io = devnull)
+Pkg.instantiate(; io = devnull)
 
 using Documenter
 using TwoWaveformDistinguishability
@@ -23,8 +24,3 @@ makedocs(
         "API Reference" => "api.md"
     ]
 )
-
-# Documenter can also automatically deploy docs to GitHub pages.
-# deploydocs(
-#     repo = "github.com/USER/TwoWaveformDistinguishability.jl.git",
-# )
