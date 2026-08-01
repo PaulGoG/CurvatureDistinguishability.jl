@@ -15,7 +15,8 @@ TwoWaveformDistinguishability/
 │   ├── Config.jl           # validated TOML configuration
 │   ├── Provenance.jl       # config-hash run IDs, snapshots, metadata
 │   ├── Plotting.jl         # CairoMakie figures, family tick policy
-│   └── Orchestrator.jl     # sweeps + capped mirrored mapping driver
+│   ├── Orchestrator.jl     # sweeps + capped mirrored mapping driver
+│   └── RunFigures.jl       # figure regeneration from persisted run CSVs
 ├── ext/                    # CUDA / AMDGPU / Metal / oneAPI extensions
 ├── scripts/                # run_pipeline.jl, launch_run.jl, replot.jl, collect_plots.jl
 ├── test/                   # physics validation, A/B fixtures, E2E

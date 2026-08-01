@@ -99,4 +99,16 @@ TwoWaveformDistinguishability.Plotting.zone_figure
 
 ```@docs
 TwoWaveformDistinguishability.Orchestrator.run_pipeline
+TwoWaveformDistinguishability.Orchestrator.loglog_slope
+TwoWaveformDistinguishability.Orchestrator.ratio_correction_fit
+TwoWaveformDistinguishability.Orchestrator.optimizer_floor
+TwoWaveformDistinguishability.Orchestrator.above_floor_mask
+```
+
+## Run figure regeneration
+
+```@docs
+TwoWaveformDistinguishability.RunFigures.run_cases
+TwoWaveformDistinguishability.RunFigures.sweep_figures
+TwoWaveformDistinguishability.RunFigures.zone_map_figure
 ```

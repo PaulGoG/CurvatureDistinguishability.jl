@@ -10,7 +10,8 @@ signal manifold. The package provides the waveform/detector model
 box-constrained inference (`Inference`), physical parameter bounds
 (`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
-publication plotting (`Plotting`) and the pipeline driver (`Orchestrator`).
+publication plotting (`Plotting`), the pipeline driver (`Orchestrator`) and
+figure regeneration from persisted run artifacts (`RunFigures`).
 """
 module TwoWaveformDistinguishability
 
@@ -57,5 +58,9 @@ export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
 include("Orchestrator.jl")
 using .Orchestrator
 export run_pipeline
+
+include("RunFigures.jl")
+using .RunFigures
+export run_cases, sweep_figures, zone_map_figure
 
 end

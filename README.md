@@ -30,7 +30,8 @@ TwoWaveformDistinguishability/
 │   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
 │   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata
 │   ├── Plotting.jl         # CairoMakie figures; family-wide tick policy
-│   └── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
+│   ├── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
+│   └── RunFigures.jl       # figure regeneration from persisted run CSVs
 ├── ext/                    # TWDCUDAExt, TWDAMDGPUExt, TWDMetalExt, TWDoneAPIExt
 ├── scripts/
 │   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)

@@ -70,6 +70,13 @@ physics_kwargs(wp::WaveformParams) = (
     sky_phi = wp.sky_phi, inclination = wp.inclination, polarization = wp.polarization,
     include_t_channel = wp.include_t_channel)
 
+"""
+    loglog_slope(x, y) -> (slope, stderr)
+
+Least-squares slope of `log10(y)` against `log10(x)` with its standard
+error (NaN with fewer than 3 points). Fits the quartic-law exponent of a
+sweep's clean window; shared with the display-time refit in `RunFigures`.
+"""
 function loglog_slope(x::AbstractVector, y::AbstractVector)
     lx, ly = log10.(x), log10.(y)
     mx, my = mean(lx), mean(ly)
@@ -102,6 +109,33 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     c1_err = n > 2 ? sqrt(max(0.0, sum(abs2, resid) / (n - 2)) * s4 / det) : NaN
     return c1, c1_err, c2
 end
+
+"""
+    optimizer_floor(D2_num, ratio) -> floor_level
+
+Bootstrap estimate of a sweep's optimizer floor: points whose
+`D²_num/D²_theo` ratio is ≥ 2 are floor-dominated, and the floor level is
+the largest floor-dominated `D²_num`. Returns `NaN` when no point is
+floor-dominated.
+"""
+function optimizer_floor(D2_num::AbstractVector, ratio::AbstractVector)
+    floor_pts = findall(>=(2.0), ratio)
+    return isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
+end
+
+"""
+    above_floor_mask(D2_num, floor_level) -> BitVector
+
+Production clean-point rule, shared by the sweep stage and all display-time
+figure regeneration (`RunFigures`): only points strictly above the optimizer
+floor are clean (all positive points when no floor was detected). Borderline
+points inside the floor band are excluded even when their ratio is close to
+unity, and convergence flags never exclude a point — the iteration and
+tolerance caps are strict enough that flagged points at ratio ≈ 1 are
+genuine optima.
+"""
+above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
+    isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
 
 """
     plan_resources(cfg, n_bins, nch, backend) -> (active_threads, est_gb)
@@ -290,16 +324,10 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
         ratio = D2_num ./ D2_theo
-        # Optimizer-floor bootstrap: points with ratio ≥ 2 are floor-dominated
-        # and define floor_level; the slope and ratio fits then use only
-        # points strictly above the floor — borderline points inside the
-        # floor band are excluded even when their ratio is close to unity,
-        # and non-convergence flags do not exclude a point (the
-        # iteration/tolerance caps are strict enough that flagged points at
-        # ratio ≈ 1 are genuine optima).
-        floor_pts = findall(>=(2.0), ratio)
-        floor_level = isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
-        clean = isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
+        # the slope and ratio fits use only points strictly above the
+        # bootstrapped optimizer floor (see optimizer_floor/above_floor_mask)
+        floor_level = optimizer_floor(D2_num, ratio)
+        clean = above_floor_mask(D2_num, floor_level)
         slope, slope_err = count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
         logline(log_io, @sprintf("        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
                                  count(clean), n, slope, slope_err))
