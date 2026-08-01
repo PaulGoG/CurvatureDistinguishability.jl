@@ -6,7 +6,7 @@ export get_best_backend, to_backend, backend_name, register_backend!
 
 """
 Registry of GPU backend probes, populated by the package extensions
-(`TWDCUDAExt`, `TWDAMDGPUExt`, `TWDMetalExt`, `TWDoneAPIExt`) when the
+(`CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext`) when the
 corresponding GPU package is loaded in the session. Each entry maps a
 backend name to a zero-argument probe returning a functional
 `KernelAbstractions.Backend` or `nothing`.

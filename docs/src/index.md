@@ -1,9 +1,9 @@
-# Two-Waveform Distinguishability
+# CurvatureDistinguishability
 
 ## Project structure
 
 ```text
-TwoWaveformDistinguishability/
+CurvatureDistinguishability/
 ├── config.toml             # single source of all run parameters (validated)
 ├── src/
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions

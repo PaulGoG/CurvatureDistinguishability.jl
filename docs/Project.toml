@@ -1,6 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-TwoWaveformDistinguishability = "023135ff-521e-423d-a4c9-75a9bc432dee"
+CurvatureDistinguishability = "023135ff-521e-423d-a4c9-75a9bc432dee"
 
 [compat]
 Documenter = "1"

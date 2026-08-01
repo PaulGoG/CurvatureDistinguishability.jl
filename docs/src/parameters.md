@@ -1,6 +1,6 @@
 # Run Parameter Documentation
 
-**Context:** LISA Two-Waveform Distinguishability Simulation
+**Context:** LISA Two-Source Distinguishability Simulation
 
 This document explains the physical rationale behind the production
 configuration (`config.toml`): the global grid, the seven 1D separation

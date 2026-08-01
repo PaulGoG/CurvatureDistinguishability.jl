@@ -1,7 +1,7 @@
-module TWDoneAPIExt
+module CurvatureDistinguishabilityoneAPIExt
 
 using oneAPI
-using TwoWaveformDistinguishability.Backends
+using CurvatureDistinguishability.Backends
 
 function __init__()
     Backends.register_backend!(:oneapi, () -> oneAPI.functional() ? oneAPIBackend() : nothing)

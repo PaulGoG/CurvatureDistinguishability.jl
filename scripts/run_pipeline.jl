@@ -7,7 +7,7 @@ using ArgParse
 using TOML
 
 function parse_commandline()
-    s = ArgParseSettings(description = "Two-Waveform Distinguishability Unified Pipeline")
+    s = ArgParseSettings(description = "Curvature-Distinguishability Unified Pipeline")
     @add_arg_table! s begin
         "--config"
             help = "Path to a TOML configuration file (relative to project root)"
@@ -47,6 +47,6 @@ let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
     end
 end
 
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 
 run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])

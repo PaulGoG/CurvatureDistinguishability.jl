@@ -15,7 +15,7 @@ Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using CSV
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 
 function parse_arguments(argv)
     args = copy(argv)

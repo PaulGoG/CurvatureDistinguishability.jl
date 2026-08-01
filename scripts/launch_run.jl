@@ -12,7 +12,7 @@ timestamp = Dates.format(now(), "yyyymmdd_HHMMSS")
 console_log = joinpath(LOG_DIR, "run_$(timestamp).log")
 
 println("=" ^ 78)
-println("  Launching Two-Waveform Distinguishability pipeline run (detached)")
+println("  Launching CurvatureDistinguishability pipeline run (detached)")
 println("=" ^ 78)
 println("  project root : $PROJECT_ROOT")
 println("  console log  : $console_log")

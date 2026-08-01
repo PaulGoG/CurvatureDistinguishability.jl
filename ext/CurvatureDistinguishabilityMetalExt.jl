@@ -1,7 +1,7 @@
-module TWDMetalExt
+module CurvatureDistinguishabilityMetalExt
 
 using Metal
-using TwoWaveformDistinguishability.Backends
+using CurvatureDistinguishability.Backends
 
 function __init__()
     Backends.register_backend!(:metal, () -> Metal.functional() ? MetalBackend() : nothing)

@@ -6,7 +6,7 @@ using LaTeXStrings
 using Printf
 using ..Provenance: backup_existing!
 
-export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
+export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
 
 """
 Short LaTeX axis labels for the six model parameters (deviation form is
@@ -17,13 +17,13 @@ const PARAM_LABELS = (L"\mathcal{A}", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_
 deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:end-1])
 
 """
-    twd_theme()
+    publication_theme()
 
 Publication theme (Computer Modern via MathTeXEngine, boxed axes, dashed
 low-opacity grey grid, no minor ticks, inward ticks, generous padding).
 All figure builders apply it via `with_theme`.
 """
-function twd_theme()
+function publication_theme()
     return Theme(
         fonts = (; regular = texfont(:text), bold = texfont(:bold), italic = texfont(:italic)),
         fontsize = 25,
@@ -252,7 +252,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
                         rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
                         clean::AbstractVector{Bool}, floor_level::Real,
                         c1::Real = NaN, c2::Real = NaN)
-    with_theme(twd_theme()) do
+    with_theme(publication_theme()) do
         fig = Figure(size = (920, 900))
 
         pos = d2_num .> 0
@@ -380,7 +380,7 @@ off-scale-noise annotations sit between the panels, outside the frames.
 `delta_star`, `df`, and the integral annotations.
 """
 function residual_figure(spec, meta)
-    with_theme(twd_theme()) do
+    with_theme(publication_theme()) do
         fig = Figure(size = (950, 950))
         # Limits and ticks follow the plotted data: with log-uniform decimation
         # the first/last plotted frequencies sit at the band ends, so the
@@ -533,7 +533,7 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
                      x_math = nothing, y_math = nothing)
     px == py && error("map plane must use two distinct parameters")
     same_units = (px in (5, 6) && py in (5, 6))
-    with_theme(twd_theme()) do
+    with_theme(publication_theme()) do
         # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins
         fig = Figure(size = same_units ? (820, 830) : (960, 720))
 

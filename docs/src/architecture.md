@@ -1,6 +1,6 @@
 # System Architecture
 
-**Purpose:** exact structural map of the `TwoWaveformDistinguishability`
+**Purpose:** exact structural map of the `CurvatureDistinguishability`
 codebase for collaborators and AI agents. Statements here are kept in sync
 with the code; when they disagree, the code wins and this page is the bug.
 
@@ -57,7 +57,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   each other: an allocation-free scalar CPU loop (avoids GC lock contention
   under 20+ threads) and a single KernelAbstractions kernel.
 - **`Backends.jl`** — a backend probe registry populated by **package
-  extensions** (`ext/TWD{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
+  extensions** (`ext/CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
   `isdefined(Main, …)` reflection. Loading e.g. `CUDA` in the session
   registers the probe; `get_best_backend()` returns the first functional
   device or the multi-threaded `CPU()` fallback. `scripts/run_pipeline.jl` loads

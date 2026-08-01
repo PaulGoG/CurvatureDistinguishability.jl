@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "0e08b56d0ff6e6e01d9d57b8962a571d234fb226"
+project_hash = "3936dc245a5f0f773b3c65dd2b87520951937ec8"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "ec6be48a85c93d995563b84bff8a86bc98df45ce"
@@ -388,6 +388,24 @@ version = "0.1.0+0"
 git-tree-sha1 = "54b76cbb40d9a0f5368c880725b2f141da77c94f"
 uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.2.0"
+
+[[deps.CurvatureDistinguishability]]
+deps = ["ArgParse", "CSV", "CairoMakie", "DataFrames", "Dates", "DrWatson", "ForwardDiff", "KernelAbstractions", "LaTeXStrings", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
+path = "."
+uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
+version = "1.0.0-DEV"
+
+    [deps.CurvatureDistinguishability.extensions]
+    CurvatureDistinguishabilityAMDGPUExt = "AMDGPU"
+    CurvatureDistinguishabilityCUDAExt = "CUDA"
+    CurvatureDistinguishabilityMetalExt = "Metal"
+    CurvatureDistinguishabilityoneAPIExt = "oneAPI"
+
+    [deps.CurvatureDistinguishability.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+    oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [[deps.DataAPI]]
 git-tree-sha1 = "abe83f3a2f1b857aac70ef8b269080af17764bbe"
@@ -1787,24 +1805,6 @@ version = "0.11.3"
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
 uuid = "981d1d27-644d-49a2-9326-4793e63143c3"
 version = "0.1.0"
-
-[[deps.TwoWaveformDistinguishability]]
-deps = ["ArgParse", "CSV", "CairoMakie", "DataFrames", "Dates", "DrWatson", "ForwardDiff", "KernelAbstractions", "LaTeXStrings", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
-path = "."
-uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
-version = "1.0.0-DEV"
-
-    [deps.TwoWaveformDistinguishability.extensions]
-    TWDAMDGPUExt = "AMDGPU"
-    TWDCUDAExt = "CUDA"
-    TWDMetalExt = "Metal"
-    TWDoneAPIExt = "oneAPI"
-
-    [deps.TwoWaveformDistinguishability.weakdeps]
-    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
-    oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]

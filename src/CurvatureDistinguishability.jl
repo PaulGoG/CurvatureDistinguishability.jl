@@ -1,5 +1,5 @@
 """
-    TwoWaveformDistinguishability
+    CurvatureDistinguishability
 
 Computational proof of the quartic distinguishability law for space-based
 gravitational-wave interferometry: the squared distance between a two-source
@@ -13,7 +13,7 @@ validated configuration (`Config`), provenance utilities (`Provenance`),
 publication plotting (`Plotting`), the pipeline driver (`Orchestrator`) and
 figure regeneration from persisted run artifacts (`RunFigures`).
 """
-module TwoWaveformDistinguishability
+module CurvatureDistinguishability
 
 include("Backends.jl")
 using .Backends
@@ -53,7 +53,7 @@ export PipelineSettings, load_and_validate_config
 
 include("Plotting.jl")
 using .Plotting
-export twd_theme, save_figure, scaling_figure, residual_figure, zone_figure
+export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
 
 include("Orchestrator.jl")
 using .Orchestrator

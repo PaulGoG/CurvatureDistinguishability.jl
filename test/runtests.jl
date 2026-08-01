@@ -1,4 +1,4 @@
-using TwoWaveformDistinguishability
+using CurvatureDistinguishability
 using Test
 using CSV
 using DataFrames
@@ -8,7 +8,7 @@ using Statistics
 using TOML
 using Logging
 
-const TWD = TwoWaveformDistinguishability
+const CD = CurvatureDistinguishability
 const FIXDIR = joinpath(@__DIR__, "fixtures", "reference")
 
 # Fixture context: the tiny 201-bin grid the reference values were generated on.
@@ -22,7 +22,7 @@ const THETA0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
 const FIX_NOISE_OFF = NoiseParams(confusion_enabled = false)
 const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
-@testset "TwoWaveformDistinguishability.jl" begin
+@testset "CurvatureDistinguishability.jl" begin
 
     @testset "Noise PSD (Robson 2019)" begin
         # instrumental part must reproduce the reference values bitwise-tight
@@ -105,7 +105,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # fused nested-dual derivatives against independent ForwardDiff passes
         gvec(s) = [sin(2s) + s^3, exp(s) * cos(s)]
-        h0, dh, d2h = TWD.Geometry.value_and_directional_derivs(gvec, 0.3)
+        h0, dh, d2h = CD.Geometry.value_and_directional_derivs(gvec, 0.3)
         @test h0 ≈ gvec(0.3) rtol = 1e-14
         @test dh ≈ ForwardDiff.derivative(gvec, 0.3) rtol = 1e-12
         @test d2h ≈ ForwardDiff.derivative(s -> ForwardDiff.derivative(gvec, s), 0.3) rtol = 1e-12
@@ -183,11 +183,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         p = [2.0, 1.505, 2.01, 0.005, 0.8, 0.8]
         # the KA kernel on the CPU backend must reproduce the scalar loop,
         # for both the value and the ForwardDiff gradient
-        kern = TWD.Inference.device_loss(p, FIX_FREQS, FIX_SN, data[1], data[2],
+        kern = CD.Inference.device_loss(p, FIX_FREQS, FIX_SN, data[1], data[2],
                                          FIX_DF, FIX_WP, CPU())
         @test kern ≈ loop(p) rtol = 1e-12
         g_loop = ForwardDiff.gradient(loop, p)
-        dl = q -> TWD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data[1], data[2],
+        dl = q -> CD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data[1], data[2],
                                             FIX_DF, FIX_WP, CPU())
         @test ForwardDiff.gradient(dl, p) ≈ g_loop rtol = 1e-12
         # lanes path: nested (Hessian) duals through the same kernel layout
@@ -204,7 +204,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                                   ForwardDiff.Dual{:i}(4.0, 5.0, 6.0))
         fl = flatten_dual(nd)
         @test fl == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
-        rb, _ = TWD.Inference.rebuild_dual(typeof(nd), collect(fl), 1)
+        rb, _ = CD.Inference.rebuild_dual(typeof(nd), collect(fl), 1)
         @test rb === nd
 
         # perfect match → (near-)zero distance
@@ -373,12 +373,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         d = 10 .^ range(-3, -1, length = 8)
         th = d .^ 4
         num = th .* 1.01
-        panel = TWD.Orchestrator.sweep_diagnostic_panel(d, num, th, trues(8), 4.0, 0.01)
+        panel = CD.Orchestrator.sweep_diagnostic_panel(d, num, th, trues(8), 4.0, 0.01)
         @test occursin("fitted slope", panel) && occursin("8/8", panel)
         @test occursin("theory", panel)
-        empty_panel = TWD.Orchestrator.sweep_diagnostic_panel(d, zeros(8), th, falses(8), NaN, NaN)
+        empty_panel = CD.Orchestrator.sweep_diagnostic_panel(d, zeros(8), th, falses(8), NaN, NaN)
         @test occursin("no positive", empty_panel)
-        mp = TWD.Orchestrator.map_diagnostic_panel(collect(range(0, 2π, length = 16)),
+        mp = CD.Orchestrator.map_diagnostic_panel(collect(range(0, 2π, length = 16)),
                                                    fill(1.0, 16), 0.25)
         @test occursin("prior-limited directions: 25.0%", mp)
     end
@@ -386,22 +386,22 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     @testset "Ratio-correction fit (O(δ⁵) quantification)" begin
         d = [0.01, 0.05, 0.1, 0.2, 0.3]
         r = 1.0 .+ 0.3 .* d .- 0.1 .* d .^ 2
-        c1, c1_err, c2 = TWD.Orchestrator.ratio_correction_fit(d, r)
+        c1, c1_err, c2 = CD.Orchestrator.ratio_correction_fit(d, r)
         @test c1 ≈ 0.3 atol = 1e-6
         @test c2 ≈ -0.1 atol = 1e-6
         @test c1_err < 1e-10 # exact model → zero residual
-        c1n, _, _ = TWD.Orchestrator.ratio_correction_fit(d[1:2], r[1:2])
+        c1n, _, _ = CD.Orchestrator.ratio_correction_fit(d[1:2], r[1:2])
         @test isnan(c1n) # too few points
     end
 
     @testset "Plotting utilities" begin
-        vals, labels = TWD.Plotting.decade_ticks(2e-22, 3e-4)
+        vals, labels = CD.Plotting.decade_ticks(2e-22, 3e-4)
         @test all(2e-22 .<= vals .<= 3e-4)
         ps = round.(Int, log10.(vals))
         @test all(diff(ps) .== ps[2] - ps[1]) # uniform decade step
         @test all(p -> mod(p, ps[2] - ps[1]) == 0, ps) # family-consistent anchor
 
-        pt = TWD.Plotting.pi_ticks(-π / 2 - 0.1, π / 6 + 0.1)
+        pt = CD.Plotting.pi_ticks(-π / 2 - 0.1, π / 6 + 0.1)
         @test pt !== nothing
         vals_π, _ = pt
         steps = diff(vals_π)
@@ -409,24 +409,24 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # coverage: a ±0.78π range must be ticked out to ±3π/4, not stop at
         # ±π/2 (regression: sparse π ticks left the axis ends bare)
-        vc, _ = TWD.Plotting.pi_ticks(-0.78π, 0.78π)
+        vc, _ = CD.Plotting.pi_ticks(-0.78π, 0.78π)
         @test length(vc) >= 5
         @test maximum(vc) ≈ 3π / 4 atol = 1e-12
         @test minimum(vc) ≈ -3π / 4 atol = 1e-12
 
-        @test TWD.Plotting.axis_exponent(6e-4) == -4
-        @test TWD.Plotting.axis_exponent(2.0) == 0
+        @test CD.Plotting.axis_exponent(6e-4) == -4
+        @test CD.Plotting.axis_exponent(2.0) == 0
 
         # residual-band ticks: from the true band [1e-4, 0.05] every whole-power
         # decade is present, including the low endpoint (regression: ticking
         # off the decimated spec.f range dropped the 1e-4 tick, leaving 2).
-        vb, _ = TWD.Plotting.decade_ticks(1e-4, 0.05)
+        vb, _ = CD.Plotting.decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
         # 10⁰ always renders as plain "1" — on decade ticks and the 1-2-5 series
-        _, l0 = TWD.Plotting.decade_ticks(0.5, 50.0)
+        _, l0 = CD.Plotting.decade_ticks(0.5, 50.0)
         @test l0[1].s == "\$1\$"
-        v125, l125 = TWD.Plotting.log_ticks_125(5e-2, 6.0)
+        v125, l125 = CD.Plotting.log_ticks_125(5e-2, 6.0)
         @test any(≈(1.0), v125) && any(≈(2e-1), v125)
         @test l125[findfirst(≈(1.0), v125)].s == "\$1\$"
         @test !any(l -> occursin("10^{0}", l.s), l125)
@@ -434,7 +434,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # offset ticks (confusion-map axes): one factored power of 10 with
         # integer mantissas preferring multiples of 5, limits snapped outward
         # so the frame ends exactly on the outermost labelled ticks
-        ot = TWD.Plotting.offset_ticks(-1.32e-3, 1.32e-3)
+        ot = CD.Plotting.offset_ticks(-1.32e-3, 1.32e-3)
         @test ot !== nothing
         ovals, olabels, e10, lo_s, hi_s = ot
         @test e10 == -4
@@ -442,28 +442,28 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test lo_s <= -1.32e-3 && hi_s >= 1.32e-3
         @test all(m -> m % 5 == 0, round.(Int, ovals ./ 10.0^e10))
         @test occursin("15", olabels[end].s) && !occursin("10^", olabels[end].s)
-        ot2 = TWD.Plotting.offset_ticks(-1.15e-4, 1.8e-4) # asymmetric range
+        ot2 = CD.Plotting.offset_ticks(-1.15e-4, 1.8e-4) # asymmetric range
         @test ot2 !== nothing
         @test ot2[4] <= -1.15e-4 && ot2[5] >= 1.8e-4
 
         # per-tick common-exponent scientific notation (fallback when no
         # clean integer-mantissa grid exists) — 5e-5 renders as 0.5×10⁻⁴,
         # never mixing 10⁻⁴ with 10⁻⁵ labels on one axis
-        sl = TWD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
+        sl = CD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
         @test occursin("-1.5", sl[1].s) && occursin("10^{-4}", sl[1].s)
         @test !occursin("times", sl[2].s) # zero renders as plain "0"
         @test occursin("0.5", sl[3].s) && occursin("10^{-4}", sl[3].s)
         @test !occursin("10^{-5}", sl[3].s)
 
         # annotation number formatting: LaTeX ×10ⁿ, never bare e-notation
-        @test TWD.Plotting.sci_latex(9.34e-5) == "9.34\\times 10^{-5}"
-        @test TWD.Plotting.sci_latex(0.316) == "0.316"
-        @test TWD.Plotting.sci_latex(0) == "0"
+        @test CD.Plotting.sci_latex(9.34e-5) == "9.34\\times 10^{-5}"
+        @test CD.Plotting.sci_latex(0.316) == "0.316"
+        @test CD.Plotting.sci_latex(0) == "0"
 
         # fit coefficients: ALWAYS mantissa ×10ⁿ with two decimals
-        @test TWD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
-        @test TWD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
-        @test TWD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
+        @test CD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
+        @test CD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
+        @test CD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
     end
 
     @testset "End-to-end minimal pipeline" begin

@@ -1,7 +1,7 @@
-module TWDCUDAExt
+module CurvatureDistinguishabilityCUDAExt
 
 using CUDA
-using TwoWaveformDistinguishability.Backends
+using CurvatureDistinguishability.Backends
 
 function __init__()
     Backends.register_backend!(:cuda, () -> CUDA.functional() ? CUDABackend() : nothing)
