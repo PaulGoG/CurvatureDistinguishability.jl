@@ -9,9 +9,8 @@ export PipelineSettings, load_and_validate_config
 """
 Fully parsed and validated pipeline configuration. Construction goes through
 [`load_and_validate_config`](@ref), which fails fast with a descriptive
-error for unusable input and emits warnings for suspicious-but-runnable
-values — silent misconfiguration
-is designed out by warning on every unknown key.
+error for unusable input, emits warnings for suspicious-but-runnable
+values, and warns on every unknown key (typo protection).
 """
 struct PipelineSettings
     # pipeline
@@ -157,10 +156,10 @@ function load_and_validate_config(config_path::AbstractString)
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
-    # Safe-by-default optimizer tolerances: fits at the
-    # numerical precision floor cannot reach very tight gradient norms and
-    # would otherwise grind against the iteration cap; clean-region fits
-    # converge in 16–40 Newton iterations, so 100 is generous.
+    # Safe-by-default optimizer tolerances: fits at the numerical precision
+    # floor cannot reach very tight gradient norms and would otherwise
+    # exhaust the iteration cap; clean-region fits converge in 16–40 Newton
+    # iterations, so 100 leaves ample margin.
     g_tol = getnum(ss, "g_tol", 1e-10, "pipeline.sweep_settings")
     g_tol > 0 || error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
     g_tol < 1e-11 &&
@@ -169,8 +168,9 @@ function load_and_validate_config(config_path::AbstractString)
     max_iterations = getint(ss, "max_iterations", 100, "pipeline.sweep_settings")
     max_iterations >= 1 || error("[pipeline.sweep_settings].max_iterations must be >= 1")
     max_iterations > 300 &&
-        @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits burn " *
-              "the full cap by construction — large caps cost wall time, not accuracy."
+        @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits " *
+              "exhaust the full cap by construction — a large cap costs wall time " *
+              "without improving accuracy."
 
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")

@@ -8,7 +8,7 @@ signal and the best-fit single-source template scales as
 signal manifold. The package provides the waveform/detector model
 (`Physics`, `Detector`), the differential-geometry engine (`Geometry`),
 box-constrained inference (`Inference`), physical parameter bounds
-(`Bounds`), hardware abstraction with GPU package extensions (`Hardware`),
+(`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
 publication plotting (`Plotting`) and the pipeline driver (`Orchestrator`).
 """

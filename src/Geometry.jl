@@ -108,8 +108,8 @@ struct DirDerivOuter end
     value_and_directional_derivs(g, s0) -> (h, dh, d2h)
 
 Value, first and second directional derivative of the vector map `g` at `s0`
-from a *single* evaluation with nested dual numbers (instead of paying a
-separate AD pass for `dh`).
+from a single evaluation with nested dual numbers (no separate AD pass for
+the first derivative).
 """
 function value_and_directional_derivs(g, s0::Float64)
     Ti = ForwardDiff.Tag{DirDerivInner,Float64}
