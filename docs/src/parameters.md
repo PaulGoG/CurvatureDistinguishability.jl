@@ -79,8 +79,9 @@ across seven physical scenarios.
     waveform depends on spins only through
     $\chi_{\rm eff}=(\chi_1+\chi_2)/2$) with a 15% chirp-mass admixture
     tuned so the second source stays physical at $\delta_{\max}$
-    ($g(u,u)\simeq 0.61$, three orders below the well-measured directions).
-    The sharpest stress test of the law near a null direction.
+    ($g(u,u)\simeq 0.61$, nearly seven orders of magnitude below the
+    well-measured directions). The sharpest stress test of the law near a
+    null direction.
 
 ## 3. 2D Zone of Confusion Mappings
 

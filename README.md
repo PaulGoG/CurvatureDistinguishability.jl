@@ -36,6 +36,7 @@ TwoWaveformDistinguishability/
 │   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)
 │   ├── launch_run.jl       # detached launcher via Base.julia_cmd()
 │   ├── replot.jl           # regenerate all figures from a run's CSVs
+│   └── collect_plots.jl    # flat PNG browsing view of one or more runs
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
@@ -67,10 +68,10 @@ since the device serializes kernels anyway.
 ## Usage
 
 ```bash
-# foreground run (progress bars on a TTY)
+# foreground run (progress bars on a TTY); --output-dir overrides data/
 julia --project --threads=auto scripts/run_pipeline.jl --config config.toml
 
-# detached long run with ANSI-free logs
+# detached long run with ANSI-free logs (forwards --config/--output-dir)
 julia --project scripts/launch_run.jl
 
 # regenerate every figure of a finished run from its CSVs (no recomputation);
@@ -78,7 +79,9 @@ julia --project scripts/launch_run.jl
 # discernibility threshold using the persisted per-direction curvature
 julia --project scripts/replot.jl data/run_<hash> [--rho R]
 
-# audit a run's confusion maps against the physical bounds
+# re-render all figures of one or more runs as a flat PNG browsing view
+# (plots/ by default)
+julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
 ```
 
 Everything tunable lives in `config.toml` (grid, physics, Robson-2019 noise
@@ -118,5 +121,5 @@ overwritten.
 | Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the maintainer notes (GPU-LESSONS.md, kept outside the package) |
+| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the workspace maintainer notes (`notes/gpu-lessons.md`, outside the package) |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
