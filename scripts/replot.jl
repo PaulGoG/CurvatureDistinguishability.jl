@@ -51,11 +51,13 @@ if isdir(sweeps_dir)
         try
             res = CSV.read(res_path, DataFrame)
             meta = isfile(meta_path) ? TOML.parsefile(meta_path) : Dict{String,Any}()
-            ratio = res.D2_Numerical ./ res.D2_Theoretical
-            conv = hasproperty(res, :Converged) ? res.Converged : trues(nrow(res))
-            clean = (ratio .> 0.5) .& (ratio .< 2.0) .& conv
             floor_level = Float64(get(meta, "floor_level", -1.0))
             floor_level < 0 && (floor_level = NaN)
+            # clean-point classification under the production above-floor rule
+            # (src/Orchestrator.jl): only points strictly above the persisted
+            # optimizer floor are clean; convergence flags do not exclude
+            clean = isnan(floor_level) ? (res.D2_Numerical .> 0) :
+                                         (res.D2_Numerical .> floor_level)
             rho_sq_eff = rho_new === nothing ? Float64(get(meta, "rho_sq", 1.0)) : rho_new^2
             Kn = Float64(get(meta, "K_u_norm", NaN))
             delta_min_eff = rho_new === nothing ? Float64(get(meta, "delta_min", NaN)) :
@@ -125,8 +127,8 @@ if isdir(maps_dir)
                 r_math = [K > 1e-300 ? (16.0 * rho_new^2 / K)^(1 / 4) : Inf for K in df_map.K_Raw]
                 r_cap = min.(r_math, df_map.R_Box)
                 if any(!isfinite, r_cap)
-                    biggest = maximum(filter(isfinite, r_cap); init = 1.0)
-                    r_cap[.!isfinite.(r_cap)] .= 5biggest
+                    r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
+                    r_cap[.!isfinite.(r_cap)] .= 5r_cap_max
                 end
                 dc = hasproperty(df_map, :Dir_Cos) ? df_map.Dir_Cos : cos.(df_map.Angle)
                 ds = hasproperty(df_map, :Dir_Sin) ? df_map.Dir_Sin : sin.(df_map.Angle)
