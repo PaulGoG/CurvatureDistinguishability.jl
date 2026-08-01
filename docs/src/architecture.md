@@ -81,6 +81,12 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   structured `run.log` via LoggingExtras, and **per-stage try/catch**: a
   failing sweep or map is logged with its backtrace and the remaining stages
   continue; failures are listed in `metadata.toml`.
+- **`RunFigures.jl`** — display-time figure regeneration from persisted run
+  artifacts, the single implementation behind `scripts/replot.jl` and
+  `scripts/collect_plots.jl`: point classification and display refits reuse
+  the pipeline's own fit rules (`optimizer_floor`/`above_floor_mask`,
+  `loglog_slope`, `ratio_correction_fit`), so run-time and regenerated
+  figures cannot diverge.
 
 ## 3. The workflows
 

@@ -558,6 +558,36 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             end
             @test isfile(joinpath(out_base, "maps", "mini_spin_map", "confusion_zone_rho2p0.png"))
 
+            # unified regeneration API (RunFigures): figures rebuild from the
+            # persisted CSVs alone, and the library rho-rescale reproduces the
+            # replot child's persisted contour exactly
+            cases = run_cases(out_base)
+            @test cases.sweeps == ["mini_sweep", "mini_unequal"]
+            @test cases.maps == ["mini_mass_time", "mini_spin_map"]
+            figs = sweep_figures(out_base, "mini_sweep")
+            @test figs.residual !== nothing && figs.suffix == ""
+            figs_refit = sweep_figures(out_base, "mini_sweep"; refit = true)
+            @test figs_refit.suffix == ""
+            rz = zone_map_figure(out_base, "mini_spin_map"; rho = 2.0)
+            @test rz.suffix == "_rho2p0" && rz.contour isa DataFrame
+            @test all(rz.contour.R_Capped .<= rz.contour.R_Box .+ 1e-12)
+            @test all(isapprox.(rz.contour.R_Capped, cm2.R_Capped; rtol = 1e-12))
+
+            # collect_plots subprocess: flat browsing PNGs from a run *path*
+            # selector plus a destination argument (same env scrubbing as the
+            # replot child)
+            collect_script = joinpath(dirname(@__DIR__), "scripts", "collect_plots.jl")
+            browse_dir = joinpath(dir, "browse")
+            cmd_collect = addenv(`$jlbin --startup-file=no $collect_script $browse_dir $out_base`,
+                                 "JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing)
+            run(pipeline(cmd_collect, stdout = devnull, stderr = devnull))
+            run_label = basename(out_base)
+            for png in ("$(run_label)_sweep_mini_sweep_scaling.png",
+                        "$(run_label)_sweep_mini_sweep_residual.png",
+                        "$(run_label)_map_mini_spin_map.png")
+                @test isfile(joinpath(browse_dir, png))
+            end
+
             # rerun with the same config must NOT overwrite: suffixed run dir
             out2 = run_pipeline(cfg_path, dir, "outputs")
             @test out2 != out_base && isdir(out2)

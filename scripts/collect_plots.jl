@@ -1,101 +1,83 @@
 # Collect every figure of one or more pipeline runs as PNGs into a single
-# flat, human-browsable folder (plots/ by default), rendered
-# fresh from the persisted CSVs with the current plotting code. The source
-# run directories are not modified.
+# flat, human-browsable folder (plots/ by default), rendered fresh from the
+# persisted CSVs with the current plotting code: slope and correction
+# coefficients are refitted for display, persisted run metadata is never
+# modified, and the source run directories are not touched. All rebuild
+# logic lives in src/RunFigures.jl (shared with replot.jl).
 #
-#   julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
+#   julia --project scripts/collect_plots.jl [dest_dir] [run ...]
 #
-# With no run_id arguments, every data/run_* directory is rendered;
-# figure files are prefixed with the run id (run_<hash>_...).
+# A run selector is either a run id under data/ (run_<hash>) or a path to a
+# run directory (e.g. one produced with --output-dir elsewhere); selectors
+# that resolve to run directories take precedence over the destination
+# argument. With no selectors, every data/run_* directory is rendered.
+# Figure files are prefixed with the run id (run_<hash>_...).
 using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 
-using CSV, DataFrames, TOML, CairoMakie
+using CairoMakie
 using TwoWaveformDistinguishability
-using TwoWaveformDistinguishability.Bounds: deviation_box
-using TwoWaveformDistinguishability.Config: load_and_validate_config
 
-const OUT = joinpath(PROJECT_ROOT, "data")
-const DESTARG = !isempty(ARGS) && !startswith(ARGS[1], "run_")
-const DEST = DESTARG ? abspath(ARGS[1]) : joinpath(PROJECT_ROOT, "plots")
-const RUNSEL = filter(a -> startswith(a, "run_"), ARGS)
-mkpath(DEST)
+const DATA_ROOT = joinpath(PROJECT_ROOT, "data")
 
-runs = isempty(RUNSEL) ?
-    sort(filter(d -> startswith(d, "run_") && isdir(joinpath(OUT, d)), readdir(OUT))) :
-    RUNSEL
-const RUNS = [(run, run,
-                   isdir(joinpath(OUT, run, "sweeps")) ? sort(readdir(joinpath(OUT, run, "sweeps"))) : String[],
-                   isdir(joinpath(OUT, run, "maps")) ? sort(readdir(joinpath(OUT, run, "maps"))) : String[])
-                  for run in runs]
+is_run_dir(path) = isdir(path) && isfile(joinpath(path, "config.toml"))
 
-png_at(name) = joinpath(DEST, name * ".png")
-n = 0
+function resolve_run(arg)
+    is_run_dir(abspath(arg)) && return abspath(arg)
+    startswith(basename(arg), "run_") && return joinpath(DATA_ROOT, arg)
+    return nothing
+end
 
-function render_sweep(label, run, case)
-    global n
-    d = joinpath(OUT, run, "sweeps", case)
-    isfile(joinpath(d, "results.csv")) || return
-    cfg = load_and_validate_config(joinpath(OUT, run, "config.toml"))
-    res = CSV.read(joinpath(d, "results.csv"), DataFrame)
-    m = TOML.parsefile(joinpath(d, "sweep_meta.toml"))
-    ratio = res.D2_Numerical ./ res.D2_Theoretical
-    fl = Float64(get(m, "floor_level", -1.0)); fl < 0 && (fl = NaN)
-    # display-time refit under the above-floor fit rule (the persisted
-    # sweep_meta.toml keeps the run-time values untouched): fits use only
-    # points strictly above the optimizer floor; convergence flags do not
-    # exclude a point
-    TWDO = TwoWaveformDistinguishability.Orchestrator
-    clean = isnan(fl) ? (res.D2_Numerical .> 0) : (res.D2_Numerical .> fl)
-    slope, slope_err = count(clean) >= 3 ?
-        TWDO.loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
-    c1, _, c2 = TWDO.ratio_correction_fit(res.Delta[clean], ratio[clean])
-    fig = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
-                         rho_sq = Float64(get(m, "rho_sq", 1.0)),
-                         delta_min = Float64(get(m, "delta_min", NaN)),
-                         slope = slope, slope_err = slope_err,
-                         clean = collect(clean), floor_level = fl,
-                         c1 = c1, c2 = c2)
-    save(png_at("$(label)_sweep_$(case)_scaling"), fig; px_per_unit = 4); n += 1
-    sp = joinpath(d, "residual_spectrum.csv")
-    if isfile(sp)
-        spec = CSV.read(sp, DataFrame)
-        rfig = residual_figure(spec, (delta_star = Float64(get(m, "delta_star", NaN)),
-                                      df = Float64(get(m, "df", 1.0)),
-                                      f_min = cfg.f_min, f_max = cfg.f_max,
-                                      d2_num = Float64(get(m, "d2_num_star", NaN)),
-                                      d2_theo = Float64(get(m, "d2_theo_star", NaN))))
-        save(png_at("$(label)_sweep_$(case)_residual"), rfig; px_per_unit = 4); n += 1
+function parse_arguments(argv)
+    runs = String[]
+    dest = nothing
+    for arg in argv
+        resolved = resolve_run(arg)
+        if resolved !== nothing
+            push!(runs, resolved)
+        elseif dest === nothing
+            dest = abspath(arg)
+        else
+            error("Unrecognized argument '$arg' (not a run id, a run directory, " *
+                  "or the single destination directory).")
+        end
     end
-    println("  sweep: $label/$case")
+    if isempty(runs)
+        runs = isdir(DATA_ROOT) ?
+            [joinpath(DATA_ROOT, d) for d in sort(readdir(DATA_ROOT))
+             if startswith(d, "run_") && is_run_dir(joinpath(DATA_ROOT, d))] : String[]
+    end
+    return runs, something(dest, joinpath(PROJECT_ROOT, "plots"))
 end
 
-function render_map(label, run, case)
-    global n
-    csv = joinpath(OUT, run, "maps", case, "confusion_contour.csv")
-    isfile(csv) || return
-    cfg = load_and_validate_config(joinpath(OUT, run, "config.toml"))
-    mm = only(filter(m -> String(m["name"]) == case, cfg.maps))
-    px, py = Int(mm["param_x"]), Int(mm["param_y"])
-    t0 = Float64.(mm["theta_0"])
-    box = deviation_box(cfg.bounds, t0, px, py)
-    df = CSV.read(csv, DataFrame)
-    prior = collect(Bool, df.Prior_Limited)
-    degen = collect(Bool, df.Degenerate)
-    fig = zone_figure(df.Angle, df.X_Bound, df.Y_Bound, prior;
-                      px = px, py = py, box = box,
-                      prior_frac = count(prior) / nrow(df),
-                      degenerate_frac = count(degen) / nrow(df),
-                      x_math = df.R_Math .* df.Dir_Cos, y_math = df.R_Math .* df.Dir_Sin)
-    save(png_at("$(label)_map_$(case)"), fig; px_per_unit = 4); n += 1
-    println("  map:   $label/$case")
+function collect_figures(runs, dest)
+    n = 0
+    for run_dir in runs
+        label = basename(run_dir)
+        cases = run_cases(run_dir)
+        for case in cases.sweeps
+            figs = sweep_figures(run_dir, case; refit = true)
+            save(joinpath(dest, "$(label)_sweep_$(case)_scaling.png"), figs.scaling;
+                 px_per_unit = 4); n += 1
+            if figs.residual !== nothing
+                save(joinpath(dest, "$(label)_sweep_$(case)_residual.png"), figs.residual;
+                     px_per_unit = 4); n += 1
+            end
+            println("  sweep: $label/$case")
+        end
+        for case in cases.maps
+            rendered = zone_map_figure(run_dir, case)
+            save(joinpath(dest, "$(label)_map_$(case).png"), rendered.figure;
+                 px_per_unit = 4); n += 1
+            println("  map:   $label/$case")
+        end
+    end
+    return n
 end
 
-for (label, run, sweeps, maps) in RUNS
-    for s in sweeps; render_sweep(label, run, s); end
-    for mp in maps; render_map(label, run, mp); end
-end
-
-println("Collected $n PNG figures into $DEST")
+runs, dest = parse_arguments(ARGS)
+mkpath(dest)
+n = collect_figures(runs, dest)
+println("Collected $n PNG figures into $dest")
