@@ -91,10 +91,21 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test mA * h[7] ≈ A2[7] rtol = 1e-14
         @test mE * h[7] ≈ E2[7] rtol = 1e-14
         @test (@inferred tdi_modulation_bin(1e-3, Mc, tc, FIX_WP)) isa NTuple{2,ComplexF64}
+
+        # channel count is a WaveformParams type parameter: the projection
+        # return type (2- vs 3-tuple) and the flat response infer concretely
+        @test n_channels(FIX_WP) == 2 && n_channels(wp3) == 3
+        @test (@inferred project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)) isa
+              NTuple{2,Vector{ComplexF64}}
+        @test (@inferred project_to_tdi(h, FIX_FREQS, THETA0, wp3)) isa
+              NTuple{3,Vector{ComplexF64}}
+        @test (@inferred CD.Geometry.flat_response(THETA0, FIX_FREQS, FIX_WP)) isa
+              Vector{Float64}
     end
 
     @testset "Geometry: basis, fused derivatives" begin
-        basis = compute_tangent_basis(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+        basis = @inferred compute_tangent_basis(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+        @test basis isa Vector{NTuple{2,Vector{ComplexF64}}}
         @test 1 <= length(basis) <= 6
         # the χ_a direction is exactly degenerate in this model → rank 5
         @test length(basis) == 5
@@ -225,6 +236,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         struct FakeGPU <: KernelAbstractions.GPU end
         @test_throws ErrorException loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
                                                   FIX_WP, FakeGPU())
+
+        # buffer-cache eviction API empties the cache and is safe to call
+        # with no GPU present
+        CD.Inference.clear_device_buffers!()
+        @test isempty(CD.Inference.DEVICE_BUFFER_CACHE)
 
         # A/B against the committed reference fixtures on the clean separations
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)

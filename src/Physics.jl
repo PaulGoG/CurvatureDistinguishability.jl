@@ -110,19 +110,33 @@ end
 Immutable, isbits container for every physical parameter of the waveform and
 detector-response model; the single source of parameter defaults, safe to
 pass into GPU kernels. Values are overridden by the `[physics]` section of
-`config.toml`.
+`config.toml`. The active channel count (2, or 3 with the identically zero
+T channel) is carried as the type parameter `NCH`, so channel-dependent
+tuple types are inferable throughout the geometry and inference paths.
 """
-Base.@kwdef struct WaveformParams{T<:Real}
-    mass_scale::T = 10.0
-    time_scale::T = 1000.0
-    amp_scale::T = 1e-21
-    eta::T = 0.25
-    amp_33_factor::T = 0.1
-    sky_theta::T = 1.047
-    sky_phi::T = 0.0
-    inclination::T = 0.523
-    polarization::T = 0.0
-    include_t_channel::Bool = false
+struct WaveformParams{T<:Real,NCH}
+    mass_scale::T
+    time_scale::T
+    amp_scale::T
+    eta::T
+    amp_33_factor::T
+    sky_theta::T
+    sky_phi::T
+    inclination::T
+    polarization::T
+    include_t_channel::Bool
+end
+
+function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
+                        amp_scale::Real = 1e-21, eta::Real = 0.25,
+                        amp_33_factor::Real = 0.1, sky_theta::Real = 1.047,
+                        sky_phi::Real = 0.0, inclination::Real = 0.523,
+                        polarization::Real = 0.0, include_t_channel::Bool = false)
+    fields = promote(float(mass_scale), float(time_scale), float(amp_scale),
+                     float(eta), float(amp_33_factor), float(sky_theta),
+                     float(sky_phi), float(inclination), float(polarization))
+    return WaveformParams{typeof(fields[1]),include_t_channel ? 3 : 2}(fields...,
+                                                                       include_t_channel)
 end
 
 """

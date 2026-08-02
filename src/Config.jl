@@ -32,6 +32,8 @@ struct PipelineSettings
     f_min::Float64
     f_max::Float64
     # physics / noise
+    # abstract over the channel-count parameter; extracted once per stage
+    # behind function barriers, so the hot paths see the concrete type
     wp::WaveformParams{Float64}
     noise::NoiseParams
     # mapping

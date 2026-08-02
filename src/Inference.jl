@@ -54,21 +54,40 @@ function device_buffer(backend, ::Type{T}, dims::Dims) where {T}
     return buf
 end
 
+"""
+    clear_device_buffers!()
+
+Empty the device-buffer cache, releasing every cached device array (the
+backend frees them on garbage collection). Call between campaigns on
+memory-constrained devices; the cache refills on demand.
+"""
+function clear_device_buffers!()
+    lock(GPU_LOCK) do
+        empty!(DEVICE_BUFFER_CACHE)
+    end
+    return nothing
+end
+
+# Function barrier below `device_buffer`'s untyped cache: `out` is concretely
+# typed here, so the kernel launch and reduction pay one dynamic dispatch per
+# evaluation instead of one per operation.
+function launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
+    loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+    KernelAbstractions.synchronize(backend)
+    return 4.0 * df * sum(out)
+end
+
 function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real,
                      wp::WaveformParams, backend)
     T = eltype(p)
     θ = ntuple(i -> p[i], Val(6))
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, T, length(freqs))
-        loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-        KernelAbstractions.synchronize(backend)
-        return 4.0 * df * sum(out)
+        return launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
     end
     lock(GPU_LOCK) do
         out = device_buffer(backend, T, (length(freqs),))
-        loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-        KernelAbstractions.synchronize(backend)
-        return 4.0 * df * sum(out)
+        return launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
     end
 end
 
@@ -130,26 +149,28 @@ end
     end
 end
 
+# Function barrier (see launch_loss!): concretely typed lanes launch.
+function launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp,
+                            df, ::Type{D}) where {D}
+    loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+    KernelAbstractions.synchronize(backend)
+    s = Array(vec(sum(out; dims = 1)))
+    dual, _ = rebuild_dual(D, s, 1)
+    return 4.0 * df * dual
+end
+
 function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::Real,
                      wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
     θ = ntuple(i -> p[i], Val(6))
     M = sizeof(D) ÷ sizeof(Float64)
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
-        loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-        KernelAbstractions.synchronize(backend)
-        s = Array(vec(sum(out; dims = 1)))
-        dual, _ = rebuild_dual(D, s, 1)
-        return 4.0 * df * dual
+        return launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df, D)
     end
     lock(GPU_LOCK) do
         out = device_buffer(backend, Float64, (length(freqs), M))
         fill!(out, 0.0)
-        loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
-        KernelAbstractions.synchronize(backend)
-        s = Array(vec(sum(out; dims = 1)))
-        dual, _ = rebuild_dual(D, s, 1)
-        return 4.0 * df * dual
+        return launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df, D)
     end
 end
 
@@ -210,7 +231,7 @@ end
 
 """
     calculate_numerical_distance(data_stream, theta_guess, freqs, Sn_vals, df;
-                                 g_tol = 1e-12, iterations = 1000,
+                                 g_tol = 1e-10, iterations = 100,
                                  backend = get_best_backend(),
                                  optimizer = :ipnewton,
                                  bounds = default_bounds(), kwargs...)
@@ -228,7 +249,7 @@ Returns `(D², best_fit, optim_result)`.
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
                                       freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
-                                      g_tol::Real = 1e-12, iterations::Int = 1000,
+                                      g_tol::Real = 1e-10, iterations::Int = 100,
                                       backend = get_best_backend(),
                                       optimizer::Symbol = :ipnewton,
                                       bounds::Union{Nothing,ParameterBounds} = default_bounds(),

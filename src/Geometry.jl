@@ -49,16 +49,28 @@ numbers.
 function flat_response(p::AbstractVector, freqs::AbstractVector, wp::WaveformParams)
     h = scaled_waveform_model(p, freqs, wp)
     chans = project_to_tdi(h, freqs, p, wp)
-    return reduce(vcat, [vcat(real.(c), imag.(c)) for c in chans])
+    n = length(freqs)
+    out = Vector{real(eltype(chans[1]))}(undef, 2 * length(chans) * n)
+    off = 0
+    for c in chans
+        @inbounds for i in 1:n
+            out[off + i] = real(c[i])
+            out[off + n + i] = imag(c[i])
+        end
+        off += 2n
+    end
+    return out
 end
 
 """
-    unflatten_channels(v, n_bins, nch) -> NTuple of complex Vectors
+    unflatten_channels(v, n_bins, ::Val{NCH}) -> NTuple{NCH} of complex Vectors
 
-Inverse of the [`flat_response`](@ref) layout.
+Inverse of the [`flat_response`](@ref) layout. The channel count is a `Val`
+so the tuple length — and therefore the return type — is known to the
+compiler.
 """
-function unflatten_channels(v::AbstractVector, n_bins::Integer, nch::Integer)
-    return ntuple(nch) do c
+function unflatten_channels(v::AbstractVector, n_bins::Integer, ::Val{NCH}) where {NCH}
+    return ntuple(Val(NCH)) do c
         off = 2 * n_bins * (c - 1)
         complex.(view(v, off+1:off+n_bins), view(v, off+n_bins+1:off+2n_bins))
     end
@@ -75,19 +87,20 @@ spin difference χ_a) are dropped; the returned basis may have fewer than 6
 elements. Each element is an `nch`-tuple of complex channel vectors.
 """
 function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
-                               Sn_vals::AbstractVector, df::Real, wp::WaveformParams)
+                               Sn_vals::AbstractVector, df::Real,
+                               wp::WaveformParams{T,NCH}) where {T,NCH}
     n_bins = length(freqs)
-    nch = n_channels(wp)
 
     J_flat = ForwardDiff.jacobian(p -> flat_response(p, freqs, wp), theta_0)
     n_params = length(theta_0)
 
-    basis = Vector{NTuple{nch,Vector{ComplexF64}}}()
+    basis = Vector{NTuple{NCH,Vector{ComplexF64}}}()
     for i in 1:n_params
-        w = map(c -> collect(ComplexF64, c), unflatten_channels(view(J_flat, :, i), n_bins, nch))
+        w = map(c -> collect(ComplexF64, c),
+                unflatten_channels(view(J_flat, :, i), n_bins, Val(NCH)))
         for e in basis
             proj = multi_channel_inner_product(w, e, Sn_vals, df)
-            for c in 1:nch
+            for c in 1:NCH
                 w[c] .-= proj .* e[c]
             end
         end
@@ -132,28 +145,28 @@ second derivatives come from one fused nested-dual evaluation. `K` and `g`
 are exactly even in `u_dir`.
 """
 function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector, u_dir::AbstractVector,
-                                                basis::Vector, freqs::AbstractVector,
-                                                Sn_vals::AbstractVector, df::Real, wp::WaveformParams)
+                                                basis::Vector{<:NTuple}, freqs::AbstractVector,
+                                                Sn_vals::AbstractVector, df::Real,
+                                                wp::WaveformParams{T,NCH}) where {T,NCH}
     n_bins = length(freqs)
-    nch = n_channels(wp)
 
     _, dh_flat, d2h_flat = value_and_directional_derivs(
         s -> flat_response(theta_0 .+ s .* u_dir, freqs, wp), 0.0)
 
-    raw_curv = unflatten_channels(d2h_flat, n_bins, nch)
+    raw_curv = unflatten_channels(d2h_flat, n_bins, Val(NCH))
 
-    tan_comp = ntuple(_ -> zeros(ComplexF64, n_bins), nch)
+    tan_comp = ntuple(_ -> zeros(ComplexF64, n_bins), Val(NCH))
     for e in basis
         coeff = multi_channel_inner_product(raw_curv, e, Sn_vals, df)
-        for c in 1:nch
+        for c in 1:NCH
             tan_comp[c] .+= coeff .* e[c]
         end
     end
 
-    normal_curv = ntuple(c -> raw_curv[c] .- tan_comp[c], nch)
+    normal_curv = ntuple(c -> raw_curv[c] .- tan_comp[c], Val(NCH))
     K_u = multi_channel_inner_product(normal_curv, normal_curv, Sn_vals, df)
 
-    dh_u = unflatten_channels(dh_flat, n_bins, nch)
+    dh_u = unflatten_channels(dh_flat, n_bins, Val(NCH))
     g_uu = multi_channel_inner_product(dh_u, dh_u, Sn_vals, df)
 
     return K_u, g_uu

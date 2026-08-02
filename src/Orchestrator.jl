@@ -229,15 +229,17 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     return threads, (fixed + threads * per_task) / 2^30
 end
 
-struct RunContext
+# Parametric so the backend and device arrays are concretely typed at every
+# per-δ solve; the implicit constructor infers the parameters.
+struct RunContext{B,FD,SD}
     cfg::PipelineSettings
     out_base::String
     freqs::Vector{Float64}
     Sn::Vector{Float64}
-    freqs_dev::Any
-    Sn_dev::Any
+    freqs_dev::FD
+    Sn_dev::SD
     df::Float64
-    backend::Any
+    backend::B
     active_threads::Int
 end
 
