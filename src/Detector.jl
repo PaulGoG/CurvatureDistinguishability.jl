@@ -11,8 +11,10 @@ const R_ORBIT_SEC = 499.00478383615643 # 1 AU in light-seconds
 
 Number of active TDI channels: 2 (A, E) by default, 3 when the identically
 zero null channel T is explicitly requested via `wp.include_t_channel`.
+Derived from the `WaveformParams` type parameter, so it constant-folds in
+specialized code.
 """
-n_channels(wp::WaveformParams) = wp.include_t_channel ? 3 : 2
+n_channels(::WaveformParams{T,NCH}) where {T,NCH} = NCH
 
 """
     tdi_modulation_bin(f, Mc, tc, wp) -> (mod_A, mod_E)
@@ -68,7 +70,7 @@ function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::Abst
         E[i] = mod_E * h_strain[i]
     end
 
-    if wp.include_t_channel
+    if n_channels(wp) == 3 # constant-folds: NCH is a type parameter
         return A, E, zeros(CT, length(freqs))
     end
     return A, E

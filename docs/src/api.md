@@ -61,6 +61,7 @@ CurvatureDistinguishability.Geometry.GS_NORM_TOL
 CurvatureDistinguishability.Inference.loss_function
 CurvatureDistinguishability.Inference.calculate_numerical_distance
 CurvatureDistinguishability.Inference.optimization_diagnostics
+CurvatureDistinguishability.Inference.clear_device_buffers!
 ```
 
 ## Backends
