@@ -53,6 +53,13 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
-      # build-only strict gate (warnonly = false); deploydocs is added once
-      # the GitHub repository exists
+      # build-only strict gate (warnonly = false); deploydocs/Pages is added
+      # when the repository goes public (Pages sites from private repos are
+      # publicly reachable on non-Enterprise plans). Until then the built
+      # site is attached to each run as a private artifact.
       - run: julia docs/make.jl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/build/
+          retention-days: 30
