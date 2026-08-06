@@ -1,5 +1,7 @@
 using CurvatureDistinguishability
 using Test
+using Aqua
+using ExplicitImports
 using CSV
 using DataFrames
 using ForwardDiff
@@ -23,6 +25,16 @@ const FIX_NOISE_OFF = NoiseParams(confusion_enabled = false)
 const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
 @testset "CurvatureDistinguishability.jl" begin
+
+    @testset "Static QA" begin
+        Aqua.test_all(CurvatureDistinguishability)
+        # the qualified-access publicity check is deliberately not enforced:
+        # ForwardDiff and Optim expose their documented API (Dual, value,
+        # partials, minimizer, …) without `public` annotations
+        @test ExplicitImports.check_no_implicit_imports(CurvatureDistinguishability) === nothing
+        @test ExplicitImports.check_no_stale_explicit_imports(CurvatureDistinguishability) === nothing
+        @test ExplicitImports.check_all_explicit_imports_via_owners(CurvatureDistinguishability) === nothing
+    end
 
     @testset "Noise PSD (Robson 2019)" begin
         # instrumental part must reproduce the reference values bitwise-tight

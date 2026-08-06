@@ -1,8 +1,7 @@
 module Provenance
 
-using SHA
-using Dates
-using TOML
+using SHA: sha256
+using TOML: TOML
 using DrWatson: gitdescribe
 
 export run_id_from_config, unique_run_dir, snapshot_config, backup_existing!,

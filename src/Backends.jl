@@ -1,6 +1,6 @@
 module Backends
 
-using KernelAbstractions
+using KernelAbstractions: KernelAbstractions, CPU
 
 export get_best_backend, to_backend, backend_name, register_backend!
 

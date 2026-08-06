@@ -1,6 +1,6 @@
 module Config
 
-using TOML
+using TOML: TOML
 using ..Physics
 using ..Bounds
 

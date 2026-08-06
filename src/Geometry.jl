@@ -1,6 +1,6 @@
 module Geometry
 
-using ForwardDiff
+using ForwardDiff: ForwardDiff
 using ..Physics
 using ..Detector
 
