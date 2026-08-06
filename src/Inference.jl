@@ -3,7 +3,7 @@ module Inference
 using ForwardDiff: ForwardDiff
 using KernelAbstractions: KernelAbstractions, @Const, @index, @kernel
 using Optim: Optim, Fminbox, IPNewton, LBFGS, OnceDifferentiable,
-             TwiceDifferentiable, TwiceDifferentiableConstraints, optimize
+    TwiceDifferentiable, TwiceDifferentiableConstraints, optimize
 using ..Physics
 using ..Detector
 using ..Backends
@@ -19,7 +19,7 @@ between the 2-channel (A, E) data and the single-source model at parameters
 `θ` (an isbits `NTuple`, so `ForwardDiff.Dual` elements compile to GPU code).
 """
 @kernel function loss_bins!(out, @Const(freqs), @Const(Sn), @Const(data_A), @Const(data_E),
-                            θ::NTuple{6}, wp::WaveformParams)
+    θ::NTuple{6}, wp::WaveformParams)
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
@@ -79,7 +79,7 @@ function launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
 end
 
 function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real,
-                     wp::WaveformParams, backend)
+    wp::WaveformParams, backend)
     T = eltype(p)
     θ = ntuple(i -> p[i], Val(6))
     if backend isa KernelAbstractions.CPU
@@ -132,8 +132,9 @@ end
     return _store_dual!(out, i, k2, ps[J])
 end
 
-@kernel function loss_bins_lanes!(out, @Const(freqs), @Const(Sn), @Const(data_A), @Const(data_E),
-                                  θ::NTuple{6}, wp::WaveformParams)
+@kernel function loss_bins_lanes!(out, @Const(freqs), @Const(Sn), @Const(data_A),
+    @Const(data_E),
+    θ::NTuple{6}, wp::WaveformParams)
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
@@ -152,8 +153,17 @@ end
 
 # Function barrier (see launch_loss!): concretely typed lanes launch.
 function launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp,
-                            df, ::Type{D}) where {D}
-    loss_bins_lanes!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
+    df, ::Type{D}) where {D}
+    loss_bins_lanes!(backend)(
+        out,
+        freqs,
+        Sn_vals,
+        data_A,
+        data_E,
+        θ,
+        wp;
+        ndrange = length(freqs),
+    )
     KernelAbstractions.synchronize(backend)
     s = Array(vec(sum(out; dims = 1)))
     dual, _ = rebuild_dual(D, s, 1)
@@ -161,22 +171,44 @@ function launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp
 end
 
 function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::Real,
-                     wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
+    wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
     θ = ntuple(i -> p[i], Val(6))
     M = sizeof(D) ÷ sizeof(Float64)
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
-        return launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df, D)
+        return launch_loss_lanes!(
+            out,
+            backend,
+            freqs,
+            Sn_vals,
+            data_A,
+            data_E,
+            θ,
+            wp,
+            df,
+            D,
+        )
     end
     lock(GPU_LOCK) do
         out = device_buffer(backend, Float64, (length(freqs), M))
         fill!(out, 0.0)
-        return launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df, D)
+        return launch_loss_lanes!(
+            out,
+            backend,
+            freqs,
+            Sn_vals,
+            data_A,
+            data_E,
+            θ,
+            wp,
+            df,
+            D,
+        )
     end
 end
 
 function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Real,
-                  wp::WaveformParams)
+    wp::WaveformParams)
     A = p[1] * wp.amp_scale
     Mc = p[2] * wp.mass_scale
     tc = p[3] * wp.time_scale
@@ -212,20 +244,25 @@ KernelAbstractions kernel (2-channel only — disable the T channel, which is
 identically zero, for GPU runs). Differentiable with `ForwardDiff`.
 """
 function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::AbstractVector,
-                       df::Real, wp::WaveformParams, backend)
+    df::Real, wp::WaveformParams, backend)
     if backend isa KernelAbstractions.CPU
         return p -> cpu_loss(p, freqs, Sn_vals, data_stream, df, wp)
     end
     length(data_stream) == 2 ||
-        error("GPU path supports the 2-channel (A, E) configuration only; " *
-              "set include_t_channel = false (the T channel is identically zero).")
+        error(
+            "GPU path supports the 2-channel (A, E) configuration only; " *
+            "set include_t_channel = false (the T channel is identically zero).",
+        )
     if freqs isa Array || Sn_vals isa Array || any(a -> a isa Array, data_stream)
-        error("Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
-              "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
-              "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
-              "backend explicitly when your arrays live on the host.)")
+        error(
+            "Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
+            "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
+            "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
+            "backend explicitly when your arrays live on the host.)",
+        )
     end
-    return p -> device_loss(p, freqs, Sn_vals, data_stream[1], data_stream[2], df, wp, backend)
+    return p ->
+        device_loss(p, freqs, Sn_vals, data_stream[1], data_stream[2], df, wp, backend)
 end
 
 # --- optimization -----------------------------------------------------------
@@ -249,13 +286,13 @@ Physics keywords (`mass_scale`, `sky_theta`, …) are accepted via `kwargs`.
 Returns `(D², best_fit, optim_result)`.
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
-                                      freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
-                                      g_tol::Real = 1e-10, iterations::Int = 100,
-                                      backend = get_best_backend(),
-                                      optimizer::Symbol = :ipnewton,
-                                      bounds::Union{Nothing,ParameterBounds} = default_bounds(),
-                                      hessian_chunk::Int = 0,
-                                      kwargs...)
+    freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
+    g_tol::Real = 1e-10, iterations::Int = 100,
+    backend = get_best_backend(),
+    optimizer::Symbol = :ipnewton,
+    bounds::Union{Nothing,ParameterBounds} = default_bounds(),
+    hessian_chunk::Int = 0,
+    kwargs...)
     wp = waveform_params(; kwargs...)
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
@@ -263,9 +300,14 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     # hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes per
     # kernel launch instead of 49 — the fallback for GPU compilers whose
     # module build fails on the full nested-dual kernel (see docs/roadmap).
-    h!(H, x) = hessian_chunk > 0 ?
+    h!(H, x) =
+        hessian_chunk > 0 ?
         ForwardDiff.hessian!(H, loss, x,
-                             ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk(min(hessian_chunk, length(x))))) :
+            ForwardDiff.HessianConfig(
+                loss,
+                x,
+                ForwardDiff.Chunk(min(hessian_chunk, length(x))),
+            )) :
         ForwardDiff.hessian!(H, loss, x)
 
     opts = Optim.Options(g_tol = g_tol, iterations = iterations, show_trace = false)
@@ -274,13 +316,21 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
         bounds === nothing && error("optimizer = :ipnewton requires bounds")
         x0 = clamp_interior(theta_guess, bounds)
         obj = TwiceDifferentiable(loss, g!, h!, x0)
-        cons = TwiceDifferentiableConstraints(collect(bounds.lower), collect(bounds.upper))
+        cons =
+            TwiceDifferentiableConstraints(collect(bounds.lower), collect(bounds.upper))
         optimize(obj, cons, x0, IPNewton(), opts)
     elseif optimizer === :lbfgs_box
         bounds === nothing && error("optimizer = :lbfgs_box requires bounds")
         x0 = clamp_interior(theta_guess, bounds)
         obj = OnceDifferentiable(loss, g!, x0)
-        optimize(obj, collect(bounds.lower), collect(bounds.upper), x0, Fminbox(LBFGS()), opts)
+        optimize(
+            obj,
+            collect(bounds.lower),
+            collect(bounds.upper),
+            x0,
+            Fminbox(LBFGS()),
+            opts,
+        )
     else
         error("Unknown optimizer :$optimizer (expected :ipnewton or :lbfgs_box)")
     end
@@ -296,22 +346,24 @@ iteration count, final gradient norm, and whether the best fit sits on an
 active physical bound (within a relative tolerance of the bound width).
 """
 function optimization_diagnostics(opt_res::Optim.MultivariateOptimizationResults,
-                                  best_fit::AbstractVector,
-                                  bounds::Union{Nothing,ParameterBounds})
+    best_fit::AbstractVector,
+    bounds::Union{Nothing,ParameterBounds})
     at_bound = false
     if bounds !== nothing
         for i in eachindex(best_fit)
             bounds.periodic[i] && continue
             lo, hi = bounds.lower[i], bounds.upper[i]
-            tol = isfinite(lo) && isfinite(hi) ? 1e-6 * (hi - lo) : 1e-6 * max(1.0, abs(best_fit[i]))
+            tol =
+                isfinite(lo) && isfinite(hi) ? 1e-6 * (hi - lo) :
+                1e-6 * max(1.0, abs(best_fit[i]))
             (isfinite(lo) && abs(best_fit[i] - lo) <= tol) && (at_bound = true)
             (isfinite(hi) && abs(best_fit[i] - hi) <= tol) && (at_bound = true)
         end
     end
     return (converged = Optim.converged(opt_res),
-            iterations = Optim.iterations(opt_res),
-            g_norm = Optim.g_residual(opt_res),
-            at_bound = at_bound)
+        iterations = Optim.iterations(opt_res),
+        g_norm = Optim.g_residual(opt_res),
+        at_bound = at_bound)
 end
 
 end # module

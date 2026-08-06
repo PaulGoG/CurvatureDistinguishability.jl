@@ -33,10 +33,12 @@ over `Real` (including `ForwardDiff.Dual`); safe inside GPU kernels.
     phi_orb = omega_orbit * t_f
     doppler_phase = 2 * π * f * R_ORBIT_SEC * sin(wp.sky_theta) * cos(phi_orb - wp.sky_phi)
 
-    F_plus = 0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * cos(2 * wp.polarization) -
-             cos(wp.sky_theta) * sin(2 * phi_orb) * sin(2 * wp.polarization)
-    F_cross = 0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * sin(2 * wp.polarization) +
-              cos(wp.sky_theta) * sin(2 * phi_orb) * cos(2 * wp.polarization)
+    F_plus =
+        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * cos(2 * wp.polarization) -
+        cos(wp.sky_theta) * sin(2 * phi_orb) * sin(2 * wp.polarization)
+    F_cross =
+        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * sin(2 * wp.polarization) +
+        cos(wp.sky_theta) * sin(2 * phi_orb) * cos(2 * wp.polarization)
 
     h_plus_amp = 0.5 * (1 + cos(wp.inclination)^2)
     h_cross_amp = cos(wp.inclination)
@@ -56,7 +58,12 @@ Project a frequency-domain strain into the TDI response channels in a single
 fused pass (one loop, one allocation per channel). Returns `(A, E)` or
 `(A, E, T)` depending on `wp.include_t_channel`; `T` is identically zero.
 """
-function project_to_tdi(h_strain::AbstractVector, freqs::AbstractVector, p::AbstractVector, wp::WaveformParams)
+function project_to_tdi(
+    h_strain::AbstractVector,
+    freqs::AbstractVector,
+    p::AbstractVector,
+    wp::WaveformParams,
+)
     Mc = p[2] * wp.mass_scale
     tc = p[3] * wp.time_scale
 

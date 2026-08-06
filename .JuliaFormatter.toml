@@ -1,0 +1,4 @@
+style = "default"
+margin = 92
+join_lines_based_on_source = true
+always_for_in = true

@@ -21,7 +21,7 @@ Curvature-Distinguishability Unified Pipeline
 
 function parse_commandline(argv)
     options = Dict("config" => joinpath("configs", "quickstart.toml"),
-                   "output-dir" => "data")
+        "output-dir" => "data")
     i = 1
     while i <= length(argv)
         arg = argv[i]
@@ -46,11 +46,12 @@ isfile(config_path) || error("Configuration file not found: $config_path")
 # Load a GPU package only when the configuration asks for one AND it is
 # installed in this environment — no blind try/catch, loud diagnostics.
 const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
-                          "metal" => "Metal", "oneapi" => "oneAPI")
+    "metal" => "Metal", "oneapi" => "oneAPI")
 let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
     requested = lowercase(String(get(hw, "gpu_backend", "auto")))
-    wanted = requested == "auto" ? collect(keys(GPU_PACKAGES)) :
-             haskey(GPU_PACKAGES, requested) ? [requested] : String[]
+    wanted =
+        requested == "auto" ? collect(keys(GPU_PACKAGES)) :
+        haskey(GPU_PACKAGES, requested) ? [requested] : String[]
     if lowercase(String(get(hw, "gpu_backend", "auto"))) != "none"
         for key in wanted
             pkgname = GPU_PACKAGES[key]

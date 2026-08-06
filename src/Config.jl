@@ -60,25 +60,26 @@ end
 
 const KNOWN_KEYS = Dict(
     "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
-           "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
+        "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
     "monitoring" => ["enabled"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
-                   "sweep_settings"],
+        "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
-                                  "rho_thresh", "g_uu_degenerate", "n_starts",
-                                  "g_tol", "max_iterations"],
+        "rho_thresh", "g_uu_degenerate", "n_starts",
+        "g_tol", "max_iterations"],
     "grid" => ["T_obs", "f_min", "f_max"],
     "physics" => ["mass_scale", "time_scale", "amp_scale", "eta", "amp_33_factor",
-                  "sky_theta", "sky_phi", "inclination", "polarization",
-                  "include_t_channel"],
+        "sky_theta", "sky_phi", "inclination", "polarization",
+        "include_t_channel"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
-                "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk",
-                "arm_length", "oms_amplitude", "oms_reddening_freq",
-                "acc_amplitude", "acc_knee_low", "acc_knee_high"],
-    "mapping" => ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
+        "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk",
+        "arm_length", "oms_amplitude", "oms_reddening_freq",
+        "acc_amplitude", "acc_knee_low", "acc_knee_high"],
+    "mapping" =>
+        ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
     "hardware" => ["gpu_backend", "max_threads", "hessian_chunk"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
-                 "os_vram_overhead_gb"],
+        "os_vram_overhead_gb"],
     "parameter_bounds" => collect(PARAM_KEYS),
     "sweeps[]" => ["name", "theta_0", "u_dir", "rho_thresh", "amp_ratio"],
     "maps[]" => ["name", "param_x", "param_y", "rho_thresh", "theta_0", "n_angles"],
@@ -88,8 +89,8 @@ function warn_unknown_keys(table::AbstractDict, context::String)
     known = get(KNOWN_KEYS, context, String[])
     for key in keys(table)
         key in known || @warn "Unknown configuration key '$key' in " *
-                             "[$(isempty(context) ? "top level" : context)] — ignored. " *
-                             "Check for typos; known keys: $(join(known, ", "))."
+              "[$(isempty(context) ? "top level" : context)] — ignored. " *
+              "Check for typos; known keys: $(join(known, ", "))."
     end
     return nothing
 end
@@ -156,7 +157,9 @@ function load_and_validate_config(config_path::AbstractString)
     min_log = getnum(ss, "min_log_delta", -4.5, "pipeline.sweep_settings")
     max_log = getnum(ss, "max_log_delta", -0.5, "pipeline.sweep_settings")
     min_log < max_log ||
-        error("[pipeline.sweep_settings]: min_log_delta ($min_log) must be < max_log_delta ($max_log)")
+        error(
+            "[pipeline.sweep_settings]: min_log_delta ($min_log) must be < max_log_delta ($max_log)",
+        )
     sweep_rho = getnum(ss, "rho_thresh", 1.0, "pipeline.sweep_settings")
     sweep_rho > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
     g_deg = getnum(ss, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
@@ -188,8 +191,10 @@ function load_and_validate_config(config_path::AbstractString)
     (f_min > 0 && f_max > f_min) ||
         error("[grid]: need 0 < f_min < f_max, got f_min = $f_min, f_max = $f_max")
     n_bins = floor(Int, (f_max - f_min) * T_obs) + 1
-    n_bins >= 8 || error("[grid]: only $n_bins frequency bins at df = 1/T_obs — " *
-                         "increase T_obs or the [f_min, f_max] band")
+    n_bins >= 8 || error(
+        "[grid]: only $n_bins frequency bins at df = 1/T_obs — " *
+        "increase T_obs or the [f_min, f_max] band",
+    )
 
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
@@ -206,9 +211,9 @@ function load_and_validate_config(config_path::AbstractString)
         include_t_channel = getbool(phys, "include_t_channel", false, "physics"),
     )
     for (fname, val, lo, hi) in (("mass_scale", wp.mass_scale, 0.0, Inf),
-                                 ("time_scale", wp.time_scale, 0.0, Inf),
-                                 ("amp_scale", wp.amp_scale, 0.0, Inf),
-                                 ("amp_33_factor", wp.amp_33_factor, 0.0, Inf))
+        ("time_scale", wp.time_scale, 0.0, Inf),
+        ("amp_scale", wp.amp_scale, 0.0, Inf),
+        ("amp_33_factor", wp.amp_33_factor, 0.0, Inf))
         val > lo || error("[physics].$fname must be > $lo, got $val")
     end
     0.0 < wp.eta <= 0.25 ||
@@ -221,21 +226,66 @@ function load_and_validate_config(config_path::AbstractString)
     base_noise = robson_confusion_params(T_obs)
     noise = NoiseParams(
         confusion_enabled = getbool(noise_cfg, "confusion_enabled", true, "noise"),
-        confusion_amp = getnum(noise_cfg, "confusion_amp", base_noise.confusion_amp, "noise"),
-        confusion_alpha = getnum(noise_cfg, "confusion_alpha", base_noise.confusion_alpha, "noise"),
-        confusion_beta = getnum(noise_cfg, "confusion_beta", base_noise.confusion_beta, "noise"),
-        confusion_kappa = getnum(noise_cfg, "confusion_kappa", base_noise.confusion_kappa, "noise"),
-        confusion_gamma = getnum(noise_cfg, "confusion_gamma", base_noise.confusion_gamma, "noise"),
+        confusion_amp = getnum(
+            noise_cfg,
+            "confusion_amp",
+            base_noise.confusion_amp,
+            "noise",
+        ),
+        confusion_alpha = getnum(
+            noise_cfg,
+            "confusion_alpha",
+            base_noise.confusion_alpha,
+            "noise",
+        ),
+        confusion_beta = getnum(
+            noise_cfg,
+            "confusion_beta",
+            base_noise.confusion_beta,
+            "noise",
+        ),
+        confusion_kappa = getnum(
+            noise_cfg,
+            "confusion_kappa",
+            base_noise.confusion_kappa,
+            "noise",
+        ),
+        confusion_gamma = getnum(
+            noise_cfg,
+            "confusion_gamma",
+            base_noise.confusion_gamma,
+            "noise",
+        ),
         confusion_fk = getnum(noise_cfg, "confusion_fk", base_noise.confusion_fk, "noise"),
         arm_length = getnum(noise_cfg, "arm_length", base_noise.arm_length, "noise"),
-        oms_amplitude = getnum(noise_cfg, "oms_amplitude", base_noise.oms_amplitude, "noise"),
-        oms_reddening_freq = getnum(noise_cfg, "oms_reddening_freq", base_noise.oms_reddening_freq, "noise"),
-        acc_amplitude = getnum(noise_cfg, "acc_amplitude", base_noise.acc_amplitude, "noise"),
+        oms_amplitude = getnum(
+            noise_cfg,
+            "oms_amplitude",
+            base_noise.oms_amplitude,
+            "noise",
+        ),
+        oms_reddening_freq = getnum(
+            noise_cfg,
+            "oms_reddening_freq",
+            base_noise.oms_reddening_freq,
+            "noise",
+        ),
+        acc_amplitude = getnum(
+            noise_cfg,
+            "acc_amplitude",
+            base_noise.acc_amplitude,
+            "noise",
+        ),
         acc_knee_low = getnum(noise_cfg, "acc_knee_low", base_noise.acc_knee_low, "noise"),
-        acc_knee_high = getnum(noise_cfg, "acc_knee_high", base_noise.acc_knee_high, "noise"),
+        acc_knee_high = getnum(
+            noise_cfg,
+            "acc_knee_high",
+            base_noise.acc_knee_high,
+            "noise",
+        ),
     )
     for field in (:arm_length, :oms_amplitude, :oms_reddening_freq,
-                  :acc_amplitude, :acc_knee_low, :acc_knee_high)
+        :acc_amplitude, :acc_knee_low, :acc_knee_high)
         getfield(noise, field) > 0 ||
             error("[noise].$field must be > 0, got $(getfield(noise, field))")
     end
@@ -257,21 +307,27 @@ function load_and_validate_config(config_path::AbstractString)
         error("[mapping].max_refine_levels must be in 0:16, got $refine_levels")
     corner_iters = getint(mapping, "corner_bisect_iters", 25, "mapping")
     0 <= corner_iters <= 60 ||
-        error("[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
-              "bisection), got $corner_iters")
+        error(
+            "[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
+            "bisection), got $corner_iters",
+        )
 
     hardware = get(config, "hardware", Dict{String,Any}())
     warn_unknown_keys(hardware, "hardware")
     gpu_str = get(hardware, "gpu_backend", "auto")
     gpu_backend = Symbol(lowercase(String(gpu_str)))
     gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
-        error("[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'")
+        error(
+            "[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'",
+        )
     max_threads = getint(hardware, "max_threads", Threads.nthreads(), "hardware")
     max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
     hessian_chunk = getint(hardware, "hessian_chunk", 0, "hardware")
     0 <= hessian_chunk <= 6 ||
-        error("[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
-              "got $hessian_chunk")
+        error(
+            "[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
+            "got $hessian_chunk",
+        )
 
     safety = get(config, "safety", Dict{String,Any}())
     warn_unknown_keys(safety, "safety")
@@ -287,7 +343,10 @@ function load_and_validate_config(config_path::AbstractString)
     catch err
         error("Invalid [parameter_bounds]: $(sprint(showerror, err))")
     end
-    warn_unknown_keys(get(config, "parameter_bounds", Dict{String,Any}()), "parameter_bounds")
+    warn_unknown_keys(
+        get(config, "parameter_bounds", Dict{String,Any}()),
+        "parameter_bounds",
+    )
 
     sweeps = Vector{Dict{String,Any}}(get(config, "sweeps", []))
     maps = Vector{Dict{String,Any}}(get(config, "maps", []))
@@ -295,7 +354,8 @@ function load_and_validate_config(config_path::AbstractString)
     for s in sweeps
         warn_unknown_keys(s, "sweeps[]")
         name = String(get(s, "name", ""))
-        fs_safe(name) || error("[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))")
+        fs_safe(name) ||
+            error("[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))")
         name in seen && error("Duplicate sweep/map name '$name'")
         push!(seen, name)
         theta0 = validate_theta6(get(s, "theta_0", nothing), "[[sweeps]] '$name'.theta_0")
@@ -306,21 +366,26 @@ function load_and_validate_config(config_path::AbstractString)
         amp_ratio = getnum(s, "amp_ratio", 1.0, "sweeps[]")
         amp_ratio > 0 || error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
         if amp_ratio != 1.0 && u[1] != 0
-            error("[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
-                  "separation is expressed via amp_ratio (the A_harm law), not via the " *
-                  "sweep direction.")
+            error(
+                "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
+                "separation is expressed via amp_ratio (the A_harm law), not via the " *
+                "sweep direction.",
+            )
         end
         u[1] == 0 ||
             @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
         haskey(s, "rho_thresh") &&
-            (getnum(s, "rho_thresh", sweep_rho, "sweeps[]") > 0 ||
-             error("[[sweeps]] '$name'.rho_thresh must be > 0"))
+            (
+                getnum(s, "rho_thresh", sweep_rho, "sweeps[]") > 0 ||
+                error("[[sweeps]] '$name'.rho_thresh must be > 0")
+            )
     end
     for m in maps
         warn_unknown_keys(m, "maps[]")
         name = String(get(m, "name", ""))
-        fs_safe(name) || error("[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))")
+        fs_safe(name) ||
+            error("[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))")
         name in seen && error("Duplicate sweep/map name '$name'")
         push!(seen, name)
         px = getint(m, "param_x", 0, "maps[]")
@@ -347,23 +412,25 @@ function load_and_validate_config(config_path::AbstractString)
     monitoring_enabled = getbool(monitoring_cfg, "enabled", false, "monitoring")
 
     return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
-                            n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
-                            g_tol, max_iterations,
-                            T_obs, f_min, f_max, wp, noise,
-                            map_n_angles, ratio_tol, refine_levels, corner_iters,
-                            gpu_backend, max_threads, hessian_chunk,
-                            max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
-                            monitoring_enabled,
-                            bounds, sweeps, maps)
+        n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
+        g_tol, max_iterations,
+        T_obs, f_min, f_max, wp, noise,
+        map_n_angles, ratio_tol, refine_levels, corner_iters,
+        gpu_backend, max_threads, hessian_chunk,
+        max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
+        monitoring_enabled,
+        bounds, sweeps, maps)
 end
 
 function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String)
     for i in eachindex(theta0)
         b.periodic[i] && continue
         (b.lower[i] < theta0[i] < b.upper[i]) ||
-            error("$what: theta_0[$i] = $(theta0[i]) is not strictly inside its physical " *
-                  "bounds [$(b.lower[i]), $(b.upper[i])] — the local geometry expansion " *
-                  "and zone capping require an interior base point.")
+            error(
+                "$what: theta_0[$i] = $(theta0[i]) is not strictly inside its physical " *
+                "bounds [$(b.lower[i]), $(b.upper[i])] — the local geometry expansion " *
+                "and zone capping require an interior base point.",
+            )
     end
     return nothing
 end

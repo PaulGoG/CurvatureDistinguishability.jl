@@ -43,7 +43,8 @@ function get_best_backend(; prefer::Symbol = :auto)
     end
     if prefer ∉ (:auto, :none)
         @warn "Requested GPU backend :$prefer is not available (package not loaded " *
-              "or device not functional); falling back to CPU." registered = first.(BACKEND_PROBES)
+              "or device not functional); falling back to CPU." registered =
+            first.(BACKEND_PROBES)
     end
     return CPU()
 end
