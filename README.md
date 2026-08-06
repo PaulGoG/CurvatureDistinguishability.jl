@@ -45,7 +45,7 @@ CurvatureDistinguishability/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
 │   └── fixtures/reference/ # committed golden-value regression fixtures
-├── benchmarks/             # BenchmarkTools scripts (own environment)
+├── bench/                  # BenchmarkTools scripts (own environment)
 ├── docs/                   # Documenter.jl sources
 ├── data/run_<hash>/        # provenance-stamped pipeline runs (git-ignored)
 └── plots/                  # flat regenerable PNG browsing view (git-ignored)
