@@ -13,33 +13,49 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
       actions: write
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        version:
-          # '1' = current stable; matches the committed Manifest resolution
-          # and the declared [compat] floor julia = "1.12".
-          - '1'
-          - 'pre'
-        os:
-          - ubuntu-latest
-        arch:
-          - x64
+        # '1' = current stable across the three OSes; pre-release on Linux
+        # only. The Julia floor is the declared [compat] julia = "1.12".
+        version: ['1']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - version: 'pre'
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
+      - uses: codecov/codecov-action@v5
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'
+      - run: git diff --exit-code
   docs:
     name: Documentation build
     runs-on: ubuntu-latest
