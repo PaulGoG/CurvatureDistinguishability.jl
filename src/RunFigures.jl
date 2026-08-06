@@ -5,9 +5,9 @@ module RunFigures
 # Point classification and refits reuse the pipeline's own rules
 # (Orchestrator), so run-time and display-time figures cannot diverge.
 
-using CSV
-using DataFrames
-using TOML
+using CSV: CSV
+using DataFrames: DataFrames, DataFrame, nrow
+using TOML: TOML
 using ..Bounds: deviation_box
 using ..Config: load_and_validate_config
 using ..Plotting

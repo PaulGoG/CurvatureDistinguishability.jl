@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "3936dc245a5f0f773b3c65dd2b87520951937ec8"
+project_hash = "58ba0b0dd75f7bca23fabe4bbc422f3498c03bf9"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "ec6be48a85c93d995563b84bff8a86bc98df45ce"
@@ -89,12 +89,6 @@ deps = ["Colors"]
 git-tree-sha1 = "e092fa223bf66a3c41f9c022bd074d916dc303e7"
 uuid = "27a7e980-b3e6-11e9-2bcd-0b925532e340"
 version = "0.4.2"
-
-[[deps.ArgParse]]
-deps = ["Logging", "TextWrap"]
-git-tree-sha1 = "22cf435ac22956a7b45b0168abbc871176e7eecc"
-uuid = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
-version = "1.2.0"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -390,7 +384,7 @@ uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.2.0"
 
 [[deps.CurvatureDistinguishability]]
-deps = ["ArgParse", "CSV", "CairoMakie", "DataFrames", "Dates", "DrWatson", "ForwardDiff", "KernelAbstractions", "LaTeXStrings", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
+deps = ["CSV", "CairoMakie", "DataFrames", "Dates", "DrWatson", "ForwardDiff", "KernelAbstractions", "LaTeXStrings", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
 path = "."
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
 version = "1.0.0-DEV"
@@ -1784,11 +1778,6 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "1feb45f88d133a655e001435632f019a9a1bcdb6"
 uuid = "62fd8b95-f654-4bbd-a8a5-9c27f68ccd50"
 version = "0.1.1"
-
-[[deps.TextWrap]]
-git-tree-sha1 = "43044b737fa70bc12f6105061d3da38f881a3e3c"
-uuid = "b718987f-49a8-5099-9789-dcd902bef87d"
-version = "1.0.2"
 
 [[deps.TiffImages]]
 deps = ["CodecZstd", "ColorTypes", "DataStructures", "DocStringExtensions", "FileIO", "FixedPointNumbers", "IndirectArrays", "Inflate", "Mmap", "OffsetArrays", "PkgVersion", "PrecompileTools", "ProgressMeter", "SIMD", "UUIDs"]

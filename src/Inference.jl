@@ -1,8 +1,9 @@
 module Inference
 
-using Optim
-using ForwardDiff
-using KernelAbstractions
+using ForwardDiff: ForwardDiff
+using KernelAbstractions: KernelAbstractions, @Const, @index, @kernel
+using Optim: Optim, Fminbox, IPNewton, LBFGS, OnceDifferentiable,
+             TwiceDifferentiable, TwiceDifferentiableConstraints, optimize
 using ..Physics
 using ..Detector
 using ..Backends

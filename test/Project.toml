@@ -1,5 +1,7 @@
 [deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
@@ -11,7 +13,9 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+Aqua = "0.8"
 CSV = "0.10"
+ExplicitImports = "1"
 CairoMakie = "0.13, 0.14, 0.15, 0.16"
 DataFrames = "1"
 ForwardDiff = "1"

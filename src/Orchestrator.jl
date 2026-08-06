@@ -1,16 +1,16 @@
 module Orchestrator
 
-using Printf
-using Dates
-using TOML
-using CSV
-using DataFrames
-using Random
-using Statistics
-using ProgressMeter
-using Logging
-using LoggingExtras
-using KernelAbstractions
+using Printf: @sprintf
+using Dates: Dates, now
+using TOML: TOML
+using CSV: CSV
+using DataFrames: DataFrame
+using Random: Xoshiro
+using Statistics: mean
+using ProgressMeter: Progress, ProgressUnknown, finish!, next!
+using Logging: Logging, global_logger, with_logger
+using LoggingExtras: FormatLogger, MinLevelLogger, TeeLogger
+using KernelAbstractions: KernelAbstractions
 using UnicodePlots: UnicodePlots
 
 using ..Backends

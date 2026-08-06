@@ -3,26 +3,43 @@ const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 
-using ArgParse
 using TOML
 
-function parse_commandline()
-    s = ArgParseSettings(description = "Curvature-Distinguishability Unified Pipeline")
-    @add_arg_table! s begin
-        "--config"
-            help = "Path to a TOML configuration file (relative to project root); " *
-                   "shipped scenarios live in configs/. The default is the " *
-                   "minutes-scale quickstart — production campaigns are selected " *
-                   "explicitly (e.g. configs/production_cpu.toml)."
-            default = joinpath("configs", "quickstart.toml")
-        "--output-dir"
-            help = "Directory to save outputs (relative to project root)"
-            default = "data"
+const USAGE = """
+Curvature-Distinguishability Unified Pipeline
+
+    julia --project scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
+
+    --config PATH       TOML configuration, relative to the project root
+                        (shipped scenarios live in configs/; the default is
+                        the minutes-scale configs/quickstart.toml —
+                        production campaigns are selected explicitly, e.g.
+                        configs/production_cpu.toml)
+    --output-dir DIR    output directory relative to the project root
+                        (default: data)
+"""
+
+function parse_commandline(argv)
+    options = Dict("config" => joinpath("configs", "quickstart.toml"),
+                   "output-dir" => "data")
+    i = 1
+    while i <= length(argv)
+        arg = argv[i]
+        if arg in ("-h", "--help")
+            print(USAGE)
+            exit(0)
+        elseif arg in ("--config", "--output-dir")
+            i < length(argv) || error("$arg requires a value\n$USAGE")
+            options[arg[3:end]] = argv[i+1]
+            i += 2
+        else
+            error("Unknown argument '$arg'\n$USAGE")
+        end
     end
-    return parse_args(s)
+    return options
 end
 
-args = parse_commandline()
+args = parse_commandline(ARGS)
 config_path = joinpath(PROJECT_ROOT, args["config"])
 isfile(config_path) || error("Configuration file not found: $config_path")
 

@@ -1,9 +1,13 @@
 module Plotting
 
-using CairoMakie
-using MathTeXEngine
-using LaTeXStrings
-using Printf
+using CairoMakie: CairoMakie, Axis, DataAspect, Figure, Label, Legend,
+                  LinearTicks, Point2f, Relative, Theme, band!,
+                  hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
+                  poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
+                  with_theme, xlims!, ylims!
+using LaTeXStrings: LaTeXStrings, @L_str, latexstring
+using MathTeXEngine: texfont
+using Printf: @sprintf
 using ..Provenance: backup_existing!
 
 export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
