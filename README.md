@@ -125,5 +125,5 @@ overwritten.
 | Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered and its in-code fix is documented in the workspace maintainer notes (`notes/gpu-lessons.md`, outside the package) |
+| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered is fixed in code, with the operational hardening summarized in the documentation roadmap (`docs/src/roadmap.md`) |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
