@@ -126,7 +126,7 @@ fs_safe(name) = !isempty(name) && all(c -> isletter(c) || isdigit(c) || c in "._
 """
     load_and_validate_config(config_path) -> PipelineSettings
 
-Parse `config.toml`, validating every field (types, ranges, name uniqueness,
+Parse a configuration TOML file, validating every field (types, ranges, name uniqueness,
 interior base points) with descriptive errors; warn on unknown keys and
 physically suspicious values.
 """

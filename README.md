@@ -18,8 +18,10 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
 ├── Manifest.toml           # version-controlled — portability guarantee
-├── config.toml             # the single source of all run parameters
-├── config-oneapi.toml      # GPU variant (oneAPI backend, chunked Hessian)
+├── configs/
+│   ├── quickstart.toml     # minutes-scale demonstration run (the default)
+│   ├── production_cpu.toml # CPU reference campaign configuration
+│   └── production_oneapi.toml # GPU variant (oneAPI backend, chunked Hessian)
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
@@ -63,10 +65,10 @@ matching your hardware (`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`)
 into your default (stacked) environment — the pipeline resolves it through
 the load path and the corresponding package extension activates
 automatically; without one, the pipeline runs on the multi-threaded CPU
-backend (`[hardware].gpu_backend = "none"` forces this). `config-oneapi.toml`
-is the committed GPU run variant (identical physics; oneAPI backend with
-`hessian_chunk = 3` for FP64-emulating Intel integrated GPUs), selected via
-`--config config-oneapi.toml`. GPU runs are pinned to a single task by the pipeline and all GPU
+backend (`[hardware].gpu_backend = "none"` forces this).
+`configs/production_oneapi.toml` is the committed GPU run variant (identical
+physics; oneAPI backend with `hessian_chunk = 3` for FP64-emulating Intel
+integrated GPUs). GPU runs are pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
 since the device serializes kernels anyway.
@@ -74,8 +76,10 @@ since the device serializes kernels anyway.
 ## Usage
 
 ```bash
-# foreground run (progress bars on a TTY); --output-dir overrides data/
-julia --project --threads=auto scripts/run_pipeline.jl --config config.toml
+# foreground run (progress bars on a TTY); --output-dir overrides data/.
+# Without --config the minutes-scale configs/quickstart.toml runs;
+# production campaigns are selected explicitly:
+julia --project --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml
 
 # detached long run with ANSI-free logs (forwards --config/--output-dir)
 julia --project scripts/launch_run.jl
@@ -90,7 +94,7 @@ julia --project scripts/replot.jl data/run_<hash> [--rho R]
 julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
 ```
 
-Everything tunable lives in `config.toml` (grid, physics, the full
+Everything tunable lives in the `configs/` scenario files (grid, physics, the full
 Robson-2019 noise model — confusion and instrumental parameters alike —
 mapping resolution/refinement, `[parameter_bounds]`, optimizer, `[safety]`
 memory budgets). `[monitoring].enabled = true` additionally prints an

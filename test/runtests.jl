@@ -357,11 +357,16 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             cfg_vs = load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))
             @test cfg_vs.max_vram_gb == 6.0
 
-            # both shipped configurations must validate as-is
-            for shipped in ("config.toml", "config-oneapi.toml")
-                cfg_ship = load_and_validate_config(joinpath(dirname(@__DIR__), shipped))
+            # all shipped configurations must validate as-is
+            for shipped in ("production_cpu.toml", "production_oneapi.toml")
+                cfg_ship = load_and_validate_config(
+                    joinpath(dirname(@__DIR__), "configs", shipped))
                 @test cfg_ship.n_deltas == 30 && length(cfg_ship.sweeps) == 7
             end
+            cfg_quick = load_and_validate_config(
+                joinpath(dirname(@__DIR__), "configs", "quickstart.toml"))
+            @test length(cfg_quick.sweeps) == 2 && length(cfg_quick.maps) == 2
+            @test cfg_quick.monitoring_enabled
 
             # instrumental-noise overrides thread through to NoiseParams and
             # must be strictly positive

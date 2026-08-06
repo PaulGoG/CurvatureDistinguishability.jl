@@ -3,7 +3,7 @@
 **Context:** LISA Two-Source Distinguishability Simulation
 
 This document explains the physical rationale behind the production
-configuration (`config.toml`): the global grid, the seven 1D separation
+configuration (`configs/production_cpu.toml`): the global grid, the seven 1D separation
 sweeps, and the seven 2D confusion maps. It is the companion piece for
 interpreting pipeline outputs.
 

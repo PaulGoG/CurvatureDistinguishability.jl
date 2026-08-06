@@ -4,8 +4,8 @@
 
 ```text
 CurvatureDistinguishability/
-├── config.toml             # single source of all run parameters (validated)
-├── config-oneapi.toml      # GPU variant (oneAPI backend, chunked Hessian)
+├── configs/                # validated run scenarios: quickstart (default),
+│                           #   production_cpu, production_oneapi
 ├── src/
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
 │   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
@@ -53,13 +53,13 @@ the figures mark those boundary segments distinctly.
 ## Usage
 
 ```bash
-julia --project --threads=auto scripts/run_pipeline.jl --config config.toml   # foreground
+julia --project --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml   # foreground
 julia --project scripts/launch_run.jl                                # detached
 julia --project scripts/replot.jl data/run_<hash>                 # figures from CSVs
 julia --project scripts/collect_plots.jl                     # PNG browsing view
 ```
 
-Every physical and numerical parameter comes from `config.toml`, which is
+Every physical and numerical parameter comes from a `configs/` scenario file, which is
 validated up front (descriptive hard errors, warnings for suspicious values,
 unknown-key typo protection). Runs land in `data/run_<confighash>/`
 with a configuration snapshot, provenance metadata (git commit, backend,
