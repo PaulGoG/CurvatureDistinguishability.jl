@@ -4,8 +4,9 @@ using SHA: sha256
 using TOML: TOML
 using DrWatson: gitdescribe
 
-export run_id_from_config, unique_run_dir, snapshot_config, backup_existing!,
-       write_run_metadata, git_state
+export run_id_from_config,
+    unique_run_dir, snapshot_config, backup_existing!,
+    write_run_metadata, git_state
 
 """
     run_id_from_config(config_path) -> String

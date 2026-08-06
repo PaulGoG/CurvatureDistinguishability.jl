@@ -64,7 +64,7 @@ the persisted normalized curvature: `suffix` carries the `_rho…` tag and
 `residual` is `nothing` (the residual spectrum is threshold-independent).
 """
 function sweep_figures(run_dir::AbstractString, case::AbstractString;
-                       refit::Bool = false, rho::Union{Nothing,Real} = nothing)
+    refit::Bool = false, rho::Union{Nothing,Real} = nothing)
     dir = joinpath(run_dir, "sweeps", case)
     res = CSV.read(joinpath(dir, "results.csv"), DataFrame)
     meta_path = joinpath(dir, "sweep_meta.toml")
@@ -73,7 +73,8 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     floor_level < 0 && (floor_level = NaN)
     clean = above_floor_mask(res.D2_Numerical, floor_level)
     if refit
-        slope, slope_err = count(clean) >= 3 ?
+        slope, slope_err =
+            count(clean) >= 3 ?
             loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
         ratio = res.D2_Numerical ./ res.D2_Theoretical
         c1, _, c2 = ratio_correction_fit(res.Delta[clean], ratio[clean])
@@ -84,13 +85,14 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         c2 = Float64(get(meta, "c2", NaN))
     end
     rho_sq = rho === nothing ? Float64(get(meta, "rho_sq", 1.0)) : Float64(rho)^2
-    delta_min = rho === nothing ? Float64(get(meta, "delta_min", NaN)) :
-                (16.0 * rho_sq / Float64(get(meta, "K_u_norm", NaN)))^(1 / 4)
+    delta_min =
+        rho === nothing ? Float64(get(meta, "delta_min", NaN)) :
+        (16.0 * rho_sq / Float64(get(meta, "K_u_norm", NaN)))^(1 / 4)
     scaling = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
-                             rho_sq = rho_sq, delta_min = delta_min,
-                             slope = slope, slope_err = slope_err,
-                             clean = collect(clean), floor_level = floor_level,
-                             c1 = c1, c2 = c2)
+        rho_sq = rho_sq, delta_min = delta_min,
+        slope = slope, slope_err = slope_err,
+        clean = collect(clean), floor_level = floor_level,
+        c1 = c1, c2 = c2)
     residual = nothing
     spec_path = joinpath(dir, "residual_spectrum.csv")
     if rho === nothing && isfile(spec_path)
@@ -98,13 +100,13 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         spec = CSV.read(spec_path, DataFrame)
         residual = residual_figure(spec,
             (delta_star = Float64(get(meta, "delta_star", NaN)),
-             df = Float64(get(meta, "df", 1.0)),
-             f_min = cfg.f_min, f_max = cfg.f_max,
-             d2_num = Float64(get(meta, "d2_num_star", NaN)),
-             d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
+                df = Float64(get(meta, "df", 1.0)),
+                f_min = cfg.f_min, f_max = cfg.f_max,
+                d2_num = Float64(get(meta, "d2_num_star", NaN)),
+                d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
     end
     return (scaling = scaling, residual = residual,
-            suffix = rho === nothing ? "" : rho_tag(rho))
+        suffix = rho === nothing ? "" : rho_tag(rho))
 end
 
 """
@@ -122,7 +124,7 @@ under-refined — rerun the map stage for publication-grade maps at a very
 different ρ.
 """
 function zone_map_figure(run_dir::AbstractString, case::AbstractString;
-                         rho::Union{Nothing,Real} = nothing)
+    rho::Union{Nothing,Real} = nothing)
     dir = joinpath(run_dir, "maps", case)
     contour_stored = CSV.read(joinpath(dir, "confusion_contour.csv"), DataFrame)
     cfg = run_config(run_dir)
@@ -134,51 +136,61 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     theta0 = Float64.(map_cfg["theta_0"])
     box = deviation_box(cfg.bounds, theta0, px, py)
     n = nrow(contour_stored)
-    degen = hasproperty(contour_stored, :Degenerate) ?
-            collect(Bool, contour_stored.Degenerate) : falses(n)
+    degen =
+        hasproperty(contour_stored, :Degenerate) ?
+        collect(Bool, contour_stored.Degenerate) : falses(n)
     contour = nothing
     suffix = ""
     if rho === nothing
         X, Y = contour_stored.X_Bound, contour_stored.Y_Bound
-        prior = hasproperty(contour_stored, :Prior_Limited) ?
-                collect(Bool, contour_stored.Prior_Limited) : falses(n)
-        has_math = hasproperty(contour_stored, :R_Math) && hasproperty(contour_stored, :Dir_Cos)
+        prior =
+            hasproperty(contour_stored, :Prior_Limited) ?
+            collect(Bool, contour_stored.Prior_Limited) : falses(n)
+        has_math =
+            hasproperty(contour_stored, :R_Math) && hasproperty(contour_stored, :Dir_Cos)
         x_math = has_math ? contour_stored.R_Math .* contour_stored.Dir_Cos : nothing
         y_math = has_math ? contour_stored.R_Math .* contour_stored.Dir_Sin : nothing
     else
         suffix = rho_tag(rho)
         hasproperty(contour_stored, :K_Raw) && hasproperty(contour_stored, :R_Box) ||
-            error("contour CSV lacks K_Raw/R_Box columns (pre-upgrade run) — " *
-                  "rerun the pipeline to enable threshold rescaling")
-        r_math = [K > 1e-300 ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf
-                  for K in contour_stored.K_Raw]
+            error(
+                "contour CSV lacks K_Raw/R_Box columns (pre-upgrade run) — " *
+                "rerun the pipeline to enable threshold rescaling",
+            )
+        r_math = [
+            K > 1e-300 ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf
+            for K in contour_stored.K_Raw
+        ]
         r_cap = min.(r_math, contour_stored.R_Box)
         if any(!isfinite, r_cap)
             r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
             r_cap[.!isfinite.(r_cap)] .= 5r_cap_max
         end
-        dc = hasproperty(contour_stored, :Dir_Cos) ? contour_stored.Dir_Cos :
-             cos.(contour_stored.Angle)
-        ds = hasproperty(contour_stored, :Dir_Sin) ? contour_stored.Dir_Sin :
-             sin.(contour_stored.Angle)
+        dc =
+            hasproperty(contour_stored, :Dir_Cos) ? contour_stored.Dir_Cos :
+            cos.(contour_stored.Angle)
+        ds =
+            hasproperty(contour_stored, :Dir_Sin) ? contour_stored.Dir_Sin :
+            sin.(contour_stored.Angle)
         X = r_cap .* dc
         Y = r_cap .* ds
         x_math = r_math .* dc
         y_math = r_math .* ds
-        prior = collect(isfinite.(contour_stored.R_Box) .& (r_math .>= contour_stored.R_Box))
+        prior =
+            collect(isfinite.(contour_stored.R_Box) .& (r_math .>= contour_stored.R_Box))
         contour = DataFrame(Angle = contour_stored.Angle, X_Bound = X, Y_Bound = Y,
-                            Dir_Cos = dc, Dir_Sin = ds,
-                            R_Capped = r_cap, R_Math = r_math, R_Box = contour_stored.R_Box,
-                            Prior_Limited = prior, Degenerate = degen,
-                            K_Raw = contour_stored.K_Raw,
-                            G_uu = hasproperty(contour_stored, :G_uu) ?
-                                   contour_stored.G_uu : fill(NaN, n))
+            Dir_Cos = dc, Dir_Sin = ds,
+            R_Capped = r_cap, R_Math = r_math, R_Box = contour_stored.R_Box,
+            Prior_Limited = prior, Degenerate = degen,
+            K_Raw = contour_stored.K_Raw,
+            G_uu = hasproperty(contour_stored, :G_uu) ?
+                   contour_stored.G_uu : fill(NaN, n))
     end
     figure = zone_figure(contour_stored.Angle, X, Y, prior;
-                         px = px, py = py, box = box,
-                         prior_frac = count(prior) / max(1, length(prior)),
-                         degenerate_frac = count(degen) / max(1, length(degen)),
-                         x_math = x_math, y_math = y_math)
+        px = px, py = py, box = box,
+        prior_frac = count(prior) / max(1, length(prior)),
+        degenerate_frac = count(degen) / max(1, length(degen)),
+        x_math = x_math, y_math = y_math)
     return (figure = figure, contour = contour, suffix = suffix)
 end
 

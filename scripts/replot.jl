@@ -24,7 +24,7 @@ function parse_arguments(argv)
         idx < length(args) || error("--rho requires a value")
         rho = parse(Float64, args[idx+1])
         rho > 0 || error("--rho must be > 0")
-        deleteat!(args, idx:idx+1)
+        deleteat!(args, idx:(idx+1))
     end
     length(args) == 1 ||
         error("Usage: julia --project scripts/replot.jl <run_dir> [--rho R]")
@@ -56,8 +56,11 @@ function replot(run_dir, rho)
         try
             rendered = zone_map_figure(run_dir, name; rho = rho)
             rendered.contour === nothing ||
-                CSV.write(backup_existing!(joinpath(dir, "confusion_contour" * rendered.suffix * ".csv")),
-                          rendered.contour)
+                CSV.write(
+                    backup_existing!(
+                        joinpath(dir, "confusion_contour" * rendered.suffix * ".csv"),
+                    ),
+                    rendered.contour)
             save_figure(rendered.figure, joinpath(dir, "confusion_zone" * rendered.suffix))
             replotted += 1
             println("replotted map: $name$(rendered.suffix)")

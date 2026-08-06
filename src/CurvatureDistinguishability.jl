@@ -22,8 +22,8 @@ export get_best_backend, to_backend, backend_name
 include("Physics.jl")
 using .Physics
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
-       WaveformParams, waveform_params, spin_beta, strain_bin,
-       scaled_waveform_model, SECONDS_PER_YEAR
+    WaveformParams, waveform_params, spin_beta, strain_bin,
+    scaled_waveform_model, SECONDS_PER_YEAR
 
 include("Detector.jl")
 using .Detector
@@ -31,13 +31,14 @@ export tdi_modulation_bin, project_to_tdi, n_channels
 
 include("Bounds.jl")
 using .Bounds
-export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
-       ray_box_crossing, clamp_interior
+export ParameterBounds,
+    default_bounds, bounds_from_config, deviation_box,
+    ray_box_crossing, clamp_interior
 
 include("Geometry.jl")
 using .Geometry
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
-       compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
+    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
 
 include("Inference.jl")
 using .Inference

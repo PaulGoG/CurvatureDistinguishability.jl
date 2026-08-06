@@ -1,10 +1,10 @@
 module Plotting
 
 using CairoMakie: CairoMakie, Axis, DataAspect, Figure, Label, Legend,
-                  LinearTicks, Point2f, Relative, Theme, band!,
-                  hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
-                  poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
-                  with_theme, xlims!, ylims!
+    LinearTicks, Point2f, Relative, Theme, band!,
+    hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
+    poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
+    with_theme, xlims!, ylims!
 using LaTeXStrings: LaTeXStrings, @L_str, latexstring
 using MathTeXEngine: texfont
 using Printf: @sprintf
@@ -16,9 +16,10 @@ export publication_theme, save_figure, scaling_figure, residual_figure, zone_fig
 Short LaTeX axis labels for the six model parameters (deviation form is
 composed by the figure builders).
 """
-const PARAM_LABELS = (L"\mathcal{A}", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_1", L"\chi_2")
+const PARAM_LABELS =
+    (L"\mathcal{A}", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_1", L"\chi_2")
 
-deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:end-1])
+deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
 
 """
     publication_theme()
@@ -29,7 +30,11 @@ All figure builders apply it via `with_theme`.
 """
 function publication_theme()
     return Theme(
-        fonts = (; regular = texfont(:text), bold = texfont(:bold), italic = texfont(:italic)),
+        fonts = (;
+            regular = texfont(:text),
+            bold = texfont(:bold),
+            italic = texfont(:italic),
+        ),
         fontsize = 25,
         figure_padding = 18,
         Axis = (
@@ -93,7 +98,11 @@ spanning a few decades where whole-power ticks alone are too sparse.
 """
 function log_ticks_125(lo::Real, hi::Real)
     (lo > 0 && hi > lo && isfinite(hi)) ||
-        throw(ArgumentError("log_ticks_125 requires finite bounds 0 < lo < hi, got ($lo, $hi)"))
+        throw(
+            ArgumentError(
+                "log_ticks_125 requires finite bounds 0 < lo < hi, got ($lo, $hi)",
+            ),
+        )
     vals = Float64[]
     labels = LaTeXStrings.LaTeXString[]
     for p in floor(Int, log10(lo)):ceil(Int, log10(hi)), m in (1, 2, 5)
@@ -101,9 +110,12 @@ function log_ticks_125(lo::Real, hi::Real)
         (lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)) || continue
         push!(vals, v)
         # 10⁰ never appears as a factor: 1, 2, 5 in the unit decade
-        push!(labels, p == 0 ? latexstring(m) :
-                      m == 1 ? latexstring("10^{", p, "}") :
-                               latexstring(m, "\\times 10^{", p, "}"))
+        push!(
+            labels,
+            p == 0 ? latexstring(m) :
+            m == 1 ? latexstring("10^{", p, "}") :
+            latexstring(m, "\\times 10^{", p, "}"),
+        )
     end
     return vals, labels
 end
@@ -185,14 +197,14 @@ function offset_ticks(lo::Real, hi::Real)
     (isfinite(span) && span > 0) || return nothing
     kmid = floor(Int, log10(span))
     for (nrange, cap) in ((4:8, 0.35), (3:9, 0.60))
-        for q in (5, 2, 1), k in (kmid - 2):(kmid + 1)
+        for q in (5, 2, 1), k in (kmid-2):(kmid+1)
             step = q * 10.0^k
             lo_s = floor(lo / step + 1e-9) * step
             hi_s = ceil(hi / step - 1e-9) * step
             n = round(Int, (hi_s - lo_s) / step) + 1
             n in nrange || continue
             (hi_s - hi) + (lo - lo_s) <= cap * span || continue
-            vals = [lo_s + i * step for i in 0:(n - 1)]
+            vals = [lo_s + i * step for i in 0:(n-1)]
             labels = [latexstring(string(round(Int, v / 10.0^k))) for v in vals]
             return (vals, labels, k, lo_s, hi_s)
         end
@@ -252,10 +264,11 @@ non-convergence carries no special mark. The legend sits on top:
 entry. `clean` is the Bool mask of points used for the fits — the caller
 should pass the above-optimizer-floor mask.
 """
-function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo::AbstractVector;
-                        rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
-                        clean::AbstractVector{Bool}, floor_level::Real,
-                        c1::Real = NaN, c2::Real = NaN)
+function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
+    d2_theo::AbstractVector;
+    rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
+    clean::AbstractVector{Bool}, floor_level::Real,
+    c1::Real = NaN, c2::Real = NaN)
     with_theme(publication_theme()) do
         fig = Figure(size = (920, 900))
 
@@ -266,54 +279,58 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         yt = decade_ticks(ylo, yhi)
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-                   ylabel = L"D^2", xticks = xt, yticks = yt, yticklabelspace = 66.0)
+            ylabel = L"D^2", xticks = xt, yticks = yt, yticklabelspace = 66.0)
 
         th = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
         sc = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
-                      strokecolor = :black, strokewidth = 1.4, markersize = 22)
+            strokecolor = :black, strokewidth = 1.4, markersize = 22)
         # points inside the optimizer-floor band are stricken through by a
         # thin X stretching over the symbol (no legend entry): the floor, not
         # the physics, sets them
-        floored = isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
-                  falses(length(d2_num))
+        floored =
+            isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
+            falses(length(d2_num))
         any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
-                                 marker = '×', color = :grey15, markersize = 42)
+            marker = '×', color = :grey15, markersize = 42)
         ylims!(ax1, ylo, yhi)
 
         # legend on top of the figure: two entries only — the fitted slope is
         # part of the D²_numerical label, not a separate item
         Legend(fig[0, 1],
-               [th, sc],
-               [L"D^2_{\mathrm{theoretical}}",
-                latexstring(@sprintf("D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
-                                     slope, slope_err))];
-               orientation = :horizontal, framevisible = false,
-               tellwidth = false, tellheight = true, labelsize = 19,
-               patchsize = (30, 4), colgap = 16, patchlabelgap = 5,
-               padding = (0, 0, 4, 0))
+            [th, sc],
+            [L"D^2_{\mathrm{theoretical}}",
+                latexstring(
+                    @sprintf(
+                        "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
+                        slope, slope_err)
+                )];
+            orientation = :horizontal, framevisible = false,
+            tellwidth = false, tellheight = true, labelsize = 19,
+            patchsize = (30, 4), colgap = 16, patchlabelgap = 5,
+            padding = (0, 0, 4, 0))
 
         if isfinite(floor_level) && floor_level > ylo
             hspan!(ax1, ylo, floor_level; color = (:grey, 0.30))
             # bottom-right, well clear of the rising δ⁴ line (which is high there)
             text!(ax1, maximum(deltas), floor_level;
-                  text = "Optimizer floor", align = (:right, :bottom),
-                  fontsize = 17, color = :grey35)
+                text = "Optimizer floor", align = (:right, :bottom),
+                fontsize = 17, color = :grey35)
         end
         if ylo < rho_sq < yhi
             hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
             text!(ax1, maximum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
-                  align = (:right, :bottom), fontsize = 18, color = :grey35)
+                align = (:right, :bottom), fontsize = 18, color = :grey35)
         end
         if minimum(deltas) < delta_min < maximum(deltas)
             vlines!(ax1, [delta_min]; color = :grey35, linewidth = 1.8, linestyle = :dash)
             text!(ax1, delta_min, ylo; text = L"\delta_{\mathrm{min}}",
-                  align = (:left, :bottom), fontsize = 18, color = :grey35)
+                align = (:left, :bottom), fontsize = 18, color = :grey35)
         end
 
         ax2 = Axis(fig[2, 1]; xscale = log10,
-                   xlabel = L"\mathrm{parameter\ separation}\ \delta",
-                   ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
-                   yticklabelspace = 66.0)
+            xlabel = L"\mathrm{parameter\ separation}\ \delta",
+            ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
+            yticklabelspace = 66.0)
         # The ratio panel repeats the TOP panel's vocabulary exactly: dark-red
         # solid reference at 1 (the theory), blue dots, and floor-band points
         # stricken through by the same thin X — their true ratio diverges, so
@@ -330,26 +347,27 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector, d2_theo:
         # ~15% headroom
         spread = any(keep) ? maximum(abs, ratio[keep] .- 1.0) : 0.5
         half = something(findfirst(h -> h >= 1.15 * spread,
-                                   (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
+            (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
         h = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half]
         if isfinite(c1) && any(keep)
             # higher-order-terms fit in dashed dark blue (reads cleanly over
             # the solid reference): starting slightly LEFT of the first kept
             # point, reaching past the right margin (clipped by the frame)
-            dd = 10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
-                               log10(maximum(deltas)) + 0.4, length = 200)
+            dd =
+                10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
+                    log10(maximum(deltas)) + 0.4, length = 200)
             model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
             lines!(ax2, dd, clamp.(model, 1.0 - h, 1.0 + h); color = :navy,
-                   linestyle = :dash, linewidth = 3.0)
+                linestyle = :dash, linewidth = 3.0)
             # coefficients always written out as mantissa × 10ⁿ
             ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
             isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
             text!(ax2, 0.985, 0.92; space = :relative,
-                  text = latexstring(ctext),
-                  align = (:right, :top), fontsize = 16, color = :navy)
+                text = latexstring(ctext),
+                align = (:right, :top), fontsize = 16, color = :navy)
         end
         scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
-                 strokecolor = :black, strokewidth = 1.2, markersize = 17)
+            strokecolor = :black, strokewidth = 1.2, markersize = 17)
         ylims!(ax2, 1.0 - h, 1.0 + h)
 
         # explicit x-limits from the DATA with a small log margin: the fit
@@ -401,16 +419,16 @@ function residual_figure(spec, meta)
         col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-                   ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-                   xticks = xt, yticklabelspace = 70.0)
+            ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+            xticks = xt, yticklabelspace = 70.0)
         band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
         band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
         dA = lines!(ax1, spec.f, spec.sig_rms_A; color = col_data_A, linewidth = 3.6)
         dE = lines!(ax1, spec.f, spec.sig_rms_E; color = col_data_E, linewidth = 3.6)
         bA = lines!(ax1, spec.f, spec.bf_rms_A; color = col_bf_A,
-                    linestyle = :dashdot, linewidth = 3.0)
+            linestyle = :dashdot, linewidth = 3.0)
         bE = lines!(ax1, spec.f, spec.bf_rms_E; color = col_bf_E,
-                    linestyle = :dashdot, linewidth = 3.0)
+            linestyle = :dashdot, linewidth = 3.0)
 
         # y-range of the residual panel: cover the lines AND the min/max
         # shadings — but cap the extra depth at ~1.6 decades below the rms
@@ -423,7 +441,7 @@ function residual_figure(spec, meta)
         band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
         ylo2 = max(band_lo / 2, minimum(res_pos) / 40)
         yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
-                   maximum(res_pos)) * 4
+            maximum(res_pos)) * 4
         noise_level = 1.0 / meta.df
         noise_in_frame = noise_level < 30 * yhi2
         noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
@@ -433,29 +451,29 @@ function residual_figure(spec, meta)
         # off-scale noise note right-aligned in the same row (only when the
         # 1/Δf reference cannot be drawn inside the frame)
         Label(fig[2, 1],
-              latexstring("\\delta^* = ", sci_latex(meta.delta_star),
-                          ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
-                          "\\;\\; (\\mathrm{th.}\\ ", sci_latex(meta.d2_theo), ")");
-              fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
-              padding = (4, 0, 2, 8))
+            latexstring("\\delta^* = ", sci_latex(meta.delta_star),
+                ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
+                "\\;\\; (\\mathrm{th.}\\ ", sci_latex(meta.d2_theo), ")");
+            fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
+            padding = (4, 0, 2, 8))
         if !noise_in_frame
             Label(fig[2, 1],
-                  latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
-                              sci_latex(noise_level),
-                              "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
-                  fontsize = 14, color = :grey35, halign = :right,
-                  tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
+                latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+                    sci_latex(noise_level),
+                    "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
+                fontsize = 14, color = :grey35, halign = :right,
+                tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
         end
 
         ax2 = Axis(fig[3, 1]; xscale = log10, yscale = log10,
-                   xlabel = L"f\ \ [\mathrm{Hz}]",
-                   ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-                   xticks = xt, yticks = decade_ticks(ylo2, yhi2),
-                   yticklabelspace = 70.0)
+            xlabel = L"f\ \ [\mathrm{Hz}]",
+            ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+            xticks = xt, yticks = decade_ticks(ylo2, yhi2),
+            yticklabelspace = 70.0)
         band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A;
-              color = (col_res_A, 0.16))
+            color = (col_res_A, 0.16))
         band!(ax2, spec.f, max.(spec.res_min_E, 1e-300), spec.res_max_E;
-              color = (col_res_E, 0.16))
+            color = (col_res_E, 0.16))
         rA = lines!(ax2, spec.f, spec.res_rms_A; color = col_res_A, linewidth = 3.2)
         rE = lines!(ax2, spec.f, spec.res_rms_E; color = col_res_E, linewidth = 3.2)
 
@@ -463,18 +481,18 @@ function residual_figure(spec, meta)
         # both panels: channel A and channel E blocks with data/best fit/
         # residual entries each
         Legend(fig[0, 1],
-               [[dA, bA, rA], [dE, bE, rE]],
-               [["data", "best fit", "residual"], ["data", "best fit", "residual"]],
-               ["channel A:", "channel E:"];
-               orientation = :horizontal, titleposition = :left,
-               framevisible = false, tellwidth = false, tellheight = true,
-               labelsize = 18, titlesize = 19, titlefont = :bold,
-               patchsize = (26, 4), groupgap = 48, patchlabelgap = 4,
-               colgap = 10, titlegap = 8, padding = (0, 0, 4, 0))
+            [[dA, bA, rA], [dE, bE, rE]],
+            [["data", "best fit", "residual"], ["data", "best fit", "residual"]],
+            ["channel A:", "channel E:"];
+            orientation = :horizontal, titleposition = :left,
+            framevisible = false, tellwidth = false, tellheight = true,
+            labelsize = 18, titlesize = 19, titlefont = :bold,
+            patchsize = (26, 4), groupgap = 48, patchlabelgap = 4,
+            colgap = 10, titlegap = 8, padding = (0, 0, 4, 0))
         if noise_in_frame
             hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
             text!(ax2, fmax, noise_level; text = "per-bin noise level",
-                  align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
+                align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
         end
         ylims!(ax2, ylo2, yhi2)
 
@@ -495,17 +513,20 @@ one polyline (letting a dash pattern form over the whole run).
 """
 function _boundary_runs(x, y, edge_prior::AbstractVector{Bool}, want::Bool)
     n = length(x)
-    xs = Float64[]; ys = Float64[]
+    xs = Float64[]
+    ys = Float64[]
     inrun = false
     for i in 1:n
         j = mod1(i + 1, n)
         if edge_prior[i] == want
             if !inrun
                 isempty(xs) || (push!(xs, NaN); push!(ys, NaN))
-                push!(xs, x[i]); push!(ys, y[i])
+                push!(xs, x[i])
+                push!(ys, y[i])
                 inrun = true
             end
-            push!(xs, x[j]); push!(ys, y[j])
+            push!(xs, x[j])
+            push!(ys, y[j])
         else
             inrun = false
         end
@@ -531,10 +552,10 @@ the annotation names the active walls with their values (from `box`, e.g.
 planes (spin–spin).
 """
 function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector,
-                     prior_limited::AbstractVector{Bool};
-                     px::Int, py::Int, box::NTuple{4,Float64},
-                     prior_frac::Real, degenerate_frac::Real,
-                     x_math = nothing, y_math = nothing)
+    prior_limited::AbstractVector{Bool};
+    px::Int, py::Int, box::NTuple{4,Float64},
+    prior_frac::Real, degenerate_frac::Real,
+    x_math = nothing, y_math = nothing)
     px == py && error("map plane must use two distinct parameters")
     same_units = (px in (5, 6) && py in (5, 6))
     with_theme(publication_theme()) do
@@ -595,8 +616,8 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
                 # common power of 10 at the end of the x axis: just right of
                 # the frame's bottom corner, clear of the last tick label
                 e10 != 0 && Label(fig[1, 2], latexstring("\\times 10^{", e10, "}");
-                                  fontsize = 20, halign = :left, valign = :bottom,
-                                  padding = (2, 0, 0, 0), tellheight = false)
+                    fontsize = 20, halign = :left, valign = :bottom,
+                    padding = (2, 0, 0, 0), tellheight = false)
             end
         else
             ax.xticks = LinearTicks(6)
@@ -615,8 +636,8 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
                 ylo, yhi = lo_s, hi_s
                 # common power of 10 at the end of the y axis: above the frame
                 e10 != 0 && Label(fig[0, 1], latexstring("\\times 10^{", e10, "}");
-                                  fontsize = 20, halign = :left, valign = :bottom,
-                                  padding = (0, 0, 2, 0), tellwidth = false)
+                    fontsize = 20, halign = :left, valign = :bottom,
+                    padding = (0, 0, 2, 0), tellwidth = false)
             end
         else
             ax.yticks = LinearTicks(6)
@@ -641,7 +662,7 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
             mx, my = _boundary_runs(xm, ym, edge_math, true)
             isempty(mx) || lines!(ax, mx, my; color = (:dodgerblue4, 0.75),
-                                  linewidth = 2.4, linestyle = :dash)
+                linewidth = 2.4, linestyle = :dash)
         end
         cx, cy = _boundary_runs(x, y, edge_prior, false)
         bx, by = _boundary_runs(x, y, edge_prior, true)
@@ -659,15 +680,16 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             # name the ACTIVE walls with their values: a prior-limited boundary
             # point sits exactly on the box edge its ray exited through, so an
             # edge is active iff some capped point lies on it
-            devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:end-1])
-            fmt_edge(v, isphase) = isphase && isapprox(abs(v), π; atol = 1e-9) ?
-                                   (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
+            devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
+            fmt_edge(v, isphase) =
+                isphase && isapprox(abs(v), π; atol = 1e-9) ?
+                (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
             plx = view(x, prior_limited)
             ply = view(y, prior_limited)
             lox, hix, loy, hiy = box
             walls = String[]
             for (lo_e, hi_e, vals, tol, idx) in ((lox, hix, plx, 1e-6 * (xhi - xlo), px),
-                                                 (loy, hiy, ply, 1e-6 * (yhi - ylo), py))
+                (loy, hiy, ply, 1e-6 * (yhi - ylo), py))
                 lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
                 hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
                 isph = idx == 4
@@ -681,15 +703,21 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             # \!-\! cancels the binary-operator spacing MathTeXEngine would put
             # around the hyphen in "prior-limited"
             msg = string(pcttex(prior_frac),
-                         "\\ \\mathrm{of\\ directions\\ prior}\\!-\\!\\mathrm{limited}")
+                "\\ \\mathrm{of\\ directions\\ prior}\\!-\\!\\mathrm{limited}")
             isempty(walls) || (msg *= string("\\ \\mathrm{by}\\ ", join(walls, ",\\;\\ ")))
             degenerate_frac > 0 &&
-                (msg *= string("\\;\\ (", pcttex(degenerate_frac), "\\ \\mathrm{degenerate})"))
+                (
+                    msg *= string(
+                        "\\;\\ (",
+                        pcttex(degenerate_frac),
+                        "\\ \\mathrm{degenerate})",
+                    )
+                )
             # on top of the plot, outside the box (a thin Label row above the
             # axis); tellwidth = false so the label's own width never dictates
             # the column width — otherwise the axis collapses to a narrow strip
             Label(fig[0, 1], latexstring(msg); fontsize = 18, color = :grey35,
-                  halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
+                halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
         end
         return fig
     end

@@ -5,8 +5,8 @@ using ..Physics
 using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
-       compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
-       flat_response, GS_NORM_TOL
+    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
+    flat_response, GS_NORM_TOL
 
 """
 Gram–Schmidt drop tolerance: candidate tangent vectors whose orthogonalized
@@ -20,7 +20,12 @@ const GS_NORM_TOL = 1e-14
 
 Noise-weighted inner product `4 df Σ Re(h1* h2)/Sn` over the frequency grid.
 """
-function inner_product(h1::AbstractVector, h2::AbstractVector, Sn_vals::AbstractVector, df::Real)
+function inner_product(
+    h1::AbstractVector,
+    h2::AbstractVector,
+    Sn_vals::AbstractVector,
+    df::Real,
+)
     return 4.0 * df * mapreduce((x, y, s) -> real(conj(x) * y) / s, +, h1, h2, Sn_vals)
 end
 
@@ -30,7 +35,12 @@ end
 Sum of [`inner_product`](@ref) over corresponding channels of the tuples
 `H1`, `H2` (generic over 2-channel A/E and 3-channel A/E/T configurations).
 """
-function multi_channel_inner_product(H1::Tuple, H2::Tuple, Sn_vals::AbstractVector, df::Real)
+function multi_channel_inner_product(
+    H1::Tuple,
+    H2::Tuple,
+    Sn_vals::AbstractVector,
+    df::Real,
+)
     total_ip = 0.0
     for (h1, h2) in zip(H1, H2)
         total_ip += inner_product(h1, h2, Sn_vals, df)
@@ -54,8 +64,8 @@ function flat_response(p::AbstractVector, freqs::AbstractVector, wp::WaveformPar
     off = 0
     for c in chans
         @inbounds for i in 1:n
-            out[off + i] = real(c[i])
-            out[off + n + i] = imag(c[i])
+            out[off+i] = real(c[i])
+            out[off+n+i] = imag(c[i])
         end
         off += 2n
     end
@@ -72,7 +82,7 @@ compiler.
 function unflatten_channels(v::AbstractVector, n_bins::Integer, ::Val{NCH}) where {NCH}
     return ntuple(Val(NCH)) do c
         off = 2 * n_bins * (c - 1)
-        complex.(view(v, off+1:off+n_bins), view(v, off+n_bins+1:off+2n_bins))
+        complex.(view(v, (off+1):(off+n_bins)), view(v, (off+n_bins+1):(off+2n_bins)))
     end
 end
 
@@ -87,8 +97,8 @@ spin difference χ_a) are dropped; the returned basis may have fewer than 6
 elements. Each element is an `nch`-tuple of complex channel vectors.
 """
 function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
-                               Sn_vals::AbstractVector, df::Real,
-                               wp::WaveformParams{T,NCH}) where {T,NCH}
+    Sn_vals::AbstractVector, df::Real,
+    wp::WaveformParams{T,NCH}) where {T,NCH}
     n_bins = length(freqs)
 
     J_flat = ForwardDiff.jacobian(p -> flat_response(p, freqs, wp), theta_0)
@@ -97,7 +107,7 @@ function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
     basis = Vector{NTuple{NCH,Vector{ComplexF64}}}()
     for i in 1:n_params
         w = map(c -> collect(ComplexF64, c),
-                unflatten_channels(view(J_flat, :, i), n_bins, Val(NCH)))
+            unflatten_channels(view(J_flat, :, i), n_bins, Val(NCH)))
         for e in basis
             proj = multi_channel_inner_product(w, e, Sn_vals, df)
             for c in 1:NCH
@@ -144,10 +154,11 @@ second derivative against the precomputed tangent `basis`. Both first and
 second derivatives come from one fused nested-dual evaluation. `K` and `g`
 are exactly even in `u_dir`.
 """
-function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector, u_dir::AbstractVector,
-                                                basis::Vector{<:NTuple}, freqs::AbstractVector,
-                                                Sn_vals::AbstractVector, df::Real,
-                                                wp::WaveformParams{T,NCH}) where {T,NCH}
+function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
+    u_dir::AbstractVector,
+    basis::Vector{<:NTuple}, freqs::AbstractVector,
+    Sn_vals::AbstractVector, df::Real,
+    wp::WaveformParams{T,NCH}) where {T,NCH}
     n_bins = length(freqs)
 
     _, dh_flat, d2h_flat = value_and_directional_derivs(
@@ -181,10 +192,18 @@ in one call. For repeated directions at a fixed base point (2D mapping), use
 [`compute_extrinsic_curvature_from_basis`](@ref) per direction instead.
 """
 function compute_extrinsic_curvature(theta_0::AbstractVector, u_dir::AbstractVector,
-                                     freqs::AbstractVector, Sn_vals::AbstractVector, df::Real,
-                                     wp::WaveformParams)
+    freqs::AbstractVector, Sn_vals::AbstractVector, df::Real,
+    wp::WaveformParams)
     basis = compute_tangent_basis(theta_0, freqs, Sn_vals, df, wp)
-    return compute_extrinsic_curvature_from_basis(theta_0, u_dir, basis, freqs, Sn_vals, df, wp)
+    return compute_extrinsic_curvature_from_basis(
+        theta_0,
+        u_dir,
+        basis,
+        freqs,
+        Sn_vals,
+        df,
+        wp,
+    )
 end
 
 end # module

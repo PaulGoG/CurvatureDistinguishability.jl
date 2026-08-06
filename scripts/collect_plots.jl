@@ -40,14 +40,19 @@ function parse_arguments(argv)
         elseif dest === nothing
             dest = abspath(arg)
         else
-            error("Unrecognized argument '$arg' (not a run id, a run directory, " *
-                  "or the single destination directory).")
+            error(
+                "Unrecognized argument '$arg' (not a run id, a run directory, " *
+                "or the single destination directory).",
+            )
         end
     end
     if isempty(runs)
-        runs = isdir(DATA_ROOT) ?
-            [joinpath(DATA_ROOT, d) for d in sort(readdir(DATA_ROOT))
-             if startswith(d, "run_") && is_run_dir(joinpath(DATA_ROOT, d))] : String[]
+        runs =
+            isdir(DATA_ROOT) ?
+            [
+                joinpath(DATA_ROOT, d) for d in sort(readdir(DATA_ROOT))
+                if startswith(d, "run_") && is_run_dir(joinpath(DATA_ROOT, d))
+            ] : String[]
     end
     return runs, something(dest, joinpath(PROJECT_ROOT, "plots"))
 end
@@ -60,17 +65,20 @@ function collect_figures(runs, dest)
         for case in cases.sweeps
             figs = sweep_figures(run_dir, case; refit = true)
             save(joinpath(dest, "$(label)_sweep_$(case)_scaling.png"), figs.scaling;
-                 px_per_unit = 4); n += 1
+                px_per_unit = 4)
+            n += 1
             if figs.residual !== nothing
                 save(joinpath(dest, "$(label)_sweep_$(case)_residual.png"), figs.residual;
-                     px_per_unit = 4); n += 1
+                    px_per_unit = 4)
+                n += 1
             end
             println("  sweep: $label/$case")
         end
         for case in cases.maps
             rendered = zone_map_figure(run_dir, case)
             save(joinpath(dest, "$(label)_map_$(case).png"), rendered.figure;
-                 px_per_unit = 4); n += 1
+                px_per_unit = 4)
+            n += 1
             println("  map:   $label/$case")
         end
     end
