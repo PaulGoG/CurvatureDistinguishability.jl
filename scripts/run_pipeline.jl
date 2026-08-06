@@ -10,8 +10,11 @@ function parse_commandline()
     s = ArgParseSettings(description = "Curvature-Distinguishability Unified Pipeline")
     @add_arg_table! s begin
         "--config"
-            help = "Path to a TOML configuration file (relative to project root)"
-            default = "config.toml"
+            help = "Path to a TOML configuration file (relative to project root); " *
+                   "shipped scenarios live in configs/. The default is the " *
+                   "minutes-scale quickstart — production campaigns are selected " *
+                   "explicitly (e.g. configs/production_cpu.toml)."
+            default = joinpath("configs", "quickstart.toml")
         "--output-dir"
             help = "Directory to save outputs (relative to project root)"
             default = "data"

@@ -1,7 +1,5 @@
-# Production configuration — oneAPI GPU variant (identical physics to
-# config.toml; Intel iGPU: FP64 emulation, chunked Hessian). Case rationale:
-# docs/src/parameters.md.
-
+# Production configuration — CPU reference campaign. Physical rationale for
+# the sweep/map cases and the grid: docs/src/parameters.md.
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
@@ -82,11 +80,11 @@ spin2 = [-1.0, 1.0]
 [hardware]
 # gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
 # "oneapi"; GPU backends require the matching package installed
-gpu_backend = "oneapi"
+gpu_backend = "none"
 max_threads = 22
 # ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
-hessian_chunk = 3
+hessian_chunk = 0
 
 [safety]
 # memory budgets in GB; the pipeline refuses to start (or downscales

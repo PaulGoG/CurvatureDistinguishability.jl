@@ -20,7 +20,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
 
 ## 2. Modules
 
-- **`Config.jl`** — parses and validates `config.toml` into an immutable
+- **`Config.jl`** — parses and validates the configuration TOML into an immutable
   `PipelineSettings`. Guardrails: descriptive hard errors for unusable input
   (bad ranges, duplicate names, base points outside the physical bounds),
   warnings for suspicious values, and warnings on **unknown keys** (typo
@@ -120,7 +120,7 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
 1. Keep the scalar cores (`strain_bin`, `tdi_modulation_bin`) the single
    source of physics truth — the loop, broadcast and kernel paths all call
    them, and the test suite asserts their equivalence.
-2. New physical parameters go: `config.toml` → `Config.jl` validation →
+2. New physical parameters go: configuration TOML → `Config.jl` validation →
    `WaveformParams` field → scalar core. Never a bare kwarg default
    duplicated across modules.
 3. The GPU path supports the 2-channel (A, E) configuration; parameters

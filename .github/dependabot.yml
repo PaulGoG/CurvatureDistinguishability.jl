@@ -10,5 +10,6 @@ updates:
       - "/"
       - "/docs"
       - "/test"
+      - "/benchmarks"
     schedule:
       interval: "weekly"

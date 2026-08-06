@@ -35,7 +35,7 @@ from the Eq. 10 optical-metrology noise `oms_amplitude` [m Hz⁻¹ᐟ²] with it
 `S_c(f) = A f^{-7/3} e^{-f^α + β f sin(κf)} [1 + tanh(γ(f_k - f))]`,
 defaulting to the 1-yr column of Table 1.
 
-All fields are configurable through the `[noise]` section of `config.toml`;
+All fields are configurable through the `[noise]` section of the run configuration;
 the defaults reproduce the published Robson et al. (2019) LISA model.
 """
 Base.@kwdef struct NoiseParams
@@ -109,8 +109,8 @@ end
 
 Immutable, isbits container for every physical parameter of the waveform and
 detector-response model; the single source of parameter defaults, safe to
-pass into GPU kernels. Values are overridden by the `[physics]` section of
-`config.toml`. The active channel count (2, or 3 with the identically zero
+pass into GPU kernels. Values are overridden by the `[physics]` section of the run
+configuration. The active channel count (2, or 3 with the identically zero
 T channel) is carried as the type parameter `NCH`, so channel-dependent
 tuple types are inferable throughout the geometry and inference paths.
 """
