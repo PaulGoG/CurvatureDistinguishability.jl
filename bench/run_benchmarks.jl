@@ -1,7 +1,7 @@
 # Performance benchmarks, kept out of the test suite by design (benchmarks
 # measure, tests assert). Uses its own environment with the package dev'd in.
 #
-#   julia --threads=auto benchmarks/run_benchmarks.jl
+#   julia --threads=auto bench/run_benchmarks.jl
 #
 using Pkg
 Pkg.activate(@__DIR__; io = devnull)
@@ -41,14 +41,19 @@ display(@benchmark multi_channel_inner_product($H1, $H2, $Sn_vals, $df))
 println()
 
 println("\n[2] Tangent-basis generation (6-column Jacobian + MGS)")
-display(@benchmark compute_tangent_basis($theta_0, $freqs, $Sn_vals, $df, $wp) samples = 5 evals = 1)
+display(
+    @benchmark compute_tangent_basis($theta_0, $freqs, $Sn_vals, $df, $wp) samples = 5 evals =
+        1
+)
 println()
 
 basis = compute_tangent_basis(theta_0, freqs, Sn_vals, df, wp)
 
 println("\n[3] Directional curvature (fused value+dh+d²h nested-dual pass)")
-display(@benchmark compute_extrinsic_curvature_from_basis($theta_0, $u_dir, $basis,
-                                                          $freqs, $Sn_vals, $df, $wp) samples = 10 evals = 1)
+display(
+    @benchmark compute_extrinsic_curvature_from_basis($theta_0, $u_dir, $basis,
+        $freqs, $Sn_vals, $df, $wp) samples = 10 evals = 1
+)
 println()
 
 loss = loss_function(data, freqs, Sn_vals, df, wp, CPU())
@@ -60,9 +65,11 @@ display(@benchmark $loss($p0))
 println()
 
 println("\n[5] Loss value: KernelAbstractions kernel on the CPU backend")
-display(@benchmark CurvatureDistinguishability.Inference.device_loss($p0, $freqs, $Sn_vals,
-                                                                       $(data[1]), $(data[2]),
-                                                                       $df, $wp, $(CPU())))
+display(
+    @benchmark CurvatureDistinguishability.Inference.device_loss($p0, $freqs, $Sn_vals,
+        $(data[1]), $(data[2]),
+        $df, $wp, $(CPU()))
+)
 println()
 
 println("\n[6] ForwardDiff gradient of the loss (CPU loop)")
@@ -73,12 +80,14 @@ println("\n[7] Full bounded optimization: IPNewton vs Fminbox(LBFGS)")
 for opt in (:ipnewton, :lbfgs_box)
     t0 = time()
     d2, _, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
-                                              optimizer = opt,
-                                              mass_scale = wp.mass_scale,
-                                              time_scale = wp.time_scale,
-                                              sky_phi = wp.sky_phi,
-                                              polarization = wp.polarization)
+        optimizer = opt,
+        mass_scale = wp.mass_scale,
+        time_scale = wp.time_scale,
+        sky_phi = wp.sky_phi,
+        polarization = wp.polarization)
     diag = optimization_diagnostics(res, ones(6), default_bounds())
-    println("  $(rpad(opt, 10)): D² = $(d2)  iters = $(diag.iterations)  " *
-            "wall = $(round(time() - t0, digits = 2)) s")
+    println(
+        "  $(rpad(opt, 10)): D² = $(d2)  iters = $(diag.iterations)  " *
+        "wall = $(round(time() - t0, digits = 2)) s",
+    )
 end

@@ -13,6 +13,6 @@ plots/
 docs/build/
 # the package Manifest.toml IS version-controlled (portability guarantee);
 # the benchmarks environment regenerates its own on demand
-benchmarks/Manifest.toml
+bench/Manifest.toml
 docs/Manifest.toml
 test/Manifest.toml

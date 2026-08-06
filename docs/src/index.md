@@ -21,7 +21,7 @@ CurvatureDistinguishability/
 ├── ext/                    # CUDA / AMDGPU / Metal / oneAPI extensions
 ├── scripts/                # run_pipeline.jl, launch_run.jl, replot.jl, collect_plots.jl
 ├── test/                   # physics validation, A/B fixtures, E2E
-├── benchmarks/             # BenchmarkTools suite (own environment)
+├── bench/                  # BenchmarkTools suite (own environment)
 ├── data/run_<hash>/        # provenance-stamped pipeline runs (git-ignored)
 └── plots/                  # flat regenerable PNG browsing view (git-ignored)
 ```

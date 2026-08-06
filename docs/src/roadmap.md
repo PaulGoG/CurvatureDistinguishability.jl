@@ -57,7 +57,7 @@ FP64-strong hardware (A100/H100/MI200-class, 10–60× more FP64) the sweep
 stage becomes GPU-dominated; the map stage remains CPU by design
 (`ForwardDiff.jacobian` on host) and would then dominate — parallelize maps
 across CPU cores concurrently with GPU sweeps if the campaign time matters.
-Validate with `benchmarks/` + a single-δ solve before committing a queue
+Validate with `bench/` + a single-δ solve before committing a queue
 allocation.
 
 **Production-hardening now enforced in code (2026-07-21 lessons):** GPU
