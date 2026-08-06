@@ -295,7 +295,8 @@ Convergence diagnostics persisted per optimization: convergence flag,
 iteration count, final gradient norm, and whether the best fit sits on an
 active physical bound (within a relative tolerance of the bound width).
 """
-function optimization_diagnostics(opt_res, best_fit::AbstractVector,
+function optimization_diagnostics(opt_res::Optim.MultivariateOptimizationResults,
+                                  best_fit::AbstractVector,
                                   bounds::Union{Nothing,ParameterBounds})
     at_bound = false
     if bounds !== nothing

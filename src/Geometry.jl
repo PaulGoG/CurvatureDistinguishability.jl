@@ -30,7 +30,7 @@ end
 Sum of [`inner_product`](@ref) over corresponding channels of the tuples
 `H1`, `H2` (generic over 2-channel A/E and 3-channel A/E/T configurations).
 """
-function multi_channel_inner_product(H1, H2, Sn_vals::AbstractVector, df::Real)
+function multi_channel_inner_product(H1::Tuple, H2::Tuple, Sn_vals::AbstractVector, df::Real)
     total_ip = 0.0
     for (h1, h2) in zip(H1, H2)
         total_ip += inner_product(h1, h2, Sn_vals, df)
