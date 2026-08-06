@@ -1,0 +1,188 @@
+# Production configuration — oneAPI GPU variant (identical physics to
+# config.toml; Intel iGPU: FP64 emulation, chunked Hessian). Case rationale:
+# docs/src/parameters.md.
+
+[pipeline]
+run_1d_sweeps = true
+run_2d_mapping = true
+# one of: "ipnewton" (box-constrained exact-Hessian interior-point Newton,
+# recommended) | "lbfgs_box" (Fminbox gradient-only fallback)
+optimizer = "ipnewton"
+# seed for all stochastic components (multi-start perturbations)
+rng_seed = 42
+
+[pipeline.sweep_settings]
+# log-spaced separations delta in [10^min_log_delta, 10^max_log_delta]
+# (Fisher-normalized units)
+n_deltas = 30
+min_log_delta = -4.8
+max_log_delta = -0.2
+# discernibility threshold rho for the 1D sweeps (per-sweep override: rho_thresh)
+rho_thresh = 1.0
+# directions with Fisher norm below this are reported as degenerate
+g_uu_degenerate = 1e-6
+# optimizer starts per separation (secondary-minimum detection when > 1)
+n_starts = 2
+# optimizer convergence; do not tighten g_tol below ~1e-10 (numerical
+# precision floor of small-separation fits — see docs)
+g_tol = 1e-10
+max_iterations = 60
+
+[grid]
+# df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
+# (checked against [safety].max_ram_gb). T_obs in s, frequencies in Hz.
+T_obs = 3.15576e7
+f_min = 1.0e-4
+f_max = 0.05
+
+[physics]
+mass_scale = 10.0
+time_scale = 10000.0
+amp_scale = 1e-21
+eta = 0.25
+amp_33_factor = 0.1
+sky_theta = 1.047
+sky_phi = 3.1415
+inclination = 0.523
+polarization = 0.785
+# the T channel is identically zero in this model (dead compute; unsupported
+# on GPU backends)
+include_t_channel = false
+
+[noise]
+# Robson, Cornish & Liu (2019) noise model. Confusion (Eq. 14) coefficients
+# default to the Table 1 column nearest [grid].T_obs; override any of
+# confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
+# confusion_gamma / confusion_fk here. false = instrumental-only noise.
+# Instrumental (Eq. 10-12) parameters are overridable likewise: arm_length
+# [m], oms_amplitude [m Hz^-1/2], oms_reddening_freq [Hz], acc_amplitude
+# [m s^-2 Hz^-1/2], acc_knee_low / acc_knee_high [Hz]; all > 0.
+confusion_enabled = true
+
+[mapping]
+# directions around the full circle before refinement (even; half is computed
+# and mirrored). 8192 gives smooth publication-grade boundaries.
+n_angles = 8192
+# adjacent-direction capped-radius ratio that triggers angular refinement
+neighbor_ratio_tol = 1.25
+max_refine_levels = 6
+# bisection iterations locating exact prior-wall crossover vertices
+# (0 disables the pass)
+corner_bisect_iters = 25
+
+[parameter_bounds]
+# hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
+# The phase is periodic (deviations capped at +-pi) regardless of this table.
+amplitude = [0.0, inf]
+chirp_mass = [0.0, inf]
+time = [0.0, inf]
+spin1 = [-1.0, 1.0]
+spin2 = [-1.0, 1.0]
+
+[hardware]
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
+# "oneapi"; GPU backends require the matching package installed
+gpu_backend = "oneapi"
+max_threads = 22
+# ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
+# nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
+hessian_chunk = 3
+
+[safety]
+# memory budgets in GB; the pipeline refuses to start (or downscales
+# concurrency) beyond them
+max_ram_gb = 24.0
+max_vram_gb = 32.0
+os_vram_overhead_gb = 4.0
+# per-bin VRAM footprint of the single GPU optimization task, in bytes
+bytes_per_bin_per_task_gpu = 1000
+
+
+# 1D sweeps and 2D maps (docs/src/parameters.md for the physical rationale)
+
+[[sweeps]]
+name = "six_dimensional_diagonal_stress"
+# simultaneous displacement in mass, time, phase and both spins
+theta_0 = [1.0, 1.25, 300.0, 1.57, 0.6, -0.4]
+u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
+
+[[sweeps]]
+name = "massive_binary_mass_time"
+# chirp-rate/arrival-time direction of the reference massive binary
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "unequal_amplitude_mass_time"
+# A_harm prefactor validation at amplitude ratio q = A2/A1 = 0.5
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+amp_ratio = 0.5
+
+[[sweeps]]
+name = "extreme_spin_orbit_coupling"
+# phase and both spins at the strongly anti-aligned high-spin base
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
+u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
+
+[[sweeps]]
+name = "low_mass_time_shift"
+# pure coalescence-time displacement (orbital Doppler/TDI response)
+theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
+u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+[[sweeps]]
+name = "seed_binary_mass_spin_compensation"
+# 1.5PN chirp-mass/spin-orbit compensation direction of the light-seed binary
+theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]
+u_dir = [0.0, 0.6, 0.0, 0.0, -0.55, -0.55]
+
+[[sweeps]]
+name = "near_degenerate_antisymmetric_spin"
+# near-null antisymmetric-spin direction with a 15% chirp-mass admixture
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
+u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
+
+[[maps]]
+name = "mass_vs_time_degeneracy"
+param_x = 2
+param_y = 3
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "spin1_vs_spin2_coupling"
+param_x = 5
+param_y = 6
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_spin1_twist"
+param_x = 2
+param_y = 5
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "time_vs_phase_doppler"
+param_x = 3
+param_y = 4
+theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_phase_low_mass"
+param_x = 2
+param_y = 4
+theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
+
+[[maps]]
+name = "time_vs_spin1_high_spin"
+# t_c-spin correlation at the strongly anti-aligned high-spin base
+param_x = 3
+param_y = 5
+theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
+
+[[maps]]
+name = "phase_vs_spin1_seed"
+# phase-spin plane of the light-seed binary (periodic and spin walls)
+param_x = 4
+param_y = 5
+theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]

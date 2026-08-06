@@ -5,6 +5,7 @@
 ```text
 CurvatureDistinguishability/
 ├── config.toml             # single source of all run parameters (validated)
+├── config-oneapi.toml      # GPU variant (oneAPI backend, chunked Hessian)
 ├── src/
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
 │   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core

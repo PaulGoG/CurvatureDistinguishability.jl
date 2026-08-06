@@ -19,6 +19,7 @@ CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
 ├── Manifest.toml           # version-controlled — portability guarantee
 ├── config.toml             # the single source of all run parameters
+├── config-oneapi.toml      # GPU variant (oneAPI backend, chunked Hessian)
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
@@ -57,11 +58,15 @@ Pkg.instantiate()
 ```
 
 `Project.toml` + `Manifest.toml` are authoritative and version-controlled.
-GPU support is optional: install the package matching your hardware
-(`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`) and the corresponding
-package extension activates automatically; without one, the pipeline runs on
-the multi-threaded CPU backend (`[hardware].gpu_backend = "none"` forces
-this). GPU runs are pinned to a single task by the pipeline and all GPU
+GPU support is optional and never a hard dependency: install the package
+matching your hardware (`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`)
+into your default (stacked) environment — the pipeline resolves it through
+the load path and the corresponding package extension activates
+automatically; without one, the pipeline runs on the multi-threaded CPU
+backend (`[hardware].gpu_backend = "none"` forces this). `config-oneapi.toml`
+is the committed GPU run variant (identical physics; oneAPI backend with
+`hessian_chunk = 3` for FP64-emulating Intel integrated GPUs), selected via
+`--config config-oneapi.toml`. GPU runs are pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
 since the device serializes kernels anyway.
