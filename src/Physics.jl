@@ -1,3 +1,8 @@
+"""
+Analytic LISA noise model (Robson et al. 2019, Eq. 10-14, Table 1) and the
+scalar frequency-domain waveform core shared by the broadcast model, the
+CPU inference loop and the GPU kernels.
+"""
 module Physics
 
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
@@ -5,6 +10,10 @@ export NoiseParams, robson_confusion_params, analytic_noise_psd,
     scaled_waveform_model, SECONDS_PER_YEAR
 
 const C_LIGHT = 2.99792458e8
+
+# positive PSD floor returned for non-positive frequencies, so the noise
+# weighting never divides by zero
+const PSD_FLOOR = 1e-30
 
 """
 Seconds in one Julian year (365.25 d). Single source of truth for the
@@ -105,7 +114,7 @@ instrumental noise plus the Eq. 14 galactic confusion fit (togglable via
 """
 function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
     if f <= 0.0
-        return 1e-30
+        return PSD_FLOOR
     end
 
     # Optical Metrology Noise (Robson Eq. 10)

@@ -28,11 +28,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 @testset "CurvatureDistinguishability.jl" begin
 
     @testset "Static QA" begin
-        # the persistent-tasks probe's child-precompile marker is flaky on
-        # cold macOS/Windows CI runners ("done.log was not created"); the
-        # check's verdict is platform-independent, so it is enforced on
-        # Linux (local development and the Ubuntu CI legs)
-        Aqua.test_all(CurvatureDistinguishability; persistent_tasks = Sys.islinux())
+        # the persistent-tasks probe spawns a child precompilation whose
+        # completion marker is flaky on cold macOS/Windows runners and under
+        # coverage instrumentation (the instrumented child precompile of the
+        # full dependency stack outruns the probe); the verdict is
+        # platform-independent, so the probe is enforced on uninstrumented
+        # Linux — that is, every local Pkg.test()
+        run_probe = Sys.islinux() && Base.JLOptions().code_coverage == 0
+        Aqua.test_all(CurvatureDistinguishability; persistent_tasks = run_probe)
         # the qualified-access publicity check is deliberately not enforced:
         # ForwardDiff and Optim expose their documented API (Dual, value,
         # partials, minimizer, …) without `public` annotations
@@ -451,6 +454,21 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                     joinpath(dirname(@__DIR__), "configs", shipped))
                 @test cfg_ship.n_deltas == 30 && length(cfg_ship.sweeps) == 7
             end
+            # analysis tunables: defaults, override roundtrip, validation
+            @test cfg_def.floor_detection_ratio == 2.0
+            @test cfg_def.secondary_minimum_gain == 1.5
+            @test cfg_def.unbounded_cap_factor == 5.0
+            @test cfg_def.residual_spectrum_windows == 600
+            cfg_tun = load_and_validate_config(
+                write_cfg(dir,
+                    "[pipeline.sweep_settings]\nfloor_detection_ratio = 3.0\n" *
+                    "[mapping]\nunbounded_cap_factor = 8.0\n"),
+            )
+            @test cfg_tun.floor_detection_ratio == 3.0
+            @test cfg_tun.unbounded_cap_factor == 8.0
+            @test_throws ErrorException load_and_validate_config(
+                write_cfg(dir, "[pipeline.sweep_settings]\nfloor_detection_ratio = 1.0\n"))
+
             cfg_quick = load_and_validate_config(
                 joinpath(dirname(@__DIR__), "configs", "quickstart.toml"))
             @test length(cfg_quick.sweeps) == 2 && length(cfg_quick.maps) == 2
@@ -511,6 +529,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test c1_err < 1e-10 # exact model → zero residual
         c1n, _, _ = CD.Orchestrator.ratio_correction_fit(d[1:2], r[1:2])
         @test isnan(c1n) # too few points
+
+        # floor detection honors the configurable ratio threshold
+        @test isnan(CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 1.9], 2.0))
+        @test CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0) == 2.0
+        @test CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 1.9], 1.5) == 2.0
     end
 
     @testset "Plotting utilities" begin

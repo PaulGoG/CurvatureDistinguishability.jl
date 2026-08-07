@@ -1,3 +1,8 @@
+"""
+Box-constrained minimization of the squared noise-weighted distance to the
+single-source manifold, with a KernelAbstractions loss kernel and the
+Float64-lanes dual-number path for GPU backends.
+"""
 module Inference
 
 using ForwardDiff: ForwardDiff
@@ -42,6 +47,11 @@ end
 # (observed oneAPI freed-reference failure). The lock is never taken on CPU
 # paths and adds no GPU-side cost, since the device serializes kernels; the
 # cache reduces device allocations to one buffer per (backend, eltype, shape).
+# relative tolerance (of the bound width, or of the coordinate magnitude
+# for one-sided bounds) within which a best-fit coordinate is reported as
+# sitting on an active physical bound
+const AT_BOUND_RTOL = 1e-6
+
 const GPU_LOCK = ReentrantLock()
 const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
 
@@ -355,7 +365,7 @@ function optimization_diagnostics(opt_res::Optim.MultivariateOptimizationResults
             lo, hi = bounds.lower[i], bounds.upper[i]
             tol =
                 isfinite(lo) && isfinite(hi) ? 1e-6 * (hi - lo) :
-                1e-6 * max(1.0, abs(best_fit[i]))
+                AT_BOUND_RTOL * max(1.0, abs(best_fit[i]))
             (isfinite(lo) && abs(best_fit[i] - lo) <= tol) && (at_bound = true)
             (isfinite(hi) && abs(best_fit[i] - hi) <= tol) && (at_bound = true)
         end

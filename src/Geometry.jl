@@ -1,3 +1,8 @@
+"""
+Differential geometry of the signal manifold: noise-weighted inner
+products, the orthonormal tangent basis, and directional extrinsic
+curvature from fused nested-dual automatic differentiation.
+"""
 module Geometry
 
 using ForwardDiff: ForwardDiff
@@ -5,6 +10,7 @@ using ..Physics
 using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
+    K_UNDERFLOW,
     compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
     flat_response, GS_NORM_TOL
 
@@ -14,6 +20,13 @@ noise-weighted norm falls below this are treated as linearly dependent
 (degenerate parameter directions) and excluded from the basis.
 """
 const GS_NORM_TOL = 1e-14
+
+"""
+Curvature underflow guard: `K` values at or below this are treated as
+exactly flat directions (infinite mathematical boundary radius) instead of
+dividing into the `(16ρ²/K)^{1/4}` radius.
+"""
+const K_UNDERFLOW = 1e-300
 
 """
     inner_product(h1, h2, Sn_vals, df)

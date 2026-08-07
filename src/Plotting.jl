@@ -1,3 +1,7 @@
+"""
+Publication CairoMakie figures under one theme and a family-wide tick
+policy (log 1-2-5 series, axis offset multipliers, rational-pi ticks).
+"""
 module Plotting
 
 using CairoMakie: CairoMakie, Axis, DataAspect, Figure, Label, Legend,
@@ -183,8 +187,8 @@ end
 """
     offset_ticks(lo, hi) -> (values, labels, exponent, lo_snap, hi_snap) or nothing
 
-Tick selection for small-value linear axes: every tick is an **integer
-mantissa** of one common power of 10 (the `exponent`, annotated once at the
+Tick selection for small-value linear axes: every tick is an integer
+mantissa of one common power of 10 (the `exponent`, annotated once at the
 end of the axis by the caller), with mantissa steps preferring multiples of
 5 over 2 over 1, and the axis limits snapped *outward* to the outermost
 ticks so the frame ends exactly on labelled ticks. Two acceptance passes
@@ -215,7 +219,7 @@ end
 """
     coef_latex(v) -> String
 
-Fit-coefficient formatting: ALWAYS mantissa × power-of-10 with two decimal
+Fit-coefficient formatting: always mantissa × power-of-10 with two decimal
 places (`1.07×10⁻³`); the ×10⁰ factor alone is omitted.
 """
 function coef_latex(v::Real)
@@ -331,7 +335,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
             xlabel = L"\mathrm{parameter\ separation}\ \delta",
             ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
             yticklabelspace = 66.0)
-        # The ratio panel repeats the TOP panel's vocabulary exactly: dark-red
+        # The ratio panel repeats the top panel's vocabulary exactly: dark-red
         # solid reference at 1 (the theory), blue dots, and floor-band points
         # stricken through by the same thin X — their true ratio diverges, so
         # they sit clamped at the panel top. Non-converged points carry no
@@ -351,7 +355,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         h = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half]
         if isfinite(c1) && any(keep)
             # higher-order-terms fit in dashed dark blue (reads cleanly over
-            # the solid reference): starting slightly LEFT of the first kept
+            # the solid reference): starting slightly left of the first kept
             # point, reaching past the right margin (clipped by the frame)
             dd =
                 10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
@@ -370,7 +374,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
             strokecolor = :black, strokewidth = 1.2, markersize = 17)
         ylims!(ax2, 1.0 - h, 1.0 + h)
 
-        # explicit x-limits from the DATA with a small log margin: the fit
+        # explicit x-limits from the data with a small log margin: the fit
         # curve and reference line intentionally overshoot the last point, and
         # autolimits would otherwise stretch the frame after them
         logspan = log10(maximum(deltas)) - log10(minimum(deltas))
@@ -446,8 +450,8 @@ function residual_figure(spec, meta)
         noise_in_frame = noise_level < 30 * yhi2
         noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
 
-        # annotations sit BETWEEN the panels — above the bottom plot, outside
-        # its frame, on ONE line: the δ*/integral text left-aligned, and the
+        # annotations sit between the panels — above the bottom plot, outside
+        # its frame, on one line: the δ*/integral text left-aligned, and the
         # off-scale noise note right-aligned in the same row (only when the
         # 1/Δf reference cannot be drawn inside the frame)
         Label(fig[2, 1],
@@ -562,7 +566,7 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins
         fig = Figure(size = same_units ? (820, 830) : (960, 720))
 
-        # Limits fit the ZONE, not a symmetric ±max box: prior-capped zones are
+        # Limits fit the zone, not a symmetric ±max box: prior-capped zones are
         # strongly asymmetric (e.g. spins live in the lower-left wedge) and
         # symmetric limits waste most of the canvas on empty quadrants.
         xlo_d, xhi_d = extrema(x)
@@ -593,7 +597,7 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         same_units && (ax.aspect = DataAspect())
 
         # Per-axis ticks and final limits. Phase axes: rational-π ticks over a
-        # padded range. Small-value axes: integer-mantissa ticks of ONE common
+        # padded range. Small-value axes: integer-mantissa ticks of one common
         # power of 10 — the power annotated once at the end of the axis, never
         # per tick and never inside the axis label — with mantissa steps
         # preferring multiples of 5 and the limits snapped outward so the
@@ -645,10 +649,10 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
 
         poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
 
-        # The boundary of the filled (physical) zone is SOLID throughout:
+        # The boundary of the filled (physical) zone is solid throughout:
         # curvature-limited runs in blue, prior-limited runs in red along the
         # hard physical walls. Where the prior cuts the zone off, the uncapped
-        # MATHEMATICAL contour continues past the wall as an empty dashed line
+        # mathematical contour continues past the wall as an empty dashed line
         # (no fill) — drawn first so the solid boundary sits on top of the
         # junctions.
         n = length(x)
@@ -677,7 +681,7 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             # can be visually dominant yet contain few sampled directions
             # (adaptive refinement leaves flat prior walls sparsely sampled)
             pcttex(f) = 100f < 0.5 ? "{<}1\\%" : @sprintf("%.0f\\%%", 100f)
-            # name the ACTIVE walls with their values: a prior-limited boundary
+            # name the active walls with their values: a prior-limited boundary
             # point sits exactly on the box edge its ray exited through, so an
             # edge is active iff some capped point lies on it
             devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:(end-1)])

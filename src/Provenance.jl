@@ -1,3 +1,7 @@
+"""
+Run identity and safekeeping: canonical configuration hashing, config
+snapshots, backup-before-overwrite semantics and run metadata.
+"""
 module Provenance
 
 using SHA: sha256

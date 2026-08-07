@@ -1,3 +1,8 @@
+"""
+Pipeline driver: resource planning against the [safety] budget, the 1D
+sweep and 2D confusion-mapping stages, structured logging, opt-in
+monitoring and per-stage guardrails.
+"""
 module Orchestrator
 
 using Printf: @sprintf
@@ -118,15 +123,17 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
 end
 
 """
-    optimizer_floor(D2_num, ratio) -> floor_level
+    optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio) -> floor_level
 
 Bootstrap estimate of a sweep's optimizer floor: points whose
-`D²_num/D²_theo` ratio is ≥ 2 are floor-dominated, and the floor level is
-the largest floor-dominated `D²_num`. Returns `NaN` when no point is
-floor-dominated.
+`D²_num/D²_theo` ratio is at or above `ratio_threshold`
+(`[pipeline.sweep_settings].floor_detection_ratio`) are floor-dominated,
+and the floor level is the largest floor-dominated `D²_num`. Returns `NaN`
+when no point is floor-dominated.
 """
-function optimizer_floor(D2_num::AbstractVector, ratio::AbstractVector)
-    floor_pts = findall(>=(2.0), ratio)
+function optimizer_floor(
+    D2_num::AbstractVector, ratio::AbstractVector, ratio_threshold::Real)
+    floor_pts = findall(>=(ratio_threshold), ratio)
     return isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
 end
 
@@ -239,8 +246,13 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     return threads, (fixed + threads * per_task) / 2^30
 end
 
-# Parametric so the backend and device arrays are concretely typed at every
-# per-δ solve; the implicit constructor infers the parameters.
+"""
+Immutable per-run context threaded through the sweep and map stages:
+validated configuration, output base directory, frequency grid and PSD
+(host and device copies), and the planned concurrency. Parametric over the
+backend and device-array types so every per-δ solve closure captures
+concrete fields.
+"""
 struct RunContext{B,FD,SD}
     cfg::PipelineSettings
     out_base::String
@@ -257,6 +269,14 @@ end
 # Module 1: 1D parameter sweeps (δ⁴ validation)
 # -----------------------------------------------------------------------------
 
+"""
+    run_sweep(sweep, idx, total, ctx)
+
+Execute one 1D separation sweep: directional geometry (K(u), g(u,u)),
+per-δ box-constrained optimization with optional multi-start, floor
+detection and slope/correction fits, and persistence of the results table,
+residual spectrum, metadata and figures into the run directory.
+"""
 function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
     wp = cfg.wp
@@ -368,7 +388,9 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             for k in 2:cfg.n_starts
                 # deterministic per-task stream: independent of thread scheduling
                 rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
-                pert = guess .+ (0.35 * d * randn(rng)) .* u_norm .+ 1e-3 .* randn(rng, 6)
+                pert =
+                    guess .+ (cfg.multi_start_parallel_scale * d * randn(rng)) .* u_norm .+
+                    cfg.multi_start_transverse_scale .* randn(rng, 6)
                 dist_k, best_k, res_k = solve(clamp_interior(pert, cfg.bounds))
                 if dist_k < dist
                     dist, best, res = dist_k, best_k, res_k
@@ -390,7 +412,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         ratio = D2_num ./ D2_theo
         # the slope and ratio fits use only points strictly above the
         # bootstrapped optimizer floor (see optimizer_floor/above_floor_mask)
-        floor_level = optimizer_floor(D2_num, ratio)
+        floor_level = optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio)
         clean = above_floor_mask(D2_num, floor_level)
         slope, slope_err =
             count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
@@ -401,7 +423,9 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 count(clean), n, slope, slope_err)
         )
         c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
-        delta_valid = (isfinite(c1) && abs(c1) > 1e-12) ? 0.1 / abs(c1) : Inf
+        delta_valid =
+            (isfinite(c1) && abs(c1) > 1e-12) ?
+            cfg.correction_validity_fraction / abs(c1) : Inf
         isfinite(c1) &&
             logline(
                 log_io,
@@ -409,9 +433,9 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (10%%-validity δ ≈ %.3g)",
                     c1, c1_err, c2, delta_valid)
             )
-        if cfg.n_starts > 1 && maximum(ms_gain) > 1.5
+        if cfg.n_starts > 1 && maximum(ms_gain) > cfg.secondary_minimum_gain
             @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
-                  "start for $(count(>(1.5), ms_gain))/$n separations (max gain " *
+                  "start for $(count(>(cfg.secondary_minimum_gain), ms_gain))/$n separations (max gain " *
                   "$(round(maximum(ms_gain), digits = 2))) — evidence of secondary minima."
         end
         any(atbound) &&
@@ -513,12 +537,15 @@ function residual_spectrum(theta0, u_norm, q, d_star, best_fit,
     # half-window gap at the low end of the log axis and compressed the first
     # decade into a handful of points.) Log-sparse low-frequency windows hold
     # single bins and pass them through unaveraged; empty windows are skipped.
-    nwin = min(600, n)
+    nwin = min(ctx.cfg.residual_spectrum_windows, n)
     edges = 10.0 .^ range(log10(ctx.freqs[1]), log10(ctx.freqs[end]), nwin + 1)
-    bnd = [searchsortedfirst(ctx.freqs, e) for e in edges]
-    bnd[end] = n + 1
-    wins = [bnd[i]:(bnd[i+1]-1) for i in 1:nwin if bnd[i+1] > bnd[i]]
-    agg(v, stat) = [stat(view(v, r)) for r in wins]
+    window_bounds = [searchsortedfirst(ctx.freqs, e) for e in edges]
+    window_bounds[end] = n + 1
+    windows = [
+        window_bounds[i]:(window_bounds[i+1]-1) for
+        i in 1:nwin if window_bounds[i+1] > window_bounds[i]
+    ]
+    agg(v, stat) = [stat(view(v, r)) for r in windows]
     rms(v) = sqrt(mean(abs2, v))
 
     cols = Dict{Symbol,Vector{Float64}}(:f => agg(ctx.freqs, mean))
@@ -541,6 +568,14 @@ end
 # Module 2: 2D confusion mapping (mirrored polar sampling, prior capping)
 # -----------------------------------------------------------------------------
 
+"""
+    run_map(map_cfg, idx, total, ctx)
+
+Execute one 2D confusion map: tangent basis at the base point, mirrored
+angular sweep with adaptive refinement, exact prior-wall and box-corner
+vertices, prior capping, and persistence of the contour table and zone
+figure into the run directory.
+"""
 function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
     wp = cfg.wp
@@ -594,10 +629,12 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         )
         prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
         phis = [(k - 1) * π / M for k in 1:M]
-        Kg = eval_angles(phis, prog)
-        entries = [(phi = phis[i], K = Kg[i][1], g = Kg[i][2]) for i in 1:M]
+        curvature_norm_pairs = eval_angles(phis, prog)
+        entries = [
+            (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:M
+        ]
 
-        r_math_of(K) = K > 1e-300 ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+        r_math_of(K) = K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
         r_box_of(phi) = ray_box_crossing(cos(phi), sin(phi), box...)
         r_cap_of(e) = min(r_math_of(e.K), r_box_of(e.phi))
 
@@ -611,15 +648,15 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
                 r1, r2 = rcaps[i], rcaps[j]
                 (isfinite(r1) && isfinite(r2)) || continue
-                ratio = max(r1, r2) / max(min(r1, r2), 1e-300)
+                ratio = max(r1, r2) / max(min(r1, r2), K_UNDERFLOW)
                 ratio > cfg.neighbor_ratio_tol && push!(mids, entries[i].phi + gap / 2)
             end
             isempty(mids) && break
-            Kg_new = eval_angles(mids, prog)
+            curvature_new = eval_angles(mids, prog)
             append!(
                 entries,
                 [
-                    (phi = mids[i], K = Kg_new[i][1], g = Kg_new[i][2])
+                    (phi = mids[i], K = curvature_new[i][1], g = curvature_new[i][2])
                     for i in 1:length(mids)
                 ],
             )
@@ -649,8 +686,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             end
             N = length(entries)
             alphas = vcat([e.phi for e in entries], [e.phi + π for e in entries])
-            Kfull = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
-            caps = [capped_at(alphas[k], Kfull[k]) for k in 1:2N]
+            K_full_circle = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
+            caps = [capped_at(alphas[k], K_full_circle[k]) for k in 1:2N]
             lo = Float64[]
             hi = Float64[]
             lo_capped = Bool[]
@@ -664,9 +701,9 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             if !isempty(lo)
                 for _ in 1:cfg.corner_bisect_iters
                     mids = (lo .+ hi) ./ 2
-                    Kg_mid = eval_angles(mod.(mids, π), prog) # K is even
+                    curvature_mid = eval_angles(mod.(mids, π), prog) # K is even
                     for b in eachindex(mids)
-                        if capped_at(mids[b], Kg_mid[b][1]) == lo_capped[b]
+                        if capped_at(mids[b], curvature_mid[b][1]) == lo_capped[b]
                             lo[b] = mids[b]
                         else
                             hi[b] = mids[b]
@@ -683,11 +720,15 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     push!(phis_new, phi_vertex)
                 end
                 if !isempty(phis_new)
-                    Kg_new = eval_angles(phis_new, prog)
+                    curvature_new = eval_angles(phis_new, prog)
                     append!(
                         entries,
                         [
-                            (phi = phis_new[i], K = Kg_new[i][1], g = Kg_new[i][2])
+                            (
+                                phi = phis_new[i],
+                                K = curvature_new[i][1],
+                                g = curvature_new[i][2],
+                            )
                             for i in eachindex(phis_new)
                         ],
                     )
@@ -712,14 +753,17 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 if isfinite(cx) && isfinite(cy)
             ]
             if !isempty(corner_alphas)
-                Kg_c = eval_angles(mod.(corner_alphas, π), prog)
+                curvature_corner = eval_angles(mod.(corner_alphas, π), prog)
                 corner_new = Tuple{Float64,Float64,Float64}[]
                 for k in eachindex(corner_alphas)
-                    capped_at(corner_alphas[k], Kg_c[k][1]) || continue
+                    capped_at(corner_alphas[k], curvature_corner[k][1]) || continue
                     phi_vertex = mod(corner_alphas[k], Float64(π))
                     any(e -> abs(e.phi - phi_vertex) < 1e-10, entries) && continue
                     any(t -> abs(t[1] - phi_vertex) < 1e-10, corner_new) && continue
-                    push!(corner_new, (phi_vertex, Kg_c[k][1], Kg_c[k][2]))
+                    push!(
+                        corner_new,
+                        (phi_vertex, curvature_corner[k][1], curvature_corner[k][2]),
+                    )
                 end
                 if !isempty(corner_new)
                     append!(entries, [(phi = t[1], K = t[2], g = t[3]) for t in corner_new])
@@ -742,9 +786,9 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         half = length(entries)
         angle = Vector{Float64}(undef, 2half)
         K_raw = similar(angle)
-        g_arr = similar(angle)
+        g_uu_values = similar(angle)
         r_math = similar(angle)
-        r_boxv = similar(angle)
+        r_box_values = similar(angle)
         r_cap = similar(angle)
         dircos = similar(angle)
         dirsin = similar(angle)
@@ -758,11 +802,11 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             dircos[k] = c
             dirsin[k] = s
             K_raw[k] = e.K
-            g_arr[k] = e.g
+            g_uu_values[k] = e.g
             r_math[k] = r_math_of(e.K)
-            r_boxv[k] = ray_box_crossing(c, s, box...)
-            r_cap[k] = min(r_math[k], r_boxv[k])
-            prior_lim[k] = isfinite(r_boxv[k]) && r_math[k] >= r_boxv[k]
+            r_box_values[k] = ray_box_crossing(c, s, box...)
+            r_cap[k] = min(r_math[k], r_box_values[k])
+            prior_lim[k] = isfinite(r_box_values[k]) && r_math[k] >= r_box_values[k]
             degen[k] = e.g < cfg.g_uu_degenerate
         end
 
@@ -803,9 +847,9 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
             Dir_Cos = dircos, Dir_Sin = dirsin,
-            R_Capped = r_cap, R_Math = r_math, R_Box = r_boxv,
+            R_Capped = r_cap, R_Math = r_math, R_Box = r_box_values,
             Prior_Limited = collect(prior_lim), Degenerate = collect(degen),
-            K_Raw = K_raw, G_uu = g_arr)
+            K_Raw = K_raw, G_uu = g_uu_values)
         CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
 
         try
