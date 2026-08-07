@@ -1,3 +1,7 @@
+"""
+TOML configuration parsing and validation into an immutable
+[`PipelineSettings`](@ref).
+"""
 module Config
 
 using TOML: TOML
@@ -27,6 +31,12 @@ struct PipelineSettings
     n_starts::Int
     g_tol::Float64
     max_iterations::Int
+    floor_detection_ratio::Float64
+    secondary_minimum_gain::Float64
+    multi_start_parallel_scale::Float64
+    multi_start_transverse_scale::Float64
+    correction_validity_fraction::Float64
+    residual_spectrum_windows::Int
     # grid
     T_obs::Float64
     f_min::Float64
@@ -41,6 +51,7 @@ struct PipelineSettings
     neighbor_ratio_tol::Float64
     max_refine_levels::Int
     corner_bisect_iters::Int
+    unbounded_cap_factor::Float64
     # hardware
     gpu_backend::Symbol
     max_threads::Int
@@ -66,6 +77,9 @@ const KNOWN_KEYS = Dict(
         "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
         "rho_thresh", "g_uu_degenerate", "n_starts",
+        "floor_detection_ratio", "secondary_minimum_gain",
+        "multi_start_parallel_scale", "multi_start_transverse_scale",
+        "correction_validity_fraction", "residual_spectrum_windows",
         "g_tol", "max_iterations"],
     "grid" => ["T_obs", "f_min", "f_max"],
     "physics" => ["mass_scale", "time_scale", "amp_scale", "eta", "amp_33_factor",
@@ -76,7 +90,8 @@ const KNOWN_KEYS = Dict(
         "arm_length", "oms_amplitude", "oms_reddening_freq",
         "acc_amplitude", "acc_knee_low", "acc_knee_high"],
     "mapping" =>
-        ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters"],
+        ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters",
+            "unbounded_cap_factor"],
     "hardware" => ["gpu_backend", "max_threads", "hessian_chunk"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
         "os_vram_overhead_gb"],
@@ -85,6 +100,10 @@ const KNOWN_KEYS = Dict(
     "maps[]" => ["name", "param_x", "param_y", "rho_thresh", "theta_0", "n_angles"],
 )
 
+"""
+Warn (typo protection) on every key of `table` that is not in the
+[`KNOWN_KEYS`](@ref) list for `context`.
+"""
 function warn_unknown_keys(table::AbstractDict, context::String)
     known = get(KNOWN_KEYS, context, String[])
     for key in keys(table)
@@ -95,25 +114,41 @@ function warn_unknown_keys(table::AbstractDict, context::String)
     return nothing
 end
 
-getnum(t, key, default, context) = begin
+"""
+Fetch `key` from table `t` (or `default`) as a `Float64`, erroring with the
+offending `[context]` path on a non-numeric value.
+"""
+get_number(t, key, default, context) = begin
     v = get(t, key, default)
     v isa Real || error("[$context].$key must be a number, got $(typeof(v))")
     Float64(v)
 end
 
-getint(t, key, default, context) = begin
+"""
+Fetch `key` from table `t` (or `default`) as an `Int`, erroring with the
+offending `[context]` path on a non-integer value.
+"""
+get_integer(t, key, default, context) = begin
     v = get(t, key, default)
     (v isa Integer || (v isa Real && isinteger(v))) ||
         error("[$context].$key must be an integer, got $(repr(v))")
     Int(v)
 end
 
-getbool(t, key, default, context) = begin
+"""
+Fetch `key` from table `t` (or `default`) as a `Bool`, erroring with the
+offending `[context]` path on a non-boolean value.
+"""
+get_boolean(t, key, default, context) = begin
     v = get(t, key, default)
     v isa Bool || error("[$context].$key must be true or false, got $(repr(v))")
     v
 end
 
+"""
+Validate a 6-element finite numeric parameter vector, returning it as
+`Vector{Float64}`; `what` names the offending config entry in errors.
+"""
 function validate_theta6(v, what)
     (v isa AbstractVector && length(v) == 6) ||
         error("$what must be a 6-element numeric vector, got $(repr(v))")
@@ -122,7 +157,15 @@ function validate_theta6(v, what)
     return Float64.(v)
 end
 
+"""
+Whether `name` is safe to use as a directory name (letters, digits,
+`._-` only).
+"""
 fs_safe(name) = !isempty(name) && all(c -> isletter(c) || isdigit(c) || c in "._-", name)
+
+# fraction of total system memory used as the RAM budget when [safety] does
+# not set max_ram_gb explicitly
+const DEFAULT_RAM_FRACTION = 0.8
 
 """
     load_and_validate_config(config_path) -> PipelineSettings
@@ -142,52 +185,81 @@ function load_and_validate_config(config_path::AbstractString)
 
     pipeline = get(config, "pipeline", Dict{String,Any}())
     warn_unknown_keys(pipeline, "pipeline")
-    run_sweeps = getbool(pipeline, "run_1d_sweeps", true, "pipeline")
-    run_maps = getbool(pipeline, "run_2d_mapping", true, "pipeline")
+    run_sweeps = get_boolean(pipeline, "run_1d_sweeps", true, "pipeline")
+    run_maps = get_boolean(pipeline, "run_2d_mapping", true, "pipeline")
     opt_str = get(pipeline, "optimizer", "ipnewton")
     optimizer = Symbol(lowercase(String(opt_str)))
     optimizer in (:ipnewton, :lbfgs_box) ||
         error("[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'")
-    rng_seed = getint(pipeline, "rng_seed", 42, "pipeline")
+    rng_seed = get_integer(pipeline, "rng_seed", 42, "pipeline")
 
-    ss = get(pipeline, "sweep_settings", Dict{String,Any}())
-    warn_unknown_keys(ss, "pipeline.sweep_settings")
-    n_deltas = getint(ss, "n_deltas", 20, "pipeline.sweep_settings")
+    sweep_settings = get(pipeline, "sweep_settings", Dict{String,Any}())
+    warn_unknown_keys(sweep_settings, "pipeline.sweep_settings")
+    n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 || error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
-    min_log = getnum(ss, "min_log_delta", -4.5, "pipeline.sweep_settings")
-    max_log = getnum(ss, "max_log_delta", -0.5, "pipeline.sweep_settings")
+    min_log = get_number(sweep_settings, "min_log_delta", -4.5, "pipeline.sweep_settings")
+    max_log = get_number(sweep_settings, "max_log_delta", -0.5, "pipeline.sweep_settings")
     min_log < max_log ||
         error(
             "[pipeline.sweep_settings]: min_log_delta ($min_log) must be < max_log_delta ($max_log)",
         )
-    sweep_rho = getnum(ss, "rho_thresh", 1.0, "pipeline.sweep_settings")
+    sweep_rho = get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
     sweep_rho > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
-    g_deg = getnum(ss, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
+    g_deg = get_number(sweep_settings, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
     g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
-    n_starts = getint(ss, "n_starts", 1, "pipeline.sweep_settings")
+    n_starts = get_integer(sweep_settings, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
     # Safe-by-default optimizer tolerances: fits at the numerical precision
     # floor cannot reach very tight gradient norms and would otherwise
     # exhaust the iteration cap; clean-region fits converge in 16–40 Newton
     # iterations, so 100 leaves ample margin.
-    g_tol = getnum(ss, "g_tol", 1e-10, "pipeline.sweep_settings")
+    g_tol = get_number(sweep_settings, "g_tol", 1e-10, "pipeline.sweep_settings")
     g_tol > 0 || error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
     g_tol < 1e-11 &&
         @warn "[pipeline.sweep_settings].g_tol = $g_tol is tighter than the numerical " *
               "precision floor of small-separation fits; expect iteration-cap stalls there."
-    max_iterations = getint(ss, "max_iterations", 100, "pipeline.sweep_settings")
+    max_iterations =
+        get_integer(sweep_settings, "max_iterations", 100, "pipeline.sweep_settings")
     max_iterations >= 1 || error("[pipeline.sweep_settings].max_iterations must be >= 1")
     max_iterations > 300 &&
         @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits " *
               "exhaust the full cap by construction — a large cap costs wall time " *
               "without improving accuracy."
+    floor_ratio = get_number(
+        sweep_settings, "floor_detection_ratio", 2.0, "pipeline.sweep_settings")
+    floor_ratio > 1 ||
+        error(
+            "[pipeline.sweep_settings].floor_detection_ratio must be > 1, got $floor_ratio",
+        )
+    ms_gain_thr = get_number(
+        sweep_settings, "secondary_minimum_gain", 1.5, "pipeline.sweep_settings")
+    ms_gain_thr > 1 ||
+        error(
+            "[pipeline.sweep_settings].secondary_minimum_gain must be > 1, got $ms_gain_thr",
+        )
+    ms_parallel = get_number(
+        sweep_settings, "multi_start_parallel_scale", 0.35, "pipeline.sweep_settings")
+    ms_parallel > 0 ||
+        error("[pipeline.sweep_settings].multi_start_parallel_scale must be > 0")
+    ms_transverse = get_number(
+        sweep_settings, "multi_start_transverse_scale", 1e-3, "pipeline.sweep_settings")
+    ms_transverse >= 0 ||
+        error("[pipeline.sweep_settings].multi_start_transverse_scale must be >= 0")
+    validity_fraction = get_number(
+        sweep_settings, "correction_validity_fraction", 0.1, "pipeline.sweep_settings")
+    validity_fraction > 0 ||
+        error("[pipeline.sweep_settings].correction_validity_fraction must be > 0")
+    spectrum_windows = get_integer(
+        sweep_settings, "residual_spectrum_windows", 600, "pipeline.sweep_settings")
+    spectrum_windows >= 8 ||
+        error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
 
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
-    T_obs = getnum(grid, "T_obs", SECONDS_PER_YEAR, "grid")
+    T_obs = get_number(grid, "T_obs", SECONDS_PER_YEAR, "grid")
     T_obs > 0 || error("[grid].T_obs must be > 0, got $T_obs")
-    f_min = getnum(grid, "f_min", 1.0e-3, "grid")
-    f_max = getnum(grid, "f_max", 0.01, "grid")
+    f_min = get_number(grid, "f_min", 1.0e-3, "grid")
+    f_max = get_number(grid, "f_max", 0.01, "grid")
     (f_min > 0 && f_max > f_min) ||
         error("[grid]: need 0 < f_min < f_max, got f_min = $f_min, f_max = $f_max")
     n_bins = floor(Int, (f_max - f_min) * T_obs) + 1
@@ -199,16 +271,16 @@ function load_and_validate_config(config_path::AbstractString)
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
     wp = WaveformParams(
-        mass_scale = getnum(phys, "mass_scale", 10.0, "physics"),
-        time_scale = getnum(phys, "time_scale", 1000.0, "physics"),
-        amp_scale = getnum(phys, "amp_scale", 1e-21, "physics"),
-        eta = getnum(phys, "eta", 0.25, "physics"),
-        amp_33_factor = getnum(phys, "amp_33_factor", 0.1, "physics"),
-        sky_theta = getnum(phys, "sky_theta", 1.047, "physics"),
-        sky_phi = getnum(phys, "sky_phi", 0.0, "physics"),
-        inclination = getnum(phys, "inclination", 0.523, "physics"),
-        polarization = getnum(phys, "polarization", 0.0, "physics"),
-        include_t_channel = getbool(phys, "include_t_channel", false, "physics"),
+        mass_scale = get_number(phys, "mass_scale", 10.0, "physics"),
+        time_scale = get_number(phys, "time_scale", 1000.0, "physics"),
+        amp_scale = get_number(phys, "amp_scale", 1e-21, "physics"),
+        eta = get_number(phys, "eta", 0.25, "physics"),
+        amp_33_factor = get_number(phys, "amp_33_factor", 0.1, "physics"),
+        sky_theta = get_number(phys, "sky_theta", 1.047, "physics"),
+        sky_phi = get_number(phys, "sky_phi", 0.0, "physics"),
+        inclination = get_number(phys, "inclination", 0.523, "physics"),
+        polarization = get_number(phys, "polarization", 0.0, "physics"),
+        include_t_channel = get_boolean(phys, "include_t_channel", false, "physics"),
     )
     for (fname, val, lo, hi) in (("mass_scale", wp.mass_scale, 0.0, Inf),
         ("time_scale", wp.time_scale, 0.0, Inf),
@@ -225,59 +297,69 @@ function load_and_validate_config(config_path::AbstractString)
     warn_unknown_keys(noise_cfg, "noise")
     base_noise = robson_confusion_params(T_obs)
     noise = NoiseParams(
-        confusion_enabled = getbool(noise_cfg, "confusion_enabled", true, "noise"),
-        confusion_amp = getnum(
+        confusion_enabled = get_boolean(noise_cfg, "confusion_enabled", true, "noise"),
+        confusion_amp = get_number(
             noise_cfg,
             "confusion_amp",
             base_noise.confusion_amp,
             "noise",
         ),
-        confusion_alpha = getnum(
+        confusion_alpha = get_number(
             noise_cfg,
             "confusion_alpha",
             base_noise.confusion_alpha,
             "noise",
         ),
-        confusion_beta = getnum(
+        confusion_beta = get_number(
             noise_cfg,
             "confusion_beta",
             base_noise.confusion_beta,
             "noise",
         ),
-        confusion_kappa = getnum(
+        confusion_kappa = get_number(
             noise_cfg,
             "confusion_kappa",
             base_noise.confusion_kappa,
             "noise",
         ),
-        confusion_gamma = getnum(
+        confusion_gamma = get_number(
             noise_cfg,
             "confusion_gamma",
             base_noise.confusion_gamma,
             "noise",
         ),
-        confusion_fk = getnum(noise_cfg, "confusion_fk", base_noise.confusion_fk, "noise"),
-        arm_length = getnum(noise_cfg, "arm_length", base_noise.arm_length, "noise"),
-        oms_amplitude = getnum(
+        confusion_fk = get_number(
+            noise_cfg,
+            "confusion_fk",
+            base_noise.confusion_fk,
+            "noise",
+        ),
+        arm_length = get_number(noise_cfg, "arm_length", base_noise.arm_length, "noise"),
+        oms_amplitude = get_number(
             noise_cfg,
             "oms_amplitude",
             base_noise.oms_amplitude,
             "noise",
         ),
-        oms_reddening_freq = getnum(
+        oms_reddening_freq = get_number(
             noise_cfg,
             "oms_reddening_freq",
             base_noise.oms_reddening_freq,
             "noise",
         ),
-        acc_amplitude = getnum(
+        acc_amplitude = get_number(
             noise_cfg,
             "acc_amplitude",
             base_noise.acc_amplitude,
             "noise",
         ),
-        acc_knee_low = getnum(noise_cfg, "acc_knee_low", base_noise.acc_knee_low, "noise"),
-        acc_knee_high = getnum(
+        acc_knee_low = get_number(
+            noise_cfg,
+            "acc_knee_low",
+            base_noise.acc_knee_low,
+            "noise",
+        ),
+        acc_knee_high = get_number(
             noise_cfg,
             "acc_knee_high",
             base_noise.acc_knee_high,
@@ -293,24 +375,27 @@ function load_and_validate_config(config_path::AbstractString)
 
     mapping = get(config, "mapping", Dict{String,Any}())
     warn_unknown_keys(mapping, "mapping")
-    map_n_angles = getint(mapping, "n_angles", 2000, "mapping")
+    map_n_angles = get_integer(mapping, "n_angles", 2000, "mapping")
     map_n_angles >= 8 || error("[mapping].n_angles must be >= 8, got $map_n_angles")
     if isodd(map_n_angles)
         @warn "[mapping].n_angles = $map_n_angles is odd; rounding up to " *
               "$(map_n_angles + 1) (mirrored sampling needs an even count)."
         map_n_angles += 1
     end
-    ratio_tol = getnum(mapping, "neighbor_ratio_tol", 1.25, "mapping")
+    ratio_tol = get_number(mapping, "neighbor_ratio_tol", 1.25, "mapping")
     ratio_tol > 1 || error("[mapping].neighbor_ratio_tol must be > 1, got $ratio_tol")
-    refine_levels = getint(mapping, "max_refine_levels", 6, "mapping")
+    refine_levels = get_integer(mapping, "max_refine_levels", 6, "mapping")
     0 <= refine_levels <= 16 ||
         error("[mapping].max_refine_levels must be in 0:16, got $refine_levels")
-    corner_iters = getint(mapping, "corner_bisect_iters", 25, "mapping")
+    corner_iters = get_integer(mapping, "corner_bisect_iters", 25, "mapping")
     0 <= corner_iters <= 60 ||
         error(
             "[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
             "bisection), got $corner_iters",
         )
+    unbounded_cap = get_number(mapping, "unbounded_cap_factor", 5.0, "mapping")
+    unbounded_cap > 1 ||
+        error("[mapping].unbounded_cap_factor must be > 1, got $unbounded_cap")
 
     hardware = get(config, "hardware", Dict{String,Any}())
     warn_unknown_keys(hardware, "hardware")
@@ -320,9 +405,9 @@ function load_and_validate_config(config_path::AbstractString)
         error(
             "[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'",
         )
-    max_threads = getint(hardware, "max_threads", Threads.nthreads(), "hardware")
+    max_threads = get_integer(hardware, "max_threads", Threads.nthreads(), "hardware")
     max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
-    hessian_chunk = getint(hardware, "hessian_chunk", 0, "hardware")
+    hessian_chunk = get_integer(hardware, "hessian_chunk", 0, "hardware")
     0 <= hessian_chunk <= 6 ||
         error(
             "[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
@@ -331,12 +416,12 @@ function load_and_validate_config(config_path::AbstractString)
 
     safety = get(config, "safety", Dict{String,Any}())
     warn_unknown_keys(safety, "safety")
-    default_ram = 0.8 * Sys.total_memory() / 2^30
-    max_ram_gb = getnum(safety, "max_ram_gb", default_ram, "safety")
+    default_ram = DEFAULT_RAM_FRACTION * Sys.total_memory() / 2^30
+    max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
-    gpu_bytes = getint(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
-    max_vram_gb = getnum(safety, "max_vram_gb", 8.0, "safety")
-    os_vram_gb = getnum(safety, "os_vram_overhead_gb", 1.0, "safety")
+    gpu_bytes = get_integer(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
+    max_vram_gb = get_number(safety, "max_vram_gb", 8.0, "safety")
+    os_vram_gb = get_number(safety, "os_vram_overhead_gb", 1.0, "safety")
 
     bounds = try
         bounds_from_config(get(config, "parameter_bounds", Dict{String,Any}()))
@@ -363,7 +448,7 @@ function load_and_validate_config(config_path::AbstractString)
         u = validate_theta6(get(s, "u_dir", nothing), "[[sweeps]] '$name'.u_dir")
         norm_u = sqrt(sum(abs2, u))
         norm_u > 0 || error("[[sweeps]] '$name'.u_dir must be nonzero")
-        amp_ratio = getnum(s, "amp_ratio", 1.0, "sweeps[]")
+        amp_ratio = get_number(s, "amp_ratio", 1.0, "sweeps[]")
         amp_ratio > 0 || error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
         if amp_ratio != 1.0 && u[1] != 0
             error(
@@ -377,7 +462,7 @@ function load_and_validate_config(config_path::AbstractString)
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
         haskey(s, "rho_thresh") &&
             (
-                getnum(s, "rho_thresh", sweep_rho, "sweeps[]") > 0 ||
+                get_number(s, "rho_thresh", sweep_rho, "sweeps[]") > 0 ||
                 error("[[sweeps]] '$name'.rho_thresh must be > 0")
             )
     end
@@ -388,17 +473,17 @@ function load_and_validate_config(config_path::AbstractString)
             error("[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))")
         name in seen && error("Duplicate sweep/map name '$name'")
         push!(seen, name)
-        px = getint(m, "param_x", 0, "maps[]")
-        py = getint(m, "param_y", 0, "maps[]")
+        px = get_integer(m, "param_x", 0, "maps[]")
+        py = get_integer(m, "param_y", 0, "maps[]")
         (1 <= px <= 6 && 1 <= py <= 6) ||
             error("[[maps]] '$name': param_x/param_y must be in 1:6, got ($px, $py)")
         px != py || error("[[maps]] '$name': param_x and param_y must differ")
-        getnum(m, "rho_thresh", sweep_rho, "maps[]") > 0 ||
+        get_number(m, "rho_thresh", sweep_rho, "maps[]") > 0 ||
             error("[[maps]] '$name'.rho_thresh must be > 0")
         theta0 = validate_theta6(get(m, "theta_0", nothing), "[[maps]] '$name'.theta_0")
         check_interior(theta0, bounds, "map '$name'")
         if haskey(m, "n_angles")
-            na = getint(m, "n_angles", map_n_angles, "maps[]")
+            na = get_integer(m, "n_angles", map_n_angles, "maps[]")
             na >= 8 || error("[[maps]] '$name'.n_angles must be >= 8, got $na")
         end
     end
@@ -409,19 +494,26 @@ function load_and_validate_config(config_path::AbstractString)
 
     monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
     warn_unknown_keys(monitoring_cfg, "monitoring")
-    monitoring_enabled = getbool(monitoring_cfg, "enabled", false, "monitoring")
+    monitoring_enabled = get_boolean(monitoring_cfg, "enabled", false, "monitoring")
 
     return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
         n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
         g_tol, max_iterations,
+        floor_ratio, ms_gain_thr, ms_parallel, ms_transverse,
+        validity_fraction, spectrum_windows,
         T_obs, f_min, f_max, wp, noise,
-        map_n_angles, ratio_tol, refine_levels, corner_iters,
+        map_n_angles, ratio_tol, refine_levels, corner_iters, unbounded_cap,
         gpu_backend, max_threads, hessian_chunk,
         max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
         monitoring_enabled,
         bounds, sweeps, maps)
 end
 
+"""
+Error unless every non-periodic component of `theta0` lies strictly inside
+its physical bounds — the local geometry expansion and zone capping
+require an interior base point.
+"""
 function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String)
     for i in eachindex(theta0)
         b.periodic[i] && continue

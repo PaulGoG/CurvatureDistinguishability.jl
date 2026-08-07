@@ -1,3 +1,7 @@
+"""
+Hard physical parameter bounds: validated deviation boxes, polar ray-box
+capping and interior clamping.
+"""
 module Bounds
 
 export ParameterBounds, default_bounds, bounds_from_config, deviation_box,

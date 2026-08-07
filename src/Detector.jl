@@ -1,3 +1,7 @@
+"""
+Low-frequency TDI A/E response: per-bin orbital-Doppler modulation and the
+fused strain-to-channel projection.
+"""
 module Detector
 
 using ..Physics: WaveformParams, SECONDS_PER_YEAR

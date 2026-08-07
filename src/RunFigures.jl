@@ -1,14 +1,17 @@
+"""
+Single implementation of display-time figure regeneration from persisted
+run artifacts, consumed by `scripts/replot.jl` and
+`scripts/collect_plots.jl`. Point classification and refits reuse the
+pipeline's own rules (`Orchestrator`), so run-time and display-time
+figures cannot diverge.
+"""
 module RunFigures
-
-# Single implementation of display-time figure regeneration from persisted
-# run artifacts, consumed by scripts/replot.jl and scripts/collect_plots.jl.
-# Point classification and refits reuse the pipeline's own rules
-# (Orchestrator), so run-time and display-time figures cannot diverge.
 
 using CSV: CSV
 using DataFrames: DataFrames, DataFrame, nrow
 using TOML: TOML
 using ..Bounds: deviation_box
+using ..Geometry: K_UNDERFLOW
 using ..Config: load_and_validate_config
 using ..Plotting
 using ..Orchestrator: loglog_slope, ratio_correction_fit, above_floor_mask
@@ -158,13 +161,13 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
                 "rerun the pipeline to enable threshold rescaling",
             )
         r_math = [
-            K > 1e-300 ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf
+            K > K_UNDERFLOW ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf
             for K in contour_stored.K_Raw
         ]
         r_cap = min.(r_math, contour_stored.R_Box)
         if any(!isfinite, r_cap)
             r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
-            r_cap[.!isfinite.(r_cap)] .= 5r_cap_max
+            r_cap[.!isfinite.(r_cap)] .= cfg.unbounded_cap_factor * r_cap_max
         end
         dc =
             hasproperty(contour_stored, :Dir_Cos) ? contour_stored.Dir_Cos :

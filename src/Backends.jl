@@ -1,3 +1,7 @@
+"""
+Compute-backend registry: the multi-threaded CPU fallback plus GPU probes
+registered by the package extensions.
+"""
 module Backends
 
 using KernelAbstractions: KernelAbstractions, CPU
