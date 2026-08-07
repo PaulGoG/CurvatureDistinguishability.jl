@@ -4,6 +4,7 @@ capping and interior clamping.
 """
 module Bounds
 
+using DocStringExtensions: TYPEDSIGNATURES
 export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
     ray_box_crossing, clamp_interior, PARAM_KEYS
 
@@ -29,7 +30,7 @@ struct ParameterBounds
 end
 
 """
-    default_bounds()
+$(TYPEDSIGNATURES)
 
 Physical defaults: `A ≥ 0`, `M_c ≥ 0`, `t_c ≥ 0`, phase periodic with period
 `2π` (unbounded for the optimizer, deviation-limited to ±π), spins in `[−1, 1]`.
@@ -42,7 +43,7 @@ function default_bounds()
 end
 
 """
-    bounds_from_config(cfg::AbstractDict) -> ParameterBounds
+$(TYPEDSIGNATURES)
 
 Build bounds from a `[parameter_bounds]` TOML table mapping parameter names
 (`amplitude`, `chirp_mass`, `time`, `phase`, `spin1`, `spin2`) to
@@ -67,7 +68,7 @@ function bounds_from_config(cfg::AbstractDict)
 end
 
 """
-    deviation_box(b::ParameterBounds, theta0, px, py) -> (lox, hix, loy, hiy)
+$(TYPEDSIGNATURES)
 
 Deviation-space prior box for the 2D map plane `(px, py)` around the base
 point `theta0`: `[lower_i − θ0_i, upper_i − θ0_i]` per axis, or `±period/2`
@@ -95,7 +96,7 @@ function deviation_box(b::ParameterBounds, theta0::AbstractVector, px::Integer, 
 end
 
 """
-    ray_box_crossing(cphi, sphi, lox, hix, loy, hiy) -> t
+$(TYPEDSIGNATURES)
 
 Distance from the origin to the boundary of the axis-aligned box
 `[lox, hix] × [loy, hiy]` (which must contain the origin) along the ray with
@@ -116,7 +117,7 @@ function ray_box_crossing(
 end
 
 """
-    clamp_interior(theta, b::ParameterBounds; margin = 1e-8)
+$(TYPEDSIGNATURES)
 
 Clamp `theta` strictly inside the finite bounds (interior-point optimizers
 require a strictly feasible start). `margin` is relative to the bound width

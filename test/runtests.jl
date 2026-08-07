@@ -295,6 +295,15 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             FIX_PHYS...)
         @test d0c < 1e-5
 
+        # the gradient-only fallback optimizer must find the same optimum
+        # (much higher floor than IPNewton, hence the loose threshold)
+        d0l, bfl, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
+            FIX_FREQS, FIX_SN, FIX_DF;
+            optimizer = :lbfgs_box, iterations = 200,
+            FIX_PHYS...)
+        @test d0l < 1e-2
+        @test all(isfinite, bfl)
+
         # guardrail: a GPU backend with host Arrays must fail loudly, not crash
         # deep inside a kernel launch (get_best_backend() returns a GPU whenever
         # one is functional, so the mismatch is easy to hit from the REPL)
@@ -483,6 +492,24 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test cfg_n.noise.oms_amplitude == 1.5e-11
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[noise]\narm_length = 0.0\n"))
+        end
+    end
+
+    @testset "Provenance: backup-before-overwrite" begin
+        mktempdir() do dir
+            target = joinpath(dir, "results.csv")
+            write(target, "first")
+            # each call moves the existing file to the next free #k backup
+            @test backup_existing!(target) == target
+            write(target, "second")
+            @test backup_existing!(target) == target
+            write(target, "third")
+            @test read(joinpath(dir, "results#1.csv"), String) == "first"
+            @test read(joinpath(dir, "results#2.csv"), String) == "second"
+            @test read(target, String) == "third"
+            # a fresh path is returned untouched, creating nothing
+            @test backup_existing!(joinpath(dir, "new.csv")) == joinpath(dir, "new.csv")
+            @test !isfile(joinpath(dir, "new.csv"))
         end
     end
 

@@ -4,6 +4,7 @@ policy (log 1-2-5 series, axis offset multipliers, rational-pi ticks).
 """
 module Plotting
 
+using DocStringExtensions: TYPEDSIGNATURES
 using CairoMakie: CairoMakie, Axis, DataAspect, Figure, Label, Legend,
     LinearTicks, Point2f, Relative, Theme, band!,
     hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
@@ -15,6 +16,7 @@ using Printf: @sprintf
 using ..Provenance: backup_existing!
 
 export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
+public decade_ticks, pi_ticks
 
 """
 Short LaTeX axis labels for the six model parameters (deviation form is
@@ -26,7 +28,7 @@ const PARAM_LABELS =
 deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
 
 """
-    publication_theme()
+$(TYPEDSIGNATURES)
 
 Publication theme (Computer Modern via MathTeXEngine, boxed axes, dashed
 low-opacity grey grid, no minor ticks, inward ticks, generous padding).
@@ -53,7 +55,7 @@ function publication_theme()
 end
 
 """
-    save_figure(fig, base_path)
+$(TYPEDSIGNATURES)
 
 Save `fig` as both vector `.pdf` and raster `.png` (`px_per_unit = 4`),
 with `safesave`-style backup of any existing files.
@@ -69,7 +71,7 @@ end
 # --- tick utilities ---------------------------------------------------------
 
 """
-    decade_ticks(lo, hi; maxticks = 7) -> (values, labels)
+$(TYPEDSIGNATURES)
 
 Integer power-of-10 ticks covering `[lo, hi]` only (no beyond-range ticks).
 The step is chosen so at most `maxticks` ticks appear, and tick exponents are
@@ -94,7 +96,7 @@ function decade_ticks(lo::Real, hi::Real; maxticks::Int = 7)
 end
 
 """
-    log_ticks_125(lo, hi) -> (values, labels)
+$(TYPEDSIGNATURES)
 
 Dense log-axis ticks on the 1–2–5 mantissa series inside `[lo, hi]`: whole
 decades labelled `10ⁿ`, intermediate ticks `2×10ⁿ` / `5×10ⁿ`. For log axes
@@ -125,7 +127,7 @@ function log_ticks_125(lo::Real, hi::Real)
 end
 
 """
-    pi_ticks(lo, hi) -> (values, labels) or nothing
+$(TYPEDSIGNATURES)
 
 Ticks at rational multiples of π with a *single* denominator so that 5–9
 (or, failing that, 3–9) uniformly spaced ticks fit in `[lo, hi]`.
@@ -148,7 +150,7 @@ function pi_ticks(lo::Real, hi::Real)
 end
 
 """
-    sci_latex(v; sig = 3) -> String
+$(TYPEDSIGNATURES)
 
 LaTeX fragment for a scalar: plain `%.4g` when the exponent is small,
 `m×10^e` otherwise — for annotations, never bare `1e-05` e-notation.
@@ -173,7 +175,7 @@ function pi_label(k::Integer, den::Integer)
 end
 
 """
-    axis_exponent(maxabs) -> Int
+$(TYPEDSIGNATURES)
 
 Common decimal exponent for a linear axis whose data extend to `maxabs`;
 0 when plain labels are fine (|values| in [1e-2, 1e4)).
@@ -185,7 +187,7 @@ function axis_exponent(maxabs::Real)
 end
 
 """
-    offset_ticks(lo, hi) -> (values, labels, exponent, lo_snap, hi_snap) or nothing
+$(TYPEDSIGNATURES)
 
 Tick selection for small-value linear axes: every tick is an integer
 mantissa of one common power of 10 (the `exponent`, annotated once at the
@@ -217,7 +219,7 @@ function offset_ticks(lo::Real, hi::Real)
 end
 
 """
-    coef_latex(v) -> String
+$(TYPEDSIGNATURES)
 
 Fit-coefficient formatting: always mantissa × power-of-10 with two decimal
 places (`1.07×10⁻³`); the ×10⁰ factor alone is omitted.
@@ -231,7 +233,7 @@ function coef_latex(v::Real)
 end
 
 """
-    sci_tick_labels(values) -> Vector{LaTeXString}
+$(TYPEDSIGNATURES)
 
 Per-tick scientific-notation labels with a **common exponent** across the
 axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`) — the fallback for
@@ -253,8 +255,7 @@ end
 # --- figure builders --------------------------------------------------------
 
 """
-    scaling_figure(deltas, d2_num, d2_theo; rho_sq, delta_min, slope, slope_err,
-                   clean, floor_level) -> Figure
+$(TYPEDSIGNATURES)
 
 Quartic-scaling validation figure: log–log D²(δ) with the δ⁴ prediction
 (solid dark red), the `D² = ρ²` threshold line and δ_min marker, a shaded
@@ -279,14 +280,14 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         pos = d2_num .> 0
         ylo = min(minimum(d2_num[pos]), minimum(d2_theo)) / 3
         yhi = max(maximum(d2_num[pos]), maximum(d2_theo)) * 3
-        xt = decade_ticks(minimum(deltas), maximum(deltas))
-        yt = decade_ticks(ylo, yhi)
+        x_ticks = decade_ticks(minimum(deltas), maximum(deltas))
+        y_ticks = decade_ticks(ylo, yhi)
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-            ylabel = L"D^2", xticks = xt, yticks = yt, yticklabelspace = 66.0)
+            ylabel = L"D^2", xticks = x_ticks, yticks = y_ticks, yticklabelspace = 66.0)
 
-        th = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
-        sc = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
+        theory_line = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
+        numerical_scatter = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
             strokecolor = :black, strokewidth = 1.4, markersize = 22)
         # points inside the optimizer-floor band are stricken through by a
         # thin X stretching over the symbol (no legend entry): the floor, not
@@ -301,7 +302,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         # legend on top of the figure: two entries only — the fitted slope is
         # part of the D²_numerical label, not a separate item
         Legend(fig[0, 1],
-            [th, sc],
+            [theory_line, numerical_scatter],
             [L"D^2_{\mathrm{theoretical}}",
                 latexstring(
                     @sprintf(
@@ -333,7 +334,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
 
         ax2 = Axis(fig[2, 1]; xscale = log10,
             xlabel = L"\mathrm{parameter\ separation}\ \delta",
-            ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = xt,
+            ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = x_ticks,
             yticklabelspace = 66.0)
         # The ratio panel repeats the top panel's vocabulary exactly: dark-red
         # solid reference at 1 (the theory), blue dots, and floor-band points
@@ -350,18 +351,22 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         # symmetry-appealing half-width that holds every kept point with
         # ~15% headroom
         spread = any(keep) ? maximum(abs, ratio[keep] .- 1.0) : 0.5
-        half = something(findfirst(h -> h >= 1.15 * spread,
+        half_width_index = something(findfirst(w -> w >= 1.15 * spread,
             (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
-        h = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half]
+        ratio_half_width = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half_width_index]
         if isfinite(c1) && any(keep)
             # higher-order-terms fit in dashed dark blue (reads cleanly over
             # the solid reference): starting slightly left of the first kept
             # point, reaching past the right margin (clipped by the frame)
-            dd =
+            delta_fit_grid =
                 10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
                     log10(maximum(deltas)) + 0.4, length = 200)
-            model = 1.0 .+ c1 .* dd .+ (isfinite(c2) ? c2 : 0.0) .* dd .^ 2
-            lines!(ax2, dd, clamp.(model, 1.0 - h, 1.0 + h); color = :navy,
+            model =
+                1.0 .+ c1 .* delta_fit_grid .+
+                (isfinite(c2) ? c2 : 0.0) .* delta_fit_grid .^ 2
+            lines!(ax2, delta_fit_grid,
+                clamp.(model, 1.0 - ratio_half_width, 1.0 + ratio_half_width);
+                color = :navy,
                 linestyle = :dash, linewidth = 3.0)
             # coefficients always written out as mantissa × 10ⁿ
             ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
@@ -372,7 +377,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         end
         scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
             strokecolor = :black, strokewidth = 1.2, markersize = 17)
-        ylims!(ax2, 1.0 - h, 1.0 + h)
+        ylims!(ax2, 1.0 - ratio_half_width, 1.0 + ratio_half_width)
 
         # explicit x-limits from the data with a small log margin: the fit
         # curve and reference line intentionally overshoot the last point, and
@@ -389,7 +394,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
 end
 
 """
-    residual_figure(spec, meta) -> Figure
+$(TYPEDSIGNATURES)
 
 Residual-spectrum figure in true density units: top panel `d(SNR²)/df` of the
 two-source data and the best-fit single source, bottom panel the unabsorbed
@@ -414,7 +419,7 @@ function residual_figure(spec, meta)
         # log ticks — whole decades alone are too sparse over ~3 decades.
         fmin = minimum(spec.f)
         fmax = maximum(spec.f)
-        xt = log_ticks_125(fmin, fmax)
+        x_ticks = log_ticks_125(fmin, fmax)
 
         # channel = hue (A blue, E warm), role = shade + line style: data is
         # the dark solid line, the best fit — which sits right on top of it —
@@ -424,7 +429,7 @@ function residual_figure(spec, meta)
 
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
             ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-            xticks = xt, yticklabelspace = 70.0)
+            xticks = x_ticks, yticklabelspace = 70.0)
         band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
         band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
         dA = lines!(ax1, spec.f, spec.sig_rms_A; color = col_data_A, linewidth = 3.6)
@@ -472,7 +477,7 @@ function residual_figure(spec, meta)
         ax2 = Axis(fig[3, 1]; xscale = log10, yscale = log10,
             xlabel = L"f\ \ [\mathrm{Hz}]",
             ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-            xticks = xt, yticks = decade_ticks(ylo2, yhi2),
+            xticks = x_ticks, yticks = decade_ticks(ylo2, yhi2),
             yticklabelspace = 70.0)
         band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A;
             color = (col_res_A, 0.16))
@@ -509,7 +514,7 @@ function residual_figure(spec, meta)
 end
 
 """
-    _boundary_runs(x, y, edge_prior, want) -> (xs, ys)
+$(TYPEDSIGNATURES)
 
 Coordinates of the closed-boundary edges whose class (`edge_prior[i]`) equals
 `want`, grouped into contiguous runs separated by `NaN` so each run renders as
@@ -539,8 +544,7 @@ function _boundary_runs(x, y, edge_prior::AbstractVector{Bool}, want::Bool)
 end
 
 """
-    zone_figure(angle, x, y, prior_limited; px, py, box, prior_frac,
-                degenerate_frac, x_math, y_math) -> Figure
+$(TYPEDSIGNATURES)
 
 Zone-of-confusion map from the capped boundary polygon. The filled zone is
 the exact intersection of the mathematical zone with the physical prior box,
@@ -583,15 +587,15 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             fx = filter(isfinite, x_math)
             fy = filter(isfinite, y_math)
             if !isempty(fx) && !isempty(fy)
-                soft(need, span) = need <= 0.8 * span ? need : 0.4 * span
-                xlo_d -= soft(max(0.0, xlo_d - minimum(fx)), xr)
-                xhi_d += soft(max(0.0, maximum(fx) - xhi_d), xr)
-                ylo_d -= soft(max(0.0, ylo_d - minimum(fy)), yr)
-                yhi_d += soft(max(0.0, maximum(fy) - yhi_d), yr)
+                soft_extension(need, span) = need <= 0.8 * span ? need : 0.4 * span
+                xlo_d -= soft_extension(max(0.0, xlo_d - minimum(fx)), xr)
+                xhi_d += soft_extension(max(0.0, maximum(fx) - xhi_d), xr)
+                ylo_d -= soft_extension(max(0.0, ylo_d - minimum(fy)), yr)
+                yhi_d += soft_extension(max(0.0, maximum(fy) - yhi_d), yr)
             end
         end
-        ex = axis_exponent(max(abs(xlo_d), abs(xhi_d)))
-        ey = axis_exponent(max(abs(ylo_d), abs(yhi_d)))
+        x_exponent = axis_exponent(max(abs(xlo_d), abs(xhi_d)))
+        y_exponent = axis_exponent(max(abs(ylo_d), abs(yhi_d)))
 
         ax = Axis(fig[1, 1]; xlabel = deviation_label(px), ylabel = deviation_label(py))
         same_units && (ax.aspect = DataAspect())
@@ -606,42 +610,44 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
         xlo, xhi = xlo_d - 0.08 * (xhi_d - xlo_d), xhi_d + 0.08 * (xhi_d - xlo_d)
         ylo, yhi = ylo_d - 0.08 * (yhi_d - ylo_d), yhi_d + 0.08 * (yhi_d - ylo_d)
         if px == 4
-            pt = pi_ticks(xlo, xhi)
-            pt !== nothing && (ax.xticks = pt)
-        elseif ex != 0
-            ot = offset_ticks(xlo_d, xhi_d)
-            if ot === nothing
+            pi_tick_values = pi_ticks(xlo, xhi)
+            pi_tick_values !== nothing && (ax.xticks = pi_tick_values)
+        elseif x_exponent != 0
+            offset_result = offset_ticks(xlo_d, xhi_d)
+            if offset_result === nothing
                 ax.xticks = LinearTicks(6)
                 ax.xtickformat = sci_tick_labels
             else
-                vals, labels, e10, lo_s, hi_s = ot
+                vals, labels, axis_power, lo_s, hi_s = offset_result
                 ax.xticks = (vals, labels)
                 xlo, xhi = lo_s, hi_s
                 # common power of 10 at the end of the x axis: just right of
                 # the frame's bottom corner, clear of the last tick label
-                e10 != 0 && Label(fig[1, 2], latexstring("\\times 10^{", e10, "}");
-                    fontsize = 20, halign = :left, valign = :bottom,
-                    padding = (2, 0, 0, 0), tellheight = false)
+                axis_power != 0 &&
+                    Label(fig[1, 2], latexstring("\\times 10^{", axis_power, "}");
+                        fontsize = 20, halign = :left, valign = :bottom,
+                        padding = (2, 0, 0, 0), tellheight = false)
             end
         else
             ax.xticks = LinearTicks(6)
         end
         if py == 4
-            pt = pi_ticks(ylo, yhi)
-            pt !== nothing && (ax.yticks = pt)
-        elseif ey != 0
-            ot = offset_ticks(ylo_d, yhi_d)
-            if ot === nothing
+            pi_tick_values = pi_ticks(ylo, yhi)
+            pi_tick_values !== nothing && (ax.yticks = pi_tick_values)
+        elseif y_exponent != 0
+            offset_result = offset_ticks(ylo_d, yhi_d)
+            if offset_result === nothing
                 ax.yticks = LinearTicks(6)
                 ax.ytickformat = sci_tick_labels
             else
-                vals, labels, e10, lo_s, hi_s = ot
+                vals, labels, axis_power, lo_s, hi_s = offset_result
                 ax.yticks = (vals, labels)
                 ylo, yhi = lo_s, hi_s
                 # common power of 10 at the end of the y axis: above the frame
-                e10 != 0 && Label(fig[0, 1], latexstring("\\times 10^{", e10, "}");
-                    fontsize = 20, halign = :left, valign = :bottom,
-                    padding = (0, 0, 2, 0), tellwidth = false)
+                axis_power != 0 &&
+                    Label(fig[0, 1], latexstring("\\times 10^{", axis_power, "}");
+                        fontsize = 20, halign = :left, valign = :bottom,
+                        padding = (0, 0, 2, 0), tellwidth = false)
             end
         else
             ax.yticks = LinearTicks(6)
@@ -688,12 +694,13 @@ function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector
             fmt_edge(v, isphase) =
                 isphase && isapprox(abs(v), π; atol = 1e-9) ?
                 (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
-            plx = view(x, prior_limited)
-            ply = view(y, prior_limited)
+            prior_x = view(x, prior_limited)
+            prior_y = view(y, prior_limited)
             lox, hix, loy, hiy = box
             walls = String[]
-            for (lo_e, hi_e, vals, tol, idx) in ((lox, hix, plx, 1e-6 * (xhi - xlo), px),
-                (loy, hiy, ply, 1e-6 * (yhi - ylo), py))
+            for (lo_e, hi_e, vals, tol, idx) in
+                ((lox, hix, prior_x, 1e-6 * (xhi - xlo), px),
+                (loy, hiy, prior_y, 1e-6 * (yhi - ylo), py))
                 lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
                 hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
                 isph = idx == 4

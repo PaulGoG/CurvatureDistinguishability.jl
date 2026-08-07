@@ -4,6 +4,7 @@ TOML configuration parsing and validation into an immutable
 """
 module Config
 
+using DocStringExtensions: TYPEDSIGNATURES
 using TOML: TOML
 using ..Physics
 using ..Bounds
@@ -168,7 +169,7 @@ fs_safe(name) = !isempty(name) && all(c -> isletter(c) || isdigit(c) || c in "._
 const DEFAULT_RAM_FRACTION = 0.8
 
 """
-    load_and_validate_config(config_path) -> PipelineSettings
+$(TYPEDSIGNATURES)
 
 Parse a configuration TOML file, validating every field (types, ranges, name uniqueness,
 interior base points) with descriptive errors; warn on unknown keys and

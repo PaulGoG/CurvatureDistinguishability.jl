@@ -5,6 +5,7 @@ CPU inference loop and the GPU kernels.
 """
 module Physics
 
+using DocStringExtensions: TYPEDSIGNATURES
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
     WaveformParams, waveform_params, spin_beta, strain_bin,
     scaled_waveform_model, SECONDS_PER_YEAR
@@ -92,7 +93,7 @@ Base.@kwdef struct NoiseParams
 end
 
 """
-    robson_confusion_params(T_obs; enabled = true, amp = 9.0e-45)
+$(TYPEDSIGNATURES)
 
 Build a [`NoiseParams`](@ref) whose confusion coefficients are the Robson
 et al. (2019) Table 1 column nearest to the observation time `T_obs` [s].
@@ -106,7 +107,7 @@ function robson_confusion_params(T_obs::Real; enabled::Bool = true, amp::Real = 
 end
 
 """
-    analytic_noise_psd(f; noise = NoiseParams())
+$(TYPEDSIGNATURES)
 
 One-sided noise PSD at frequency `f` [Hz]: Robson et al. (2019) Eq. 12
 instrumental noise plus the Eq. 14 galactic confusion fit (togglable via
@@ -182,7 +183,7 @@ function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
 end
 
 """
-    waveform_params(; kwargs...) -> WaveformParams
+$(TYPEDSIGNATURES)
 
 Build a [`WaveformParams`](@ref) from keyword arguments, silently ignoring
 any keys that are not fields (so pipeline call sites can splat a mixed
@@ -194,10 +195,15 @@ function waveform_params(; kwargs...)
 end
 
 """
-    spin_beta(chi1, chi2, eta)
+$(TYPEDSIGNATURES)
 
 Leading-order (1.5PN) spin-orbit phase coefficient
 `β = (113/3 − 76η/3) χ_eff / 4` with `χ_eff = (χ₁ + χ₂)/2`.
+
+```jldoctest
+julia> spin_beta(0.5, 0.3, 0.25)
+3.1333333333333333
+```
 """
 @inline function spin_beta(chi1, chi2, eta)
     chi_eff = 0.5 * (chi1 + chi2)
@@ -205,7 +211,7 @@ Leading-order (1.5PN) spin-orbit phase coefficient
 end
 
 """
-    strain_bin(f, A, Mc, tc, phic, beta, amp_33_factor)
+$(TYPEDSIGNATURES)
 
 Scalar per-bin frequency-domain strain: dominant (2,2) mode with 1.5PN
 spin-orbit phasing plus the (3,3) harmonic at Newtonian phase ratio
@@ -230,7 +236,7 @@ model, the CPU inference loop and the GPU kernel — generic over `Real`
 end
 
 """
-    scaled_waveform_model(theta, freq_grid, wp::WaveformParams)
+$(TYPEDSIGNATURES)
 
 Frequency-domain inspiral waveform over `freq_grid` for the O(1)-scaled
 6-parameter vector `theta = [A, M_c, t_c, φ_c, χ₁, χ₂]`. Physical units are
