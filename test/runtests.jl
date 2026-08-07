@@ -28,7 +28,11 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 @testset "CurvatureDistinguishability.jl" begin
 
     @testset "Static QA" begin
-        Aqua.test_all(CurvatureDistinguishability)
+        # the persistent-tasks probe's child-precompile marker is flaky on
+        # cold macOS/Windows CI runners ("done.log was not created"); the
+        # check's verdict is platform-independent, so it is enforced on
+        # Linux (local development and the Ubuntu CI legs)
+        Aqua.test_all(CurvatureDistinguishability; persistent_tasks = Sys.islinux())
         # the qualified-access publicity check is deliberately not enforced:
         # ForwardDiff and Optim expose their documented API (Dual, value,
         # partials, minimizer, …) without `public` annotations
@@ -51,12 +55,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # missing here while being unreachable by construction
         # (get_best_backend returns only registered backends). A change in
         # this count — either direction — must be triaged.
-        jet_modules = (CD, CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
-            CD.Inference, CD.Backends, CD.Config, CD.Provenance,
-            CD.Plotting, CD.Orchestrator, CD.RunFigures)
-        jet = JET.report_package(CD; target_modules = jet_modules,
-            toplevel_logger = nothing)
-        @test length(JET.get_reports(jet)) == 2
+        # JET tracks compiler internals and routinely breaks on pre-release
+        # Julia (observed: internal UndefRefError on the CI `pre` leg), so
+        # the analysis gates stable releases only
+        if isempty(VERSION.prerelease)
+            jet_modules = (CD, CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
+                CD.Inference, CD.Backends, CD.Config, CD.Provenance,
+                CD.Plotting, CD.Orchestrator, CD.RunFigures)
+            jet = JET.report_package(CD; target_modules = jet_modules,
+                toplevel_logger = nothing)
+            @test length(JET.get_reports(jet)) == 2
+        end
     end
 
     @testset "Noise PSD (Robson 2019)" begin
