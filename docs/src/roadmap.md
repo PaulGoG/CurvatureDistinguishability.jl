@@ -4,6 +4,11 @@ Design sketches for features deliberately **not** implemented yet (user
 decision, 2026-07), so future work starts warm. None of these block the
 production campaign.
 
+**Scope decision (2026-08):** the current publication is complete with the
+1.5PN waveform model and the noiseless-baseline validation. Every item on
+this page is post-publication follow-up work; item 5 is closed and will
+not be implemented.
+
 ## 1. 2PN spin–spin phase term (lifts the exact χ_a degeneracy)
 
 **Why.** At equal masses the current 1.5PN spin–orbit model depends on the
@@ -92,9 +97,15 @@ A viable scheme needs Kahan/Neumaier compensation in the bin reduction *and*
 an error model validated against FP64 on the target grid (the fixture harness
 is the right tool). Pursue only if a concrete GPU-bound campaign demands it.
 
-## 5. Derivative-free optimizer fallback (only when differentiability breaks)
+## 5. Derivative-free optimizer fallback (closed — will not be implemented)
 
-Deliberately **not** part of v1.0. The current loss is a C^∞ pure-Julia
+**Closed by decision (2026-08):** no derivative-free fallback will be
+implemented. The analysis below is retained for the record: the loss is
+smooth with exact AD derivatives, the fallback would raise the optimizer
+floor by many decades at higher cost, and the trigger condition (an
+AD-impenetrable objective) is not on the project's path.
+
+Original analysis — deliberately **not** part of v1.0. The current loss is a C^∞ pure-Julia
 least-squares objective in six dimensions with exact ForwardDiff gradients
 and Hessians; the exact-Hessian interior-point Newton locates minima
 precisely enough to resolve ``D^2 \sim 10^{-19}`` in 16–40 iterations. A
