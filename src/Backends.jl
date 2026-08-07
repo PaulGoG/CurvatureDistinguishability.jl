@@ -4,6 +4,7 @@ registered by the package extensions.
 """
 module Backends
 
+using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, CPU
 
 export get_best_backend, to_backend, backend_name, register_backend!
@@ -18,7 +19,7 @@ backend name to a zero-argument probe returning a functional
 const BACKEND_PROBES = Vector{Pair{Symbol,Function}}()
 
 """
-    register_backend!(name::Symbol, probe)
+$(TYPEDSIGNATURES)
 
 Register a GPU backend probe. Called from the package extensions' `__init__`;
 not intended for direct use.
@@ -29,7 +30,7 @@ function register_backend!(name::Symbol, probe::Function)
 end
 
 """
-    get_best_backend(; prefer::Symbol = :auto)
+$(TYPEDSIGNATURES)
 
 Return the best available compute backend. GPU backends become available by
 loading their package (e.g. `using CUDA`) in the session, which activates the
@@ -54,7 +55,7 @@ function get_best_backend(; prefer::Symbol = :auto)
 end
 
 """
-    to_backend(data, backend)
+$(TYPEDSIGNATURES)
 
 Move an array to the given backend. The CPU method materializes a standard
 `Array`; package extensions add methods for their device array types.
@@ -62,7 +63,7 @@ Move an array to the given backend. The CPU method materializes a standard
 to_backend(data::AbstractArray, ::CPU) = Array(data)
 
 """
-    backend_name(backend)
+$(TYPEDSIGNATURES)
 
 Human-readable backend description for logs and banners.
 """

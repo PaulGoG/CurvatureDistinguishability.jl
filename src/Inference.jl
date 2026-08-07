@@ -5,6 +5,7 @@ Float64-lanes dual-number path for GPU backends.
 """
 module Inference
 
+using DocStringExtensions: TYPEDSIGNATURES
 using ForwardDiff: ForwardDiff
 using KernelAbstractions: KernelAbstractions, @Const, @index, @kernel
 using Optim: Optim, Fminbox, IPNewton, LBFGS, OnceDifferentiable,
@@ -15,6 +16,7 @@ using ..Backends
 using ..Bounds
 
 export calculate_numerical_distance, optimization_diagnostics, loss_function
+public clear_device_buffers!
 
 # --- loss -------------------------------------------------------------------
 
@@ -66,7 +68,7 @@ function device_buffer(backend, ::Type{T}, dims::Dims) where {T}
 end
 
 """
-    clear_device_buffers!()
+$(TYPEDSIGNATURES)
 
 Empty the device-buffer cache, releasing every cached device array (the
 backend frees them on garbage collection). Call between campaigns on
@@ -245,7 +247,7 @@ function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Rea
 end
 
 """
-    loss_function(data_stream, freqs, Sn_vals, df, wp, backend) -> p -> D²(p)
+$(TYPEDSIGNATURES)
 
 Squared noise-weighted distance between `data_stream` and the single-source
 model, as a closure over the scaled parameter vector. On the CPU backend an
@@ -278,11 +280,7 @@ end
 # --- optimization -----------------------------------------------------------
 
 """
-    calculate_numerical_distance(data_stream, theta_guess, freqs, Sn_vals, df;
-                                 g_tol = 1e-10, iterations = 100,
-                                 backend = get_best_backend(),
-                                 optimizer = :ipnewton,
-                                 bounds = default_bounds(), kwargs...)
+$(TYPEDSIGNATURES)
 
 Minimum squared distance `D²` between the composite `data_stream` and the
 single-source manifold, found by box-constrained optimization within the
@@ -349,7 +347,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
 end
 
 """
-    optimization_diagnostics(opt_res, best_fit, bounds) -> NamedTuple
+$(TYPEDSIGNATURES)
 
 Convergence diagnostics persisted per optimization: convergence flag,
 iteration count, final gradient norm, and whether the best fit sits on an

@@ -1,5 +1,7 @@
 # CurvatureDistinguishability.jl
 
+[![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml)
+
 Computational proof of the **quartic distinguishability law** for space-based
 gravitational-wave interferometry: the squared noise-weighted distance between
 a two-source signal and the best-fit *single*-source template scales as
@@ -57,6 +59,13 @@ CurvatureDistinguishability/
 using Pkg
 Pkg.activate(".")           # from this directory
 Pkg.instantiate()
+```
+
+To use the package as a library from another environment (unregistered;
+the repository requires authenticated access while private):
+
+```julia
+Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
 ```
 
 `Project.toml` + `Manifest.toml` are authoritative and version-controlled.

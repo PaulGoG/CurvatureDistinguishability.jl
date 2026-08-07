@@ -5,6 +5,7 @@ monitoring and per-stage guardrails.
 """
 module Orchestrator
 
+using DocStringExtensions: TYPEDSIGNATURES
 using Printf: @sprintf
 using Dates: Dates, now
 using TOML: TOML
@@ -29,6 +30,7 @@ using ..Provenance
 using ..Plotting
 
 export run_pipeline
+public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -81,7 +83,7 @@ physics_kwargs(wp::WaveformParams) = (
     include_t_channel = wp.include_t_channel)
 
 """
-    loglog_slope(x, y) -> (slope, stderr)
+$(TYPEDSIGNATURES)
 
 Least-squares slope of `log10(y)` against `log10(x)` with its standard
 error (NaN with fewer than 3 points). Fits the quartic-law exponent of a
@@ -98,7 +100,7 @@ function loglog_slope(x::AbstractVector, y::AbstractVector)
 end
 
 """
-    ratio_correction_fit(deltas, ratio) -> (c1, c1_err, c2)
+$(TYPEDSIGNATURES)
 
 Least-squares fit of `ratio − 1 ≈ c₁δ + c₂δ²` (2×2 normal equations solved in
 closed form), quantifying the leading `O(δ⁵)` correction to the quartic law
@@ -123,7 +125,7 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
 end
 
 """
-    optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio) -> floor_level
+$(TYPEDSIGNATURES)
 
 Bootstrap estimate of a sweep's optimizer floor: points whose
 `D²_num/D²_theo` ratio is at or above `ratio_threshold`
@@ -138,7 +140,7 @@ function optimizer_floor(
 end
 
 """
-    above_floor_mask(D2_num, floor_level) -> BitVector
+$(TYPEDSIGNATURES)
 
 Production clean-point rule, shared by the sweep stage and all display-time
 figure regeneration (`RunFigures`): only points strictly above the optimizer
@@ -152,7 +154,7 @@ above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
     isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
 
 """
-    sweep_diagnostic_panel(deltas, D2_num, D2_theo, clean, slope, slope_err) -> String
+$(TYPEDSIGNATURES)
 
 In-terminal diagnostic of a completed sweep: log-log `D²` against the
 theoretical prediction (UnicodePlots), followed by the clean-point count and
@@ -175,7 +177,7 @@ function sweep_diagnostic_panel(deltas::AbstractVector, D2_num::AbstractVector,
 end
 
 """
-    map_diagnostic_panel(angle, r_cap, prior_frac) -> String
+$(TYPEDSIGNATURES)
 
 In-terminal diagnostic of a completed confusion map: capped boundary radius
 against direction angle (UnicodePlots), followed by the prior-limited
@@ -191,7 +193,7 @@ function map_diagnostic_panel(angle::AbstractVector, r_cap::AbstractVector,
 end
 
 """
-    plan_resources(cfg, n_bins, nch, backend) -> (active_threads, est_gb)
+$(TYPEDSIGNATURES)
 
 Pre-flight memory estimate against the `[safety]` budget: refuses to start
 when even a single task exceeds it, downscales concurrency otherwise, and
@@ -270,7 +272,7 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    run_sweep(sweep, idx, total, ctx)
+$(TYPEDSIGNATURES)
 
 Execute one 1D separation sweep: directional geometry (K(u), g(u,u)),
 per-δ box-constrained optimization with optional multi-start, floor
@@ -569,7 +571,7 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    run_map(map_cfg, idx, total, ctx)
+$(TYPEDSIGNATURES)
 
 Execute one 2D confusion map: tangent basis at the base point, mirrored
 angular sweep with adaptive refinement, exact prior-wall and box-corner
@@ -875,7 +877,7 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    run_pipeline(config_path, project_root, output_dir)
+$(TYPEDSIGNATURES)
 
 Unified orchestrator: validates the TOML configuration (hard errors on
 unusable input), allocates hardware within the `[safety]` memory budget,

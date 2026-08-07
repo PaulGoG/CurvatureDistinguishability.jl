@@ -4,6 +4,7 @@ fused strain-to-channel projection.
 """
 module Detector
 
+using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics: WaveformParams, SECONDS_PER_YEAR
 
 export tdi_modulation_bin, project_to_tdi, n_channels
@@ -11,17 +12,22 @@ export tdi_modulation_bin, project_to_tdi, n_channels
 const R_ORBIT_SEC = 499.00478383615643 # 1 AU in light-seconds
 
 """
-    n_channels(wp::WaveformParams)
+$(TYPEDSIGNATURES)
 
 Number of active TDI channels: 2 (A, E) by default, 3 when the identically
 zero null channel T is explicitly requested via `wp.include_t_channel`.
 Derived from the `WaveformParams` type parameter, so it constant-folds in
 specialized code.
+
+```jldoctest
+julia> n_channels(waveform_params())
+2
+```
 """
 n_channels(::WaveformParams{T,NCH}) where {T,NCH} = NCH
 
 """
-    tdi_modulation_bin(f, Mc, tc, wp) -> (mod_A, mod_E)
+$(TYPEDSIGNATURES)
 
 Scalar per-bin complex modulation of the A and E TDI channels: orbital
 Doppler phase (via the SPA time-frequency map `t(f) = t_c − 5M_c/(256 v⁸)`)
@@ -56,7 +62,7 @@ over `Real` (including `ForwardDiff.Dual`); safe inside GPU kernels.
 end
 
 """
-    project_to_tdi(h_strain, freqs, p, wp::WaveformParams)
+$(TYPEDSIGNATURES)
 
 Project a frequency-domain strain into the TDI response channels in a single
 fused pass (one loop, one allocation per channel). Returns `(A, E)` or

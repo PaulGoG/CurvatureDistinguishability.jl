@@ -16,3 +16,4 @@ docs/build/
 bench/Manifest.toml
 docs/Manifest.toml
 test/Manifest.toml
+docs/src/generated/

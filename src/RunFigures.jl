@@ -7,6 +7,7 @@ figures cannot diverge.
 """
 module RunFigures
 
+using DocStringExtensions: TYPEDSIGNATURES
 using CSV: CSV
 using DataFrames: DataFrames, DataFrame, nrow
 using TOML: TOML
@@ -21,7 +22,7 @@ export run_cases, sweep_figures, zone_map_figure
 rho_tag(rho) = "_rho" * replace(string(rho), "." => "p")
 
 """
-    run_cases(run_dir) -> (sweeps, maps)
+$(TYPEDSIGNATURES)
 
 Enumerate the sweep and map case names present in a pipeline run directory
 (sorted); a case counts when its primary CSV exists.
@@ -52,8 +53,7 @@ function run_config(run_dir::AbstractString)
 end
 
 """
-    sweep_figures(run_dir, case; refit = false, rho = nothing)
-        -> (scaling, residual, suffix)
+$(TYPEDSIGNATURES)
 
 Rebuild the figures of one 1D sweep from its persisted CSVs — no geometry or
 optimization is recomputed. Point classification always follows the
@@ -113,7 +113,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
 end
 
 """
-    zone_map_figure(run_dir, case; rho = nothing) -> (figure, contour, suffix)
+$(TYPEDSIGNATURES)
 
 Rebuild one 2D confusion-zone figure from the persisted contour CSV and the
 run's config snapshot (which supplies the plane, base point and prior box) —

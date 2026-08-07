@@ -5,6 +5,7 @@ curvature from fused nested-dual automatic differentiation.
 """
 module Geometry
 
+using DocStringExtensions: TYPEDSIGNATURES
 using ForwardDiff: ForwardDiff
 using ..Physics
 using ..Detector
@@ -29,7 +30,7 @@ dividing into the `(16ρ²/K)^{1/4}` radius.
 const K_UNDERFLOW = 1e-300
 
 """
-    inner_product(h1, h2, Sn_vals, df)
+$(TYPEDSIGNATURES)
 
 Noise-weighted inner product `4 df Σ Re(h1* h2)/Sn` over the frequency grid.
 """
@@ -43,7 +44,7 @@ function inner_product(
 end
 
 """
-    multi_channel_inner_product(H1, H2, Sn_vals, df)
+$(TYPEDSIGNATURES)
 
 Sum of [`inner_product`](@ref) over corresponding channels of the tuples
 `H1`, `H2` (generic over 2-channel A/E and 3-channel A/E/T configurations).
@@ -62,7 +63,7 @@ function multi_channel_inner_product(
 end
 
 """
-    flat_response(p, freqs, wp) -> Vector
+$(TYPEDSIGNATURES)
 
 Full detector response at parameters `p`, flattened to a real vector
 `[re(C₁); im(C₁); re(C₂); im(C₂); …]` over the active channels — the map
@@ -86,7 +87,7 @@ function flat_response(p::AbstractVector, freqs::AbstractVector, wp::WaveformPar
 end
 
 """
-    unflatten_channels(v, n_bins, ::Val{NCH}) -> NTuple{NCH} of complex Vectors
+$(TYPEDSIGNATURES)
 
 Inverse of the [`flat_response`](@ref) layout. The channel count is a `Val`
 so the tuple length — and therefore the return type — is known to the
@@ -100,7 +101,7 @@ function unflatten_channels(v::AbstractVector, n_bins::Integer, ::Val{NCH}) wher
 end
 
 """
-    compute_tangent_basis(theta_0, freqs, Sn_vals, df, wp::WaveformParams)
+$(TYPEDSIGNATURES)
 
 Noise-weighted orthonormal tangent basis of the signal manifold at `theta_0`,
 via one ForwardDiff Jacobian of [`flat_response`](@ref) followed by modified
@@ -141,7 +142,7 @@ struct DirDerivInner end
 struct DirDerivOuter end
 
 """
-    value_and_directional_derivs(g, s0) -> (h, dh, d2h)
+$(TYPEDSIGNATURES)
 
 Value, first and second directional derivative of the vector map `g` at `s0`
 from a single evaluation with nested dual numbers (no separate AD pass for
@@ -159,7 +160,7 @@ function value_and_directional_derivs(g, s0::Float64)
 end
 
 """
-    compute_extrinsic_curvature_from_basis(theta_0, u_dir, basis, freqs, Sn_vals, df, wp)
+$(TYPEDSIGNATURES)
 
 Directional extrinsic curvature `K(u) = ‖P⊥ ∂²_u h‖²` and Fisher norm
 `g(u,u) = ‖∂_u h‖²` at `theta_0` along `u_dir`, projecting the directional
@@ -197,7 +198,7 @@ function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
 end
 
 """
-    compute_extrinsic_curvature(theta_0, u_dir, freqs, Sn_vals, df, wp)
+$(TYPEDSIGNATURES)
 
 Convenience wrapper computing the tangent basis and the directional curvature
 in one call. For repeated directions at a fixed base point (2D mapping), use

@@ -4,6 +4,7 @@ snapshots, backup-before-overwrite semantics and run metadata.
 """
 module Provenance
 
+using DocStringExtensions: TYPEDSIGNATURES
 using SHA: sha256
 using TOML: TOML
 using DrWatson: gitdescribe
@@ -13,7 +14,7 @@ export run_id_from_config,
     write_run_metadata, git_state
 
 """
-    run_id_from_config(config_path) -> String
+$(TYPEDSIGNATURES)
 
 Deterministic run identifier: the first 8 hex characters of the SHA-256 of
 the canonically serialized *parsed* configuration (keys sorted, values
@@ -27,7 +28,7 @@ function run_id_from_config(config_path::AbstractString)
 end
 
 """
-    unique_run_dir(base_dir, run_id) -> String
+$(TYPEDSIGNATURES)
 
 Create and return an output directory for `run_id` under `base_dir`. If the
 directory already exists (a rerun of the same configuration), a `_r2`,
@@ -45,7 +46,7 @@ function unique_run_dir(base_dir::AbstractString, run_id::AbstractString)
 end
 
 """
-    snapshot_config(config_path, run_dir)
+$(TYPEDSIGNATURES)
 
 Copy the configuration file into the run directory so every result set
 carries the exact configuration that produced it.
@@ -54,7 +55,7 @@ snapshot_config(config_path::AbstractString, run_dir::AbstractString) =
     cp(config_path, joinpath(run_dir, "config.toml"); force = false)
 
 """
-    backup_existing!(path)
+$(TYPEDSIGNATURES)
 
 `safesave` semantics for arbitrary file formats: if `path` exists, move the
 existing file to `<name>#<k><ext>` with the smallest free `k` before the
@@ -73,7 +74,7 @@ function backup_existing!(path::AbstractString)
 end
 
 """
-    git_state(project_root) -> String
+$(TYPEDSIGNATURES)
 
 `git describe`-style identifier of the repository state (commit, tags,
 dirty flag) via DrWatson, or `"unknown"` outside a repository.
@@ -88,7 +89,7 @@ function git_state(project_root::AbstractString)
 end
 
 """
-    write_run_metadata(run_dir; kwargs...)
+$(TYPEDSIGNATURES)
 
 Write (or update) `metadata.toml` in the run directory with provenance
 information passed as keyword pairs (git state, Julia version, backend,
