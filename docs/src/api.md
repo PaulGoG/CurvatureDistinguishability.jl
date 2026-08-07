@@ -8,6 +8,22 @@ configuration, provenance, plotting and orchestration.
 CurvatureDistinguishability
 ```
 
+## Module inventory
+
+```@docs
+CurvatureDistinguishability.Physics
+CurvatureDistinguishability.Detector
+CurvatureDistinguishability.Bounds
+CurvatureDistinguishability.Geometry
+CurvatureDistinguishability.Inference
+CurvatureDistinguishability.Backends
+CurvatureDistinguishability.Config
+CurvatureDistinguishability.Provenance
+CurvatureDistinguishability.Plotting
+CurvatureDistinguishability.Orchestrator
+CurvatureDistinguishability.RunFigures
+```
+
 ## Physics
 
 ```@docs
@@ -53,6 +69,7 @@ CurvatureDistinguishability.Geometry.value_and_directional_derivs
 CurvatureDistinguishability.Geometry.compute_extrinsic_curvature_from_basis
 CurvatureDistinguishability.Geometry.compute_extrinsic_curvature
 CurvatureDistinguishability.Geometry.GS_NORM_TOL
+CurvatureDistinguishability.Geometry.K_UNDERFLOW
 ```
 
 ## Inference

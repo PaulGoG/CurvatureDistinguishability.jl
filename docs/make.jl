@@ -4,9 +4,13 @@ Pkg.develop(PackageSpec(path = joinpath(@__DIR__, "..")); io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using Documenter
+using DocumenterCitations
 using CurvatureDistinguishability
 
+bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"); style = :numeric)
+
 makedocs(
+    plugins = [bib],
     sitename = "CurvatureDistinguishability.jl",
     format = Documenter.HTML(
         # directory-style URLs break file:// browsing of the CI artifact and
@@ -26,5 +30,6 @@ makedocs(
         "Complex Run Parameters" => "parameters.md",
         "Roadmap" => "roadmap.md",
         "API Reference" => "api.md",
+        "References" => "references.md",
     ],
 )

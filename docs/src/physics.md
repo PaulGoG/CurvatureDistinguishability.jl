@@ -91,7 +91,7 @@ $$ \tilde{h}_T(f) \approx 0 $$
 ---
 
 ## 6. The Noise Profile (Robson et al. 2019)
-The inner products computing the Extrinsic Curvature $K(u)$ are weighted by the one-sided PSD $S_n(f)$, implemented exactly from Robson, Cornish & Liu (2019), arXiv:1803.01944:
+The inner products computing the Extrinsic Curvature $K(u)$ are weighted by the one-sided PSD $S_n(f)$, implemented exactly from [Robson2019](@cite):
 
 **Instrumental noise (Eq. 12)** — the Michelson-channel PSD (the sky-averaged $10/3$ response factor of their Eq. 13 is *not* applied, because this pipeline models the antenna response explicitly in `Detector.jl`):
 $$ P_n(f) = \frac{P_{\mathrm{OMS}}}{L^2} + 2\left(1 + \cos^2(f/f_*)\right)\frac{P_{\mathrm{acc}}}{(2\pi f)^4 L^2} $$
