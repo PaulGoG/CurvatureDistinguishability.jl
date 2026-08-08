@@ -78,7 +78,7 @@ jobs:
       # publicly reachable on non-Enterprise plans). Until then the built
       # site is attached to each run as a private artifact.
       - run: julia docs/make.jl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: documentation
           path: docs/build/
