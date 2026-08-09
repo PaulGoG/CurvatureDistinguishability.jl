@@ -23,6 +23,7 @@ CurvatureDistinguishability/
 ├── configs/
 │   ├── quickstart.toml     # minutes-scale demonstration run (the default)
 │   ├── production_cpu.toml # CPU reference campaign configuration
+│   ├── production_gpu.toml # portable GPU variant (gpu_backend = "auto")
 │   └── production_oneapi.toml # GPU variant (oneAPI backend, chunked Hessian)
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
@@ -75,7 +76,9 @@ into your default (stacked) environment — the pipeline resolves it through
 the load path and the corresponding package extension activates
 automatically; without one, the pipeline runs on the multi-threaded CPU
 backend (`[hardware].gpu_backend = "none"` forces this).
-`configs/production_oneapi.toml` is the committed GPU run variant (identical
+`configs/production_oneapi.toml` (Intel, chunked Hessian) and
+`configs/production_gpu.toml` (portable, backend auto-detection) are the
+committed GPU run variants (identical
 physics; oneAPI backend with `hessian_chunk = 3` for FP64-emulating Intel
 integrated GPUs). GPU runs are pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
