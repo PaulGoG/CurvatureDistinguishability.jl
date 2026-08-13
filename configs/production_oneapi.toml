@@ -1,5 +1,5 @@
 # Production configuration — oneAPI GPU variant (identical physics to
-# production_cpu.toml; Intel iGPU: FP64 emulation, chunked Hessian). Case
+# production_cpu.toml; Intel iGPU: native FP64, chunked Hessian). Case
 # rationale: docs/src/parameters.md.
 [pipeline]
 run_1d_sweeps = true

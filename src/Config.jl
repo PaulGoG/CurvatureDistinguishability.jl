@@ -57,6 +57,8 @@ struct PipelineSettings
     gpu_backend::Symbol
     max_threads::Int
     hessian_chunk::Int
+    gc_between_stages::Bool
+    heap_size_hint_gb::Float64
     # safety
     max_ram_gb::Float64
     bytes_per_bin_per_task_gpu::Int
@@ -64,6 +66,7 @@ struct PipelineSettings
     os_vram_overhead_gb::Float64
     # monitoring
     monitoring_enabled::Bool
+    progress_log_fraction::Float64
     # bounds & work items
     bounds::ParameterBounds
     sweeps::Vector{Dict{String,Any}}
@@ -73,7 +76,7 @@ end
 const KNOWN_KEYS = Dict(
     "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
         "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
-    "monitoring" => ["enabled"],
+    "monitoring" => ["enabled", "progress_log_fraction"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
         "sweep_settings"],
     "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
@@ -93,7 +96,8 @@ const KNOWN_KEYS = Dict(
     "mapping" =>
         ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters",
             "unbounded_cap_factor"],
-    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk"],
+    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk",
+        "gc_between_stages", "heap_size_hint_gb"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
         "os_vram_overhead_gb"],
     "parameter_bounds" => collect(PARAM_KEYS),
@@ -414,6 +418,12 @@ function load_and_validate_config(config_path::AbstractString)
             "[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
             "got $hessian_chunk",
         )
+    gc_between_stages = get_boolean(hardware, "gc_between_stages", true, "hardware")
+    heap_size_hint_gb = get_number(hardware, "heap_size_hint_gb", 0.0, "hardware")
+    heap_size_hint_gb >= 0 ||
+        error(
+            "[hardware].heap_size_hint_gb must be >= 0 (0 = no hint), got $heap_size_hint_gb",
+        )
 
     safety = get(config, "safety", Dict{String,Any}())
     warn_unknown_keys(safety, "safety")
@@ -496,6 +506,13 @@ function load_and_validate_config(config_path::AbstractString)
     monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
     warn_unknown_keys(monitoring_cfg, "monitoring")
     monitoring_enabled = get_boolean(monitoring_cfg, "enabled", false, "monitoring")
+    progress_log_fraction =
+        get_number(monitoring_cfg, "progress_log_fraction", 0.25, "monitoring")
+    0.0 <= progress_log_fraction <= 1.0 ||
+        error(
+            "[monitoring].progress_log_fraction must be in [0, 1] (0 disables " *
+            "stage-progress log lines), got $progress_log_fraction",
+        )
 
     return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
         n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
@@ -504,9 +521,9 @@ function load_and_validate_config(config_path::AbstractString)
         validity_fraction, spectrum_windows,
         T_obs, f_min, f_max, wp, noise,
         map_n_angles, ratio_tol, refine_levels, corner_iters, unbounded_cap,
-        gpu_backend, max_threads, hessian_chunk,
+        gpu_backend, max_threads, hessian_chunk, gc_between_stages, heap_size_hint_gb,
         max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
-        monitoring_enabled,
+        monitoring_enabled, progress_log_fraction,
         bounds, sweeps, maps)
 end
 

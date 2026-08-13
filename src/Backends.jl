@@ -8,6 +8,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, CPU
 
 export get_best_backend, to_backend, backend_name, register_backend!
+public reclaim_device_memory!, cpu_model
 
 """
 Registry of GPU backend probes, populated by the package extensions
@@ -65,9 +66,36 @@ to_backend(data::AbstractArray, ::CPU) = Array(data)
 """
 $(TYPEDSIGNATURES)
 
-Human-readable backend description for logs and banners.
+Human-readable backend description for logs and banners, carrying the exact
+chip model for hardware provenance (timing attribution across heterogeneous
+campaign hosts requires the microarchitecture, not just the vendor).
 """
-backend_name(::CPU) = "$(Threads.nthreads())-thread CPU"
+function backend_name(::CPU)
+    model = cpu_model()
+    return isempty(model) ? "$(Threads.nthreads())-thread CPU" :
+           "$(Threads.nthreads())-thread CPU ($model)"
+end
 backend_name(b) = string(nameof(typeof(b)))
+
+"""
+$(TYPEDSIGNATURES)
+
+Host CPU model string from the system information API, or `""` when the
+query yields nothing (exotic platforms).
+"""
+function cpu_model()
+    info = Sys.cpu_info()
+    return isempty(info) ? "" : strip(info[1].model)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Release cached device memory pools back to the driver, as inter-stage
+maintenance on long campaigns. Package extensions override this per backend
+(CUDA pool reclaim); the CPU method and backends without a pool-reclaim API
+are no-ops.
+"""
+reclaim_device_memory!(_) = nothing
 
 end # module

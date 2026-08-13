@@ -81,13 +81,55 @@ function clear_device_buffers!()
     return nothing
 end
 
+# --- allocation-free device reductions ---------------------------------------
+# GPU `sum`/`sum(…; dims)` allocates its result and internal partial buffers on
+# the device on every call; at 10³–10⁴ loss evaluations per sweep this churn
+# destabilizes long campaigns (observed: CUDA pool exhaustion following
+# "Failed to query free GPU memory", oneAPI freed-reference failure). The
+# fixed two-stage reduction below touches only cached device buffers: a
+# strided partial-sums kernel writes a (P × M) buffer, and the host finishes
+# the P-row sum. The CPU lanes path keeps `Base.sum` (pairwise, deterministic;
+# pinned by the CPU-equivalence regression tests).
+
+const REDUCTION_PARTIAL_ROWS = 256
+
+reduction_rows(nrows::Int) = min(REDUCTION_PARTIAL_ROWS, nrows)
+
+@kernel function partial_column_sums!(partial, @Const(out), nrows::Int, P::Int)
+    p, m = @index(Global, NTuple)
+    acc = 0.0
+    i = p
+    @inbounds while i <= nrows
+        acc += out[i, m]
+        i += P
+    end
+    @inbounds partial[p, m] = acc
+end
+
+"""
+Column sums of the `(nrows × M)` device matrix `out` through the caller-owned
+`(P × M)` partial buffer; returns a host `Vector{Float64}` of length `M`.
+No device memory is allocated.
+"""
+function column_sums_via!(partial, backend, out, nrows::Int)
+    P, M = size(partial)
+    partial_column_sums!(backend)(partial, out, nrows, P; ndrange = (P, M))
+    KernelAbstractions.synchronize(backend)
+    host = Array(partial)
+    return vec(sum(host; dims = 1))
+end
+
 # Function barrier below `device_buffer`'s untyped cache: `out` is concretely
 # typed here, so the kernel launch and reduction pay one dynamic dispatch per
-# evaluation instead of one per operation.
-function launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
+# evaluation instead of one per operation. `partial === nothing` selects the
+# generic allocating reduction (CPU path, or non-Float64 eltypes).
+function launch_loss!(out, partial, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
     loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
     KernelAbstractions.synchronize(backend)
-    return 4.0 * df * sum(out)
+    s =
+        partial === nothing ? sum(out) :
+        column_sums_via!(partial, backend, reshape(out, length(out), 1), length(out))[1]
+    return 4.0 * df * s
 end
 
 function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real,
@@ -96,11 +138,16 @@ function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real
     θ = ntuple(i -> p[i], Val(6))
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, T, length(freqs))
-        return launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
+        return launch_loss!(out, nothing, backend, freqs, Sn_vals, data_A, data_E, θ,
+            wp, df)
     end
     lock(GPU_LOCK) do
         out = device_buffer(backend, T, (length(freqs),))
-        return launch_loss!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
+        partial =
+            T === Float64 ?
+            device_buffer(backend, Float64, (reduction_rows(length(freqs)), 1)) : nothing
+        return launch_loss!(out, partial, backend, freqs, Sn_vals, data_A, data_E, θ,
+            wp, df)
     end
 end
 
@@ -164,7 +211,8 @@ end
 end
 
 # Function barrier (see launch_loss!): concretely typed lanes launch.
-function launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp,
+# `partial === nothing` keeps the deterministic `Base.sum` reduction (CPU).
+function launch_loss_lanes!(out, partial, backend, freqs, Sn_vals, data_A, data_E, θ, wp,
     df, ::Type{D}) where {D}
     loss_bins_lanes!(backend)(
         out,
@@ -177,7 +225,9 @@ function launch_loss_lanes!(out, backend, freqs, Sn_vals, data_A, data_E, θ, wp
         ndrange = length(freqs),
     )
     KernelAbstractions.synchronize(backend)
-    s = Array(vec(sum(out; dims = 1)))
+    s =
+        partial === nothing ? Array(vec(sum(out; dims = 1))) :
+        column_sums_via!(partial, backend, out, size(out, 1))
     dual, _ = rebuild_dual(D, s, 1)
     return 4.0 * df * dual
 end
@@ -190,6 +240,7 @@ function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::R
         out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))
         return launch_loss_lanes!(
             out,
+            nothing,
             backend,
             freqs,
             Sn_vals,
@@ -203,9 +254,11 @@ function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::R
     end
     lock(GPU_LOCK) do
         out = device_buffer(backend, Float64, (length(freqs), M))
+        partial = device_buffer(backend, Float64, (reduction_rows(length(freqs)), M))
         fill!(out, 0.0)
         return launch_loss_lanes!(
             out,
+            partial,
             backend,
             freqs,
             Sn_vals,
@@ -304,19 +357,21 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     wp = waveform_params(; kwargs...)
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
-    g!(G, x) = ForwardDiff.gradient!(G, loss, x)
-    # hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes per
-    # kernel launch instead of 49 — the fallback for GPU compilers whose
+    # ForwardDiff configs are constructed once per solve (they depend only on
+    # the parameter length), not on every optimizer callback — per-call
+    # construction allocates fresh dual work arrays thousands of times per
+    # sweep. hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes
+    # per kernel launch instead of 49 — the fallback for GPU compilers whose
     # module build fails on the full nested-dual kernel (see docs/roadmap).
-    h!(H, x) =
+    x_proto = collect(Float64, theta_guess)
+    grad_cfg = ForwardDiff.GradientConfig(loss, x_proto)
+    g!(G, x) = ForwardDiff.gradient!(G, loss, x, grad_cfg)
+    hess_cfg =
         hessian_chunk > 0 ?
-        ForwardDiff.hessian!(H, loss, x,
-            ForwardDiff.HessianConfig(
-                loss,
-                x,
-                ForwardDiff.Chunk(min(hessian_chunk, length(x))),
-            )) :
-        ForwardDiff.hessian!(H, loss, x)
+        ForwardDiff.HessianConfig(loss, x_proto,
+            ForwardDiff.Chunk(min(hessian_chunk, length(x_proto)))) :
+        ForwardDiff.HessianConfig(loss, x_proto)
+    h!(H, x) = ForwardDiff.hessian!(H, loss, x, hess_cfg)
 
     opts = Optim.Options(g_tol = g_tol, iterations = iterations, show_trace = false)
 

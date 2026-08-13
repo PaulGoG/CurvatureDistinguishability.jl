@@ -50,14 +50,15 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # JET package analysis with error points restricted to this package's
         # modules (upstream abstract-interpretation artifacts in
-        # Base/Optim/Makie internals are out of scope). Exactly two known
-        # artifacts remain, both anchored at the deliberately untyped
-        # device-buffer barrier (launch_loss!/launch_loss_lanes!): the GPU
-        # kernel-call method exists only once a GPU backend package is
-        # loaded, so the GPU branch of the backend union split reports as
-        # missing here while being unreachable by construction
-        # (get_best_backend returns only registered backends). A change in
-        # this count — either direction — must be triaged.
+        # Base/Optim/Makie internals are out of scope). Exactly three known
+        # artifacts remain, all anchored at the deliberately untyped
+        # device-buffer barrier (launch_loss!/launch_loss_lanes!/
+        # column_sums_via!, one per kernel: loss_bins!, loss_bins_lanes!,
+        # partial_column_sums!): the GPU kernel-call method exists only once
+        # a GPU backend package is loaded, so the GPU branch of the backend
+        # union split reports as missing here while being unreachable by
+        # construction (get_best_backend returns only registered backends).
+        # A change in this count — either direction — must be triaged.
         # JET tracks compiler internals and routinely breaks on pre-release
         # Julia (observed: internal UndefRefError on the CI `pre` leg), so
         # the analysis gates stable releases only
@@ -67,7 +68,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 CD.Plotting, CD.Orchestrator, CD.RunFigures)
             jet = JET.report_package(CD; target_modules = jet_modules,
                 toplevel_logger = nothing)
-            @test length(JET.get_reports(jet)) == 2
+            @test length(JET.get_reports(jet)) == 3
         end
     end
 

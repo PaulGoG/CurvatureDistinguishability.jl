@@ -79,6 +79,7 @@ CurvatureDistinguishability.Inference.loss_function
 CurvatureDistinguishability.Inference.calculate_numerical_distance
 CurvatureDistinguishability.Inference.optimization_diagnostics
 CurvatureDistinguishability.Inference.clear_device_buffers!
+CurvatureDistinguishability.Inference.column_sums_via!
 ```
 
 ## Backends
@@ -88,6 +89,8 @@ CurvatureDistinguishability.Backends.get_best_backend
 CurvatureDistinguishability.Backends.to_backend
 CurvatureDistinguishability.Backends.backend_name
 CurvatureDistinguishability.Backends.register_backend!
+CurvatureDistinguishability.Backends.reclaim_device_memory!
+CurvatureDistinguishability.Backends.cpu_model
 ```
 
 ## Configuration

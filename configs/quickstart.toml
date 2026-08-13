@@ -82,6 +82,11 @@ max_threads = 8
 # ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk)
 hessian_chunk = 0
+# inter-stage memory maintenance: device-buffer flush + full host GC after
+# every sweep/map (recommended for multi-hour campaigns)
+gc_between_stages = true
+# --heap-size-hint for scripts/launch_run.jl child processes, in GB (0 = none)
+heap_size_hint_gb = 0.0
 
 [safety]
 # memory budgets in GB; the pipeline refuses to start (or downscales
@@ -95,6 +100,9 @@ bytes_per_bin_per_task_gpu = 1000
 [monitoring]
 # in-terminal UnicodePlots diagnostics after each completed stage (TTY only)
 enabled = true
+# fraction of a stage's work items between run.log progress lines, in (0, 1]
+# (0 disables intra-stage progress logging)
+progress_log_fraction = 0.25
 
 # Two sweeps contrasting a well-measured and a near-degenerate direction,
 # and two maps including the prior-limited spin wedge

@@ -197,7 +197,11 @@ $(TYPEDSIGNATURES)
 
 Pre-flight memory estimate against the `[safety]` budget: refuses to start
 when even a single task exceeds it, downscales concurrency otherwise, and
-applies the VRAM budget on GPU backends.
+applies the VRAM budget on GPU backends. Resource planning is stage-aware:
+the returned `(sweep_tasks, map_tasks, estimated_gb)` distinguishes the
+kernel-dispatch sweep stage (single-task on GPU backends) from the 2D
+mapping stage, which evaluates host-side automatic differentiation on every
+backend and therefore always keeps the multi-threaded CPU concurrency.
 """
 function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     flatlen = 2 * nch * n_bins
@@ -223,16 +227,21 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     threads < min(Threads.nthreads(), cfg.max_threads) &&
         @warn "Concurrency downscaled to $threads tasks to respect [safety].max_ram_gb = $(cfg.max_ram_gb) GB."
 
+    map_tasks = threads
+    sweep_tasks = threads
     if !(backend isa KernelAbstractions.CPU)
-        # GPU execution is single-task by design: GPU drivers are not
+        # GPU sweep execution is single-task by design: GPU drivers are not
         # reliably safe under concurrent multi-task access (observed Level
         # Zero segmentation fault), the library-level GPU lock serializes
         # kernel launches, and the device itself serializes kernels —
-        # additional tasks provide no throughput.
-        threads > 1 &&
-            @info "GPU backend active: concurrency pinned to 1 task (kernels serialize " *
-                  "on the device; concurrent driver access is unsafe)."
-        threads = 1
+        # additional tasks provide no throughput. The pin applies to the
+        # sweep stage only: 2D mapping never dispatches kernels, and pinning
+        # it single-threaded quadrupled its wall time in production.
+        sweep_tasks = 1
+        map_tasks > 1 &&
+            @info "GPU backend active: sweep-stage concurrency pinned to 1 task " *
+                  "(kernels serialize on the device; concurrent driver access is " *
+                  "unsafe); the CPU-only 2D mapping stage keeps $map_tasks tasks."
         vram_budget = max(0.0, cfg.max_vram_gb - cfg.os_vram_overhead_gb) * 2^30
         need = n_bins * cfg.bytes_per_bin_per_task_gpu
         need <= vram_budget ||
@@ -245,15 +254,59 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
             )
     end
 
-    return threads, (fixed + threads * per_task) / 2^30
+    return sweep_tasks, map_tasks, (fixed + map_tasks * per_task) / 2^30
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Inter-stage memory maintenance for long campaigns (`[hardware]
+.gc_between_stages`): flushes the device-buffer cache on GPU backends, runs
+a full host garbage collection (device arrays are freed by their host
+finalizers, so an explicit collection is what actually returns device
+memory between stages), and asks the backend to reclaim pooled device
+memory where an API exists.
+"""
+function maintain_memory!(backend, enabled::Bool)
+    enabled || return nothing
+    if !(backend isa KernelAbstractions.CPU)
+        Inference.clear_device_buffers!()
+    end
+    GC.gc(true)
+    Backends.reclaim_device_memory!(backend)
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Thread-safe progress hook for a stage's work-item loop: returns a
+zero-argument closure that counts completed items and emits an `@info` line
+into the structured run log every `fraction` of `total` items (never at the
+final item — completion has its own log line). `fraction <= 0` disables the
+hook (`[monitoring].progress_log_fraction = 0`). Long stages are otherwise
+silent in `run.log` for hours, which detached campaign monitoring
+(`tail -f`) cannot distinguish from a hang.
+"""
+function stage_progress_hook(label::String, total::Int, fraction::Real)
+    fraction > 0 || return () -> nothing
+    done = Threads.Atomic{Int}(0)
+    step = max(1, ceil(Int, fraction * total))
+    return () -> begin
+        d = Threads.atomic_add!(done, 1) + 1
+        d % step == 0 && d < total &&
+            @info "$label: $d/$total work items complete."
+        return nothing
+    end
 end
 
 """
 Immutable per-run context threaded through the sweep and map stages:
 validated configuration, output base directory, frequency grid and PSD
-(host and device copies), and the planned concurrency. Parametric over the
-backend and device-array types so every per-δ solve closure captures
-concrete fields.
+(host and device copies), and the planned stage concurrencies (the sweep
+stage is pinned to one task on GPU backends; the CPU-only mapping stage is
+not). Parametric over the backend and device-array types so every per-δ
+solve closure captures concrete fields.
 """
 struct RunContext{B,FD,SD}
     cfg::PipelineSettings
@@ -264,7 +317,8 @@ struct RunContext{B,FD,SD}
     Sn_dev::SD
     df::Float64
     backend::B
-    active_threads::Int
+    sweep_tasks::Int
+    map_tasks::Int
 end
 
 # -----------------------------------------------------------------------------
@@ -353,11 +407,13 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         logline(
             log_io,
             "  [2/3] optimization sweep ($(n) separations, " *
-            "$(ctx.active_threads) concurrent, optimizer = $(cfg.optimizer)" *
+            "$(ctx.sweep_tasks) concurrent, optimizer = $(cfg.optimizer)" *
             (cfg.n_starts > 1 ? ", $(cfg.n_starts) starts" : "") * ")",
         )
         prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
-        parallel_foreach(n, ctx.active_threads) do i
+        note_progress = stage_progress_hook(
+            "Sweep '$name' ($idx/$total)", n, cfg.progress_log_fraction)
+        parallel_foreach(n, ctx.sweep_tasks) do i
             d = deltas[i]
             p2 = theta0 .+ d .* u_norm
             p2[1] = q * theta0[1]
@@ -407,6 +463,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             gnorm[i] = diagnostics.g_norm
             atbound[i] = diagnostics.at_bound
             next!(prog)
+            note_progress()
         end
         finish!(prog)
 
@@ -508,7 +565,11 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 (err, catch_backtrace())
         end
 
-        logline(log_io, "  [done] sweep '$name' completed in $(format_time(time() - t0))")
+        elapsed = format_time(time() - t0)
+        logline(log_io, "  [done] sweep '$name' completed in $elapsed")
+        # structured run.log record (detached campaigns tail run.log, which
+        # otherwise carries no per-item timing)
+        @info "Sweep '$name' ($idx/$total) completed in $elapsed."
     finally
         close(log_io)
     end
@@ -608,9 +669,15 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         basis = compute_tangent_basis(theta0, ctx.freqs, ctx.Sn, ctx.df, wp)
         logline(log_io, "        basis rank: $(length(basis)) of $(length(theta0))")
 
+        M = n_angles ÷ 2
+        # milestones count against the base direction budget; refinement and
+        # bisection add a small unknown surplus that the hook simply absorbs
+        note_progress = stage_progress_hook(
+            "Map '$name' ($idx/$total): angular sweep", M, cfg.progress_log_fraction)
+
         function eval_angles(phis::Vector{Float64}, prog)
             out = Vector{NTuple{2,Float64}}(undef, length(phis))
-            parallel_foreach(length(phis), ctx.active_threads) do i
+            parallel_foreach(length(phis), ctx.map_tasks) do i
                 dir = zeros(6)
                 dir[px] = cos(phis[i])
                 dir[py] = sin(phis[i])
@@ -618,16 +685,16 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     ctx.freqs, ctx.Sn, ctx.df, wp)
                 out[i] = (K, g)
                 next!(prog)
+                note_progress()
             end
             return out
         end
 
-        M = n_angles ÷ 2
         logline(
             log_io,
             "  [2/2] mirrored angular sweep ($M base directions on [0, π), " *
             "adaptive refinement tol $(cfg.neighbor_ratio_tol), " *
-            "$(cfg.max_refine_levels) levels)",
+            "$(cfg.max_refine_levels) levels; $(ctx.map_tasks) concurrent)",
         )
         prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
         phis = [(k - 1) * π / M for k in 1:M]
@@ -814,10 +881,11 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         if any(!isfinite, r_cap)
             r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
+            polygon_cap = cfg.unbounded_cap_factor * r_cap_max
             @warn "Map '$name': $(count(!isfinite, r_cap)) directions are unbounded " *
                   "(no curvature limit and no finite physical bound); capping them at " *
-                  "$(5r_cap_max) for the polygon. Consider adding [parameter_bounds]."
-            r_cap[.!isfinite.(r_cap)] .= 5r_cap_max
+                  "$polygon_cap for the polygon. Consider adding [parameter_bounds]."
+            r_cap[.!isfinite.(r_cap)] .= polygon_cap
         end
 
         X = r_cap .* dircos
@@ -865,7 +933,11 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 (err, catch_backtrace())
         end
 
-        logline(log_io, "  [done] map '$name' completed in $(format_time(time() - t0))")
+        elapsed = format_time(time() - t0)
+        logline(log_io, "  [done] map '$name' completed in $elapsed")
+        # structured run.log record (see the sweep counterpart)
+        @info "Map '$name' ($idx/$total) completed in $elapsed " *
+              "(prior-limited $(round(100prior_frac, digits = 1))%)."
     finally
         close(log_io)
     end
@@ -926,18 +998,20 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
         )
     end
 
-    active_threads, est_gb = plan_resources(cfg, length(freqs), nch, backend)
+    sweep_tasks, map_tasks, est_gb = plan_resources(cfg, length(freqs), nch, backend)
 
     freqs_dev = backend isa KernelAbstractions.CPU ? freqs : to_backend(freqs, backend)
     Sn_dev = backend isa KernelAbstractions.CPU ? Sn : to_backend(Sn, backend)
     ctx = RunContext(cfg, out_base, freqs, Sn, freqs_dev, Sn_dev, df, backend,
-        active_threads)
+        sweep_tasks, map_tasks)
 
     write_run_metadata(out_base;
         run_id = basename(out_base), git = git_state(project_root),
         julia_version = string(VERSION), hostname = gethostname(),
         started = string(now()), backend = backend_name(backend),
-        julia_threads = Threads.nthreads(), active_tasks = active_threads,
+        cpu_model = Backends.cpu_model(),
+        julia_threads = Threads.nthreads(), active_tasks = sweep_tasks,
+        map_tasks = map_tasks,
         n_frequency_bins = length(freqs), channels = nch,
         estimated_ram_gb = round(est_gb, digits = 2),
         optimizer = string(cfg.optimizer),
@@ -949,8 +1023,9 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
     println("=" ^ 78)
     @info "Run directory: $out_base"
     @info "Grid: $(length(freqs)) bins ($(cfg.f_min) – $(cfg.f_max) Hz, df = $df); channels: $nch"
-    @info "Backend: $(backend_name(backend)); concurrency: $active_threads tasks; " *
-          "estimated peak RAM $(round(est_gb, digits = 2)) GB (budget $(cfg.max_ram_gb) GB)"
+    @info "Backend: $(backend_name(backend)); concurrency: $sweep_tasks sweep / " *
+          "$map_tasks map tasks; estimated peak RAM $(round(est_gb, digits = 2)) GB " *
+          "(budget $(cfg.max_ram_gb) GB)"
     @info "Noise: instrumental Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14" : "disabled")"
     @info "Optimizer: $(cfg.optimizer) with physical bounds"
 
@@ -965,10 +1040,14 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
                 @error "Sweep '$(s["name"])' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
             end
+            maintain_memory!(ctx.backend, cfg.gc_between_stages)
         end
     end
     if cfg.run_2d_mapping && !isempty(cfg.maps)
         @info ">>> 2D confusion mapping ($(length(cfg.maps)) configurations)"
+        ctx.map_tasks != ctx.sweep_tasks &&
+            @info "2D mapping evaluates host-side automatic differentiation " *
+                  "(no GPU kernels): concurrency restored to $(ctx.map_tasks) tasks."
         for (i, m) in enumerate(cfg.maps)
             try
                 run_map(m, i, length(cfg.maps), ctx)
@@ -977,6 +1056,7 @@ function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root:
                 @error "Map '$(m["name"])' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
             end
+            maintain_memory!(ctx.backend, cfg.gc_between_stages)
         end
     end
 

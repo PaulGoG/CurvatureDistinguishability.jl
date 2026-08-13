@@ -8,6 +8,8 @@ function __init__()
 end
 
 Backends.to_backend(data::AbstractArray, ::ROCBackend) = ROCArray(data)
-Backends.backend_name(::ROCBackend) = "AMD ROCm GPU"
+Backends.backend_name(::ROCBackend) =
+    AMDGPU.functional() ? "AMD ROCm GPU ($(AMDGPU.HIP.name(AMDGPU.device())))" :
+    "AMD ROCm GPU"
 
 end

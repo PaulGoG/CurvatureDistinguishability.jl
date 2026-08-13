@@ -8,6 +8,8 @@ function __init__()
 end
 
 Backends.to_backend(data::AbstractArray, ::MetalBackend) = MtlArray(data)
-Backends.backend_name(::MetalBackend) = "Apple Metal GPU"
+Backends.backend_name(::MetalBackend) =
+    Metal.functional() ? "Apple Metal GPU ($(String(Metal.device().name)))" :
+    "Apple Metal GPU"
 
 end

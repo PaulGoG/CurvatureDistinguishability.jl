@@ -79,8 +79,8 @@ backend (`[hardware].gpu_backend = "none"` forces this).
 `configs/production_oneapi.toml` (Intel, chunked Hessian) and
 `configs/production_gpu.toml` (portable, backend auto-detection) are the
 committed GPU run variants (identical
-physics; oneAPI backend with `hessian_chunk = 3` for FP64-emulating Intel
-integrated GPUs). GPU runs are pinned to a single task by the pipeline and all GPU
+physics; oneAPI backend with `hessian_chunk = 3` — the full 49-lane
+nested-dual kernel exceeds the Intel iGPU's kernel-argument size limit). GPU runs are pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
 since the device serializes kernels anyway.
@@ -146,5 +146,5 @@ overwritten.
 | Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an FP64-emulated Intel iGPU (cross-validated ≡ CPU at the 1e-8 level); every GPU failure mode encountered is fixed in code, with the operational hardening summarized in the documentation roadmap (`docs/src/roadmap.md`) |
+| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an Intel iGPU with native FP64 (cross-validated ≡ CPU at the 1e-8 level) and on CUDA/ROCm workstation hardware; every GPU failure mode encountered is fixed in code, with the operational hardening summarized in the documentation roadmap (`docs/src/roadmap.md`) |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
