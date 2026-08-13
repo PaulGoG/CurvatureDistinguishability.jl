@@ -52,7 +52,7 @@ let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
     wanted =
         requested == "auto" ? collect(keys(GPU_PACKAGES)) :
         haskey(GPU_PACKAGES, requested) ? [requested] : String[]
-    if lowercase(String(get(hw, "gpu_backend", "auto"))) != "none"
+    if requested != "none"
         for key in wanted
             pkgname = GPU_PACKAGES[key]
             if Base.find_package(pkgname) === nothing

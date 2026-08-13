@@ -5,8 +5,9 @@
 #
 using Pkg
 Pkg.activate(@__DIR__; io = devnull)
-haskey(Pkg.project().dependencies, "CurvatureDistinguishability") ||
-    Pkg.develop(path = dirname(@__DIR__); io = devnull)
+# develop unconditionally (idempotent): the package is unregistered, so a
+# fresh checkout cannot resolve it from the Project.toml [deps] entry alone
+Pkg.develop(path = dirname(@__DIR__); io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using BenchmarkTools

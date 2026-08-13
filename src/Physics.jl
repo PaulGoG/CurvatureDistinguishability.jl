@@ -59,6 +59,9 @@ const ROBSON_TABLE = (
     ),
 )
 
+# Robson et al. (2019) Eq. 14 galactic-confusion amplitude A_c [Hz^-1]
+const GALACTIC_CONFUSION_AMP = 9.0e-45
+
 """
     NoiseParams(; kwargs...)
 
@@ -78,7 +81,7 @@ the defaults reproduce the published Robson et al. (2019) LISA model.
 """
 Base.@kwdef struct NoiseParams
     confusion_enabled::Bool = true
-    confusion_amp::Float64 = 9.0e-45
+    confusion_amp::Float64 = GALACTIC_CONFUSION_AMP
     confusion_alpha::Float64 = 0.171
     confusion_beta::Float64 = 292.0
     confusion_kappa::Float64 = 1020.0
@@ -98,7 +101,8 @@ $(TYPEDSIGNATURES)
 Build a [`NoiseParams`](@ref) whose confusion coefficients are the Robson
 et al. (2019) Table 1 column nearest to the observation time `T_obs` [s].
 """
-function robson_confusion_params(T_obs::Real; enabled::Bool = true, amp::Real = 9.0e-45)
+function robson_confusion_params(T_obs::Real; enabled::Bool = true,
+    amp::Real = GALACTIC_CONFUSION_AMP)
     row = argmin(r -> abs(log(T_obs / r.tobs)), ROBSON_TABLE)
     return NoiseParams(confusion_enabled = enabled, confusion_amp = amp,
         confusion_alpha = row.alpha, confusion_beta = row.beta,

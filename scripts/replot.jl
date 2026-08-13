@@ -30,8 +30,6 @@ function parse_arguments(argv)
         error("Usage: julia --project scripts/replot.jl <run_dir> [--rho R]")
     run_dir = abspath(args[1])
     isdir(run_dir) || error("Run directory not found: $run_dir")
-    isfile(joinpath(run_dir, "config.toml")) ||
-        error("No config snapshot in $run_dir — cannot recover run metadata.")
     return run_dir, rho
 end
 

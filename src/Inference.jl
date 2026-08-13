@@ -49,11 +49,6 @@ end
 # (observed oneAPI freed-reference failure). The lock is never taken on CPU
 # paths and adds no GPU-side cost, since the device serializes kernels; the
 # cache reduces device allocations to one buffer per (backend, eltype, shape).
-# relative tolerance (of the bound width, or of the coordinate magnitude
-# for one-sided bounds) within which a best-fit coordinate is reported as
-# sitting on an active physical bound
-const AT_BOUND_RTOL = 1e-6
-
 const GPU_LOCK = ReentrantLock()
 const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
 
@@ -401,6 +396,11 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     return Optim.minimum(opt_res), Optim.minimizer(opt_res), opt_res
 end
 
+# relative tolerance (of the bound width, or of the coordinate magnitude
+# for one-sided bounds) within which a best-fit coordinate is reported as
+# sitting on an active physical bound
+const AT_BOUND_RTOL = 1e-6
+
 """
 $(TYPEDSIGNATURES)
 
@@ -417,7 +417,7 @@ function optimization_diagnostics(opt_res::Optim.MultivariateOptimizationResults
             bounds.periodic[i] && continue
             lo, hi = bounds.lower[i], bounds.upper[i]
             tol =
-                isfinite(lo) && isfinite(hi) ? 1e-6 * (hi - lo) :
+                isfinite(lo) && isfinite(hi) ? AT_BOUND_RTOL * (hi - lo) :
                 AT_BOUND_RTOL * max(1.0, abs(best_fit[i]))
             (isfinite(lo) && abs(best_fit[i] - lo) <= tol) && (at_bound = true)
             (isfinite(hi) && abs(best_fit[i] - hi) <= tol) && (at_bound = true)

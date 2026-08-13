@@ -36,6 +36,17 @@ public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask
 # Helpers
 # -----------------------------------------------------------------------------
 
+# minimum clean points for the slope and ratio-correction fits (shared with
+# the display-time refit in RunFigures)
+const MIN_FIT_POINTS = 3
+# determinant underflow guard of the 2×2 ratio-correction normal equations
+const DET_UNDERFLOW = 1e-300
+# angular tolerance below which two map directions are the same vertex
+const ANGLE_DEDUPE_TOL = 1e-10
+# prior-limited boundary fraction above which the spin-plane χ_eff
+# degeneracy advisory is logged
+const SPIN_PRIOR_NOTE_FRACTION = 0.25
+
 format_time(seconds) = @sprintf(
     "%02d:%02d:%02d",
     divrem(divrem(floor(Int, seconds), 60)[1], 60)...,
@@ -108,7 +119,7 @@ relative to `D²_th`. Returns NaNs with fewer than 3 points.
 """
 function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     n = length(deltas)
-    n >= 3 || return NaN, NaN, NaN
+    n >= MIN_FIT_POINTS || return NaN, NaN, NaN
     y = ratio .- 1.0
     s2 = sum(d^2 for d in deltas)
     s3 = sum(d^3 for d in deltas)
@@ -116,7 +127,7 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     b1 = sum(deltas .* y)
     b2 = sum(deltas .^ 2 .* y)
     det = s2 * s4 - s3^2
-    abs(det) < 1e-300 && return NaN, NaN, NaN
+    abs(det) < DET_UNDERFLOW && return NaN, NaN, NaN
     c1 = (s4 * b1 - s3 * b2) / det
     c2 = (s2 * b2 - s3 * b1) / det
     resid = y .- c1 .* deltas .- c2 .* deltas .^ 2
@@ -341,8 +352,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
     theta0 = Float64.(sweep["theta_0"])
     u_raw = Float64.(sweep["u_dir"])
     rho_sq = Float64(get(sweep, "rho_thresh", cfg.sweep_rho_thresh))^2
-    q = Float64(get(sweep, "amp_ratio", 1.0))          # A₂/A₁
-    amp_prefactor = (2q / (1 + q))^2                   # (A_harm/A)², = 1 at q = 1
+    amp_ratio = Float64(get(sweep, "amp_ratio", 1.0))       # A₂/A₁
+    amp_prefactor = (2amp_ratio / (1 + amp_ratio))^2         # (A_harm/A)², = 1 at amp_ratio = 1
 
     out_dir = joinpath(ctx.out_base, "sweeps", name)
     mkpath(out_dir)
@@ -354,10 +365,10 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, "  base parameters : $theta0")
         logline(log_io, "  direction       : $u_raw")
         logline(log_io, "  rho^2 threshold : $rho_sq")
-        q != 1.0 && logline(
+        amp_ratio != 1.0 && logline(
             log_io,
-            @sprintf("  amplitude ratio : q = %.4g (A_harm prefactor %.5f)",
-                q, amp_prefactor)
+            @sprintf("  amplitude ratio : A₂/A₁ = %.4g (A_harm prefactor %.5f)",
+                amp_ratio, amp_prefactor)
         )
 
         logline(log_io, "  [1/3] manifold geometry (K(u), g(u,u))")
@@ -384,7 +395,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         # verify the second source stays within the physical bounds at δ_max
         theta_far = theta0 .+ maximum(deltas) .* u_norm
-        theta_far[1] = q * theta0[1]
+        theta_far[1] = amp_ratio * theta0[1]
         for i in 1:6
             cfg.bounds.periodic[i] && continue
             if !(cfg.bounds.lower[i] <= theta_far[i] <= cfg.bounds.upper[i])
@@ -416,7 +427,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         parallel_foreach(n, ctx.sweep_tasks) do i
             d = deltas[i]
             p2 = theta0 .+ d .* u_norm
-            p2[1] = q * theta0[1]
+            p2[1] = amp_ratio * theta0[1]
             h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
             h2 = scaled_waveform_model(p2, ctx.freqs, wp)
             ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
@@ -425,9 +436,10 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             if !(ctx.backend isa KernelAbstractions.CPU)
                 data = map(a -> to_backend(a, ctx.backend), data)
             end
-            # degenerate effective source: amplitude (1+q)A at the weighted midpoint
-            guess = theta0 .+ (q / (1 + q) * d) .* u_norm
-            guess[1] = (1 + q) * theta0[1]
+            # degenerate effective source: amplitude (1+q)A at the weighted
+            # midpoint, with q = A₂/A₁ the amplitude ratio
+            guess = theta0 .+ (amp_ratio / (1 + amp_ratio) * d) .* u_norm
+            guess[1] = (1 + amp_ratio) * theta0[1]
 
             freqs_active =
                 ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
@@ -474,7 +486,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         floor_level = optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio)
         clean = above_floor_mask(D2_num, floor_level)
         slope, slope_err =
-            count(clean) >= 3 ? loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
+            count(clean) >= MIN_FIT_POINTS ?
+            loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
         logline(
             log_io,
             @sprintf(
@@ -489,8 +502,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             logline(
                 log_io,
                 @sprintf(
-                    "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (10%%-validity δ ≈ %.3g)",
-                    c1, c1_err, c2, delta_valid)
+                    "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
+                    c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
             )
         if cfg.n_starts > 1 && maximum(ms_gain) > cfg.secondary_minimum_gain
             @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
@@ -526,7 +539,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         pos = findall(>(0), D2_num)
         idx_star = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
         d_star = deltas[idx_star]
-        spec, meta = residual_spectrum(theta0, u_norm, q, d_star, best_fits[idx_star, :],
+        spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
+            best_fits[idx_star, :],
             ctx, wp)
         CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
         open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
@@ -537,7 +551,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
                     "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
                     "df" => ctx.df, "f_min" => cfg.f_min, "f_max" => cfg.f_max,
-                    "delta_min" => delta_min, "amp_ratio" => q,
+                    "delta_min" => delta_min, "amp_ratio" => amp_ratio,
                     "slope" => slope, "slope_err" => slope_err,
                     "c1" => c1, "c1_err" => c1_err, "c2" => c2,
                     "delta_valid" => delta_valid,
@@ -556,7 +570,6 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             rfig = residual_figure(
                 spec,
                 (delta_star = d_star, df = ctx.df,
-                    f_min = cfg.f_min, f_max = cfg.f_max,
                     d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]),
             )
             save_figure(rfig, joinpath(out_dir, "residual_plot"))
@@ -581,10 +594,10 @@ Decimated residual spectrum (density units, `d(SNR²)/df = 4|x|²/Sn`) of the
 two-source data, the best-fit single source and the unabsorbed residual, for
 channels A and E.
 """
-function residual_spectrum(theta0, u_norm, q, d_star, best_fit,
+function residual_spectrum(theta0, u_norm, amp_ratio, d_star, best_fit,
     ctx::RunContext, wp::WaveformParams)
     p2 = theta0 .+ d_star .* u_norm
-    p2[1] = q * theta0[1]
+    p2[1] = amp_ratio * theta0[1]
     h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
     h2 = scaled_waveform_model(p2, ctx.freqs, wp)
     ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
@@ -784,8 +797,9 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 phis_new = Float64[]
                 for b in eachindex(lo)
                     phi_vertex = mod((lo[b] + hi[b]) / 2, Float64(π))
-                    any(p -> abs(p - phi_vertex) < 1e-10, phis_new) && continue
-                    any(e -> abs(e.phi - phi_vertex) < 1e-10, entries) && continue
+                    any(p -> abs(p - phi_vertex) < ANGLE_DEDUPE_TOL, phis_new) && continue
+                    any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+                        continue
                     push!(phis_new, phi_vertex)
                 end
                 if !isempty(phis_new)
@@ -827,8 +841,10 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 for k in eachindex(corner_alphas)
                     capped_at(corner_alphas[k], curvature_corner[k][1]) || continue
                     phi_vertex = mod(corner_alphas[k], Float64(π))
-                    any(e -> abs(e.phi - phi_vertex) < 1e-10, entries) && continue
-                    any(t -> abs(t[1] - phi_vertex) < 1e-10, corner_new) && continue
+                    any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+                        continue
+                    any(t -> abs(t[1] - phi_vertex) < ANGLE_DEDUPE_TOL, corner_new) &&
+                        continue
                     push!(
                         corner_new,
                         (phi_vertex, curvature_corner[k][1], curvature_corner[k][2]),
@@ -901,7 +917,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 log_io,
                 @sprintf("        degenerate directions    : %.1f%%", 100degen_frac)
             )
-        if px in (5, 6) && py in (5, 6) && prior_frac > 0.25
+        if px in (5, 6) && py in (5, 6) && prior_frac > SPIN_PRIOR_NOTE_FRACTION
             logline(
                 log_io,
                 "  [note] the waveform depends on the spins only through " *
@@ -923,7 +939,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
 
         try
-            fig = zone_figure(angle, X, Y, collect(prior_lim);
+            fig = zone_figure(X, Y, collect(prior_lim);
                 px = px, py = py, box = box,
                 prior_frac = prior_frac, degenerate_frac = degen_frac,
                 x_math = r_math .* dircos, y_math = r_math .* dirsin)
@@ -972,7 +988,7 @@ function run_pipeline(config_path::String, project_root::String, output_dir::Str
     tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
     try
         with_logger(tee) do
-            _run_pipeline(cfg, config_path, project_root, out_base)
+            _run_pipeline(cfg, project_root, out_base)
         end
     finally
         close(log_stream)
@@ -980,8 +996,7 @@ function run_pipeline(config_path::String, project_root::String, output_dir::Str
     return out_base
 end
 
-function _run_pipeline(cfg::PipelineSettings, config_path::String, project_root::String,
-    out_base::String)
+function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::String)
     start_time = time()
     df = 1.0 / cfg.T_obs
     freqs = collect(cfg.f_min:df:cfg.f_max)

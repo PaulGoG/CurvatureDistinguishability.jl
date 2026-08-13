@@ -58,7 +58,6 @@ struct PipelineSettings
     max_threads::Int
     hessian_chunk::Int
     gc_between_stages::Bool
-    heap_size_hint_gb::Float64
     # safety
     max_ram_gb::Float64
     bytes_per_bin_per_task_gpu::Int
@@ -73,6 +72,10 @@ struct PipelineSettings
     maps::Vector{Dict{String,Any}}
 end
 
+"""
+Recognized configuration keys per `[section]` context — the whitelist behind
+[`warn_unknown_keys`](@ref)'s typo protection.
+"""
 const KNOWN_KEYS = Dict(
     "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
         "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
@@ -275,17 +278,22 @@ function load_and_validate_config(config_path::AbstractString)
 
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
+    # defaults are owned by WaveformParams — never restated as literals here
+    wp_default = WaveformParams()
     wp = WaveformParams(
-        mass_scale = get_number(phys, "mass_scale", 10.0, "physics"),
-        time_scale = get_number(phys, "time_scale", 1000.0, "physics"),
-        amp_scale = get_number(phys, "amp_scale", 1e-21, "physics"),
-        eta = get_number(phys, "eta", 0.25, "physics"),
-        amp_33_factor = get_number(phys, "amp_33_factor", 0.1, "physics"),
-        sky_theta = get_number(phys, "sky_theta", 1.047, "physics"),
-        sky_phi = get_number(phys, "sky_phi", 0.0, "physics"),
-        inclination = get_number(phys, "inclination", 0.523, "physics"),
-        polarization = get_number(phys, "polarization", 0.0, "physics"),
-        include_t_channel = get_boolean(phys, "include_t_channel", false, "physics"),
+        mass_scale = get_number(phys, "mass_scale", wp_default.mass_scale, "physics"),
+        time_scale = get_number(phys, "time_scale", wp_default.time_scale, "physics"),
+        amp_scale = get_number(phys, "amp_scale", wp_default.amp_scale, "physics"),
+        eta = get_number(phys, "eta", wp_default.eta, "physics"),
+        amp_33_factor = get_number(
+            phys, "amp_33_factor", wp_default.amp_33_factor, "physics"),
+        sky_theta = get_number(phys, "sky_theta", wp_default.sky_theta, "physics"),
+        sky_phi = get_number(phys, "sky_phi", wp_default.sky_phi, "physics"),
+        inclination = get_number(phys, "inclination", wp_default.inclination, "physics"),
+        polarization = get_number(
+            phys, "polarization", wp_default.polarization, "physics"),
+        include_t_channel = get_boolean(
+            phys, "include_t_channel", wp_default.include_t_channel, "physics"),
     )
     for (fname, val, lo, hi) in (("mass_scale", wp.mass_scale, 0.0, Inf),
         ("time_scale", wp.time_scale, 0.0, Inf),
@@ -431,8 +439,12 @@ function load_and_validate_config(config_path::AbstractString)
     max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
     gpu_bytes = get_integer(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
+    gpu_bytes > 0 ||
+        error("[safety].bytes_per_bin_per_task_gpu must be > 0, got $gpu_bytes")
     max_vram_gb = get_number(safety, "max_vram_gb", 8.0, "safety")
+    max_vram_gb > 0 || error("[safety].max_vram_gb must be > 0, got $max_vram_gb")
     os_vram_gb = get_number(safety, "os_vram_overhead_gb", 1.0, "safety")
+    os_vram_gb >= 0 || error("[safety].os_vram_overhead_gb must be >= 0, got $os_vram_gb")
 
     bounds = try
         bounds_from_config(get(config, "parameter_bounds", Dict{String,Any}()))
@@ -521,7 +533,7 @@ function load_and_validate_config(config_path::AbstractString)
         validity_fraction, spectrum_windows,
         T_obs, f_min, f_max, wp, noise,
         map_n_angles, ratio_tol, refine_levels, corner_iters, unbounded_cap,
-        gpu_backend, max_threads, hessian_chunk, gc_between_stages, heap_size_hint_gb,
+        gpu_backend, max_threads, hessian_chunk, gc_between_stages,
         max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
         monitoring_enabled, progress_log_fraction,
         bounds, sweeps, maps)

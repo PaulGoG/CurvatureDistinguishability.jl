@@ -5,7 +5,7 @@ policy (log 1-2-5 series, axis offset multipliers, rational-pi ticks).
 module Plotting
 
 using DocStringExtensions: TYPEDSIGNATURES
-using CairoMakie: CairoMakie, Axis, DataAspect, Figure, Label, Legend,
+using CairoMakie: Axis, DataAspect, Figure, Label, Legend,
     LinearTicks, Point2f, Relative, Theme, band!,
     hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
     poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
@@ -407,8 +407,9 @@ shade both channels and are covered by the bottom panel's y-range (depth-
 capped so a cancellation spike cannot compress the curves). Frame limits
 follow the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
-`spec` is the (log-uniformly decimated) spectrum table; `meta` carries
-`delta_star`, `df`, and the integral annotations.
+`spec` is the (log-uniformly decimated) spectrum table; `meta` must carry
+the fields `delta_star`, `df`, `d2_num` and `d2_theo` (evaluation
+separation, frequency resolution, and the two integral annotations).
 """
 function residual_figure(spec, meta)
     with_theme(publication_theme()) do
@@ -559,7 +560,7 @@ the annotation names the active walls with their values (from `box`, e.g.
 "… prior-limited by Δχ₁ = 0.2"). `DataAspect` is applied only for same-unit
 planes (spin–spin).
 """
-function zone_figure(angle::AbstractVector, x::AbstractVector, y::AbstractVector,
+function zone_figure(x::AbstractVector, y::AbstractVector,
     prior_limited::AbstractVector{Bool};
     px::Int, py::Int, box::NTuple{4,Float64},
     prior_frac::Real, degenerate_frac::Real,

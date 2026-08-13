@@ -22,6 +22,7 @@ CurvatureDistinguishability/
 ├── Manifest.toml           # version-controlled — portability guarantee
 ├── configs/
 │   ├── quickstart.toml     # minutes-scale demonstration run (the default)
+│   ├── quickstart_gpu.toml # quickstart physics on the GPU path (smoke test)
 │   ├── production_cpu.toml # CPU reference campaign configuration
 │   ├── production_gpu.toml # portable GPU variant (gpu_backend = "auto")
 │   └── production_oneapi.toml # GPU variant (oneAPI backend, chunked Hessian)
@@ -50,7 +51,9 @@ CurvatureDistinguishability/
 │   └── fixtures/reference/ # committed golden-value regression fixtures
 ├── bench/                  # BenchmarkTools scripts (own environment)
 ├── docs/                   # Documenter.jl sources
-├── data/run_<hash>/        # provenance-stamped pipeline runs (git-ignored)
+├── data/
+│   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
+│   └── logs/               # detached-launch console logs (git-ignored)
 └── plots/                  # flat regenerable PNG browsing view (git-ignored)
 ```
 
@@ -133,9 +136,10 @@ overwritten.
   (`n_starts`, seeded by `[pipeline].rng_seed`).
 - **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
   boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
-  `confusion_zone.{pdf,png}` with the physical prior box drawn and
-  prior-limited boundary segments visually distinct from curvature-limited
-  ones. K is computed on [0, π) only and mirrored (K(u) is exactly even),
+  `confusion_zone.{pdf,png}` with prior-limited boundary segments (wall
+  color, active wall values annotated) visually distinct from
+  curvature-limited ones; the uncapped mathematical contour continues past
+  each wall as a dashed curve. K is computed on [0, π) only and mirrored (K(u) is exactly even),
   with adaptive angular refinement near boundary spikes.
 
 ## Status of components

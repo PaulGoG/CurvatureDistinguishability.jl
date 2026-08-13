@@ -9,13 +9,14 @@ module RunFigures
 
 using DocStringExtensions: TYPEDSIGNATURES
 using CSV: CSV
-using DataFrames: DataFrames, DataFrame, nrow
+using DataFrames: DataFrame, nrow
 using TOML: TOML
 using ..Bounds: deviation_box
 using ..Geometry: K_UNDERFLOW
 using ..Config: load_and_validate_config
 using ..Plotting
-using ..Orchestrator: loglog_slope, ratio_correction_fit, above_floor_mask
+using ..Orchestrator: MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
+    above_floor_mask
 
 export run_cases, sweep_figures, zone_map_figure
 
@@ -77,7 +78,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     clean = above_floor_mask(res.D2_Numerical, floor_level)
     if refit
         slope, slope_err =
-            count(clean) >= 3 ?
+            count(clean) >= MIN_FIT_POINTS ?
             loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
         ratio = res.D2_Numerical ./ res.D2_Theoretical
         c1, _, c2 = ratio_correction_fit(res.Delta[clean], ratio[clean])
@@ -99,12 +100,10 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     residual = nothing
     spec_path = joinpath(dir, "residual_spectrum.csv")
     if rho === nothing && isfile(spec_path)
-        cfg = run_config(run_dir)
         spec = CSV.read(spec_path, DataFrame)
         residual = residual_figure(spec,
             (delta_star = Float64(get(meta, "delta_star", NaN)),
                 df = Float64(get(meta, "df", 1.0)),
-                f_min = cfg.f_min, f_max = cfg.f_max,
                 d2_num = Float64(get(meta, "d2_num_star", NaN)),
                 d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
     end
@@ -189,7 +188,7 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
             G_uu = hasproperty(contour_stored, :G_uu) ?
                    contour_stored.G_uu : fill(NaN, n))
     end
-    figure = zone_figure(contour_stored.Angle, X, Y, prior;
+    figure = zone_figure(X, Y, prior;
         px = px, py = py, box = box,
         prior_frac = count(prior) / max(1, length(prior)),
         degenerate_frac = count(degen) / max(1, length(degen)),

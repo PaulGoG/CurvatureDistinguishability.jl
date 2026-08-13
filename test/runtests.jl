@@ -7,9 +7,7 @@ using CSV
 using DataFrames
 using ForwardDiff
 using KernelAbstractions
-using Statistics
 using TOML
-using Logging
 
 const CD = CurvatureDistinguishability
 const FIXDIR = joinpath(@__DIR__, "fixtures", "reference")
@@ -458,11 +456,16 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 load_and_validate_config(write_cfg(dir, "[safety]\nmax_vram_gb = 6.0\n"))
             @test cfg_vs.max_vram_gb == 6.0
 
-            # all shipped configurations must validate as-is
-            for shipped in ("production_cpu.toml", "production_oneapi.toml")
+            # all shipped configurations must validate as-is (production
+            # variants carry the full 7-sweep campaign; quickstart carries 2)
+            for shipped in readdir(joinpath(dirname(@__DIR__), "configs"))
                 cfg_ship = load_and_validate_config(
                     joinpath(dirname(@__DIR__), "configs", shipped))
-                @test cfg_ship.n_deltas == 30 && length(cfg_ship.sweeps) == 7
+                if startswith(shipped, "production")
+                    @test cfg_ship.n_deltas == 30 && length(cfg_ship.sweeps) == 7
+                else
+                    @test length(cfg_ship.sweeps) == 2
+                end
             end
             # analysis tunables: defaults, override roundtrip, validation
             @test cfg_def.floor_detection_ratio == 2.0
