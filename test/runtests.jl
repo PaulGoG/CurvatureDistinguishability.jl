@@ -603,6 +603,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test any(≈(1.0), v125) && any(≈(2e-1), v125)
         @test l125[findfirst(≈(1.0), v125)].s == "\$1\$"
         @test !any(l -> occursin("10^{0}", l.s), l125)
+        # …and 10¹ as plain 10 (products fold: 2×10¹ → 20)
+        @test l0[2].s == "\$10\$"
+        v125b, l125b = CD.Plotting.log_ticks_125(5.0, 60.0)
+        @test l125b[findfirst(≈(10.0), v125b)].s == "\$10\$"
+        @test l125b[findfirst(≈(20.0), v125b)].s == "\$20\$"
+        # annotations go scientific outside exponents −1..1, 3 significant digits
+        @test CD.Plotting.sci_latex(0.00173) == "1.73\\times 10^{-3}"
+        @test CD.Plotting.sci_latex(23.4) == "23.4"
 
         # offset ticks (confusion-map axes): one factored power of 10 with
         # integer mantissas preferring multiples of 5, limits snapped outward

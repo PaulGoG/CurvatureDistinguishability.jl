@@ -83,7 +83,8 @@ function decade_ticks(lo::Real, hi::Real; maxticks::Int = 7)
         throw(ArgumentError("decade_ticks requires finite positive bounds, got ($lo, $hi)"))
     pmin = ceil(Int, log10(lo) - 1e-9)
     pmax = floor(Int, log10(hi) + 1e-9)
-    decade_label(p) = p == 0 ? L"1" : L"10^{%$p}" # 10⁰ always shows as 1
+    # 10⁰ always shows as 1 and 10¹ as 10 (never a redundant power form)
+    decade_label(p) = p == 0 ? L"1" : p == 1 ? L"10" : L"10^{%$p}"
     if pmax < pmin # no integer decade inside the range
         p = round(Int, log10(sqrt(lo * hi)))
         return [10.0^p], [decade_label(p)]
@@ -115,10 +116,12 @@ function log_ticks_125(lo::Real, hi::Real)
         v = m * 10.0^p
         (lo * (1 - 1e-9) <= v <= hi * (1 + 1e-9)) || continue
         push!(vals, v)
-        # 10⁰ never appears as a factor: 1, 2, 5 in the unit decade
+        # 10⁰ and 10¹ never appear as factors: 1, 2, 5 in the unit decade
+        # and 10, 20, 50 in the tens decade
         push!(
             labels,
             p == 0 ? latexstring(m) :
+            p == 1 ? latexstring(10m) :
             m == 1 ? latexstring("10^{", p, "}") :
             latexstring(m, "\\times 10^{", p, "}"),
         )
@@ -152,14 +155,16 @@ end
 """
 $(TYPEDSIGNATURES)
 
-LaTeX fragment for a scalar: plain `%.4g` when the exponent is small,
-`m×10^e` otherwise — for annotations, never bare `1e-05` e-notation.
+LaTeX fragment for a scalar with `sig` significant digits: plain decimal
+only while the exponent is in −1..1 (the range where the power-of-ten form
+would collapse anyway: 5×10⁰ → 5, 2×10¹ → 20, 2×10⁻¹ → 0.2), `m×10^e`
+everywhere else — for annotations, never bare `1e-05` e-notation.
 """
 function sci_latex(v::Real; sig::Int = 3)
     v == 0 && return "0"
     isfinite(v) || return string(v)
     e = floor(Int, log10(abs(v)))
-    -3 <= e <= 3 && return @sprintf("%.4g", round(v, sigdigits = sig + 1))
+    -1 <= e <= 1 && return @sprintf("%.4g", round(v, sigdigits = sig))
     m = round(v / 10.0^e, sigdigits = sig)
     return string(@sprintf("%g", m), "\\times 10^{", e, "}")
 end
@@ -322,18 +327,26 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
                 fontsize = 17, color = :grey35)
         end
         if ylo < rho_sq < yhi
+            # the threshold can sit close to the frame top (near-degenerate
+            # sweeps end just past D² = ρ²): guarantee headroom for the label
+            yhi = max(yhi, rho_sq * 30)
+            ylims!(ax1, ylo, yhi)
             hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
-            text!(ax1, maximum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
-                align = (:right, :bottom), fontsize = 18, color = :grey35)
+            # left side: the δ⁴ line is many decades below the threshold
+            # there, so the label cannot collide with data or fit
+            text!(ax1, minimum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
+                align = (:left, :bottom), offset = (2, 3),
+                fontsize = 18, color = :grey35)
         end
         if minimum(deltas) < delta_min < maximum(deltas)
             vlines!(ax1, [delta_min]; color = :grey35, linewidth = 1.8, linestyle = :dash)
             text!(ax1, delta_min, ylo; text = L"\delta_{\mathrm{min}}",
-                align = (:left, :bottom), fontsize = 18, color = :grey35)
+                align = (:right, :bottom), offset = (-5, 4),
+                fontsize = 18, color = :grey35)
         end
 
         ax2 = Axis(fig[2, 1]; xscale = log10,
-            xlabel = L"\mathrm{parameter\ separation}\ \delta",
+            xlabel = L"\delta",
             ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = x_ticks,
             yticklabelspace = 66.0)
         # The ratio panel repeats the top panel's vocabulary exactly: dark-red
@@ -389,6 +402,9 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         linkxaxes!(ax1, ax2)
         hidexdecorations!(ax1; grid = false, ticks = false)
         rowsize!(fig.layout, 1, Relative(0.68))
+        # clearance between the linked panels so the top panel's lowest and
+        # the ratio panel's highest y-tick labels can never meet
+        rowgap!(fig.layout, 16)
         return fig
     end
 end
@@ -428,9 +444,18 @@ function residual_figure(spec, meta)
         col_data_A, col_bf_A, col_res_A = :steelblue4, :deepskyblue, :dodgerblue2
         col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
 
+        # explicit decade ticks (Makie's default log labels would render the
+        # unit and tens decades as 10⁰/10¹ instead of 1/10)
+        sig_pos = filter(
+            >(0),
+            vcat(spec.sig_min_A, spec.sig_min_E,
+                spec.sig_max_A, spec.sig_max_E),
+        )
         ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
             ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-            xticks = x_ticks, yticklabelspace = 70.0)
+            xticks = x_ticks,
+            yticks = decade_ticks(minimum(sig_pos), maximum(sig_pos)),
+            yticklabelspace = 70.0)
         band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
         band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
         dA = lines!(ax1, spec.f, spec.sig_rms_A; color = col_data_A, linewidth = 3.6)
@@ -462,8 +487,9 @@ function residual_figure(spec, meta)
         # 1/Δf reference cannot be drawn inside the frame)
         Label(fig[2, 1],
             latexstring("\\delta^* = ", sci_latex(meta.delta_star),
-                ";\\;\\; \\int\\!\\mathrm{d}f = D^2 = ", sci_latex(meta.d2_num),
-                "\\;\\; (\\mathrm{th.}\\ ", sci_latex(meta.d2_theo), ")");
+                ":\\;\\; D^2_{\\delta^*} = ", sci_latex(meta.d2_num),
+                "\\;\\; (D^2_{\\mathrm{th},\\,\\delta^*} = ",
+                sci_latex(meta.d2_theo), ")");
             fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
             padding = (4, 0, 2, 8))
         if !noise_in_frame
