@@ -13,10 +13,13 @@ using CairoMakie: Axis, DataAspect, Figure, Label, Legend,
 using LaTeXStrings: LaTeXStrings, @L_str, latexstring
 using MathTeXEngine: texfont
 using Printf: @sprintf
+using UnicodePlots: UnicodePlots
 using ..Provenance: backup_existing!
 
 export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
-public decade_ticks, pi_ticks
+public decade_ticks, pi_ticks, log_ticks_125, offset_ticks, sci_tick_labels,
+    sci_latex, coef_latex, axis_exponent, sweep_diagnostic_panel,
+    map_diagnostic_panel
 
 """
 Short LaTeX axis labels for the six model parameters (deviation form is
@@ -66,6 +69,45 @@ function save_figure(fig, base_path::AbstractString)
     png = backup_existing!(base_path * ".png")
     save(png, fig; px_per_unit = 4)
     return (pdf, png)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+In-terminal diagnostic of a completed sweep: log-log `D²` against the
+theoretical prediction (UnicodePlots), followed by the clean-point count and
+fitted slope. Opt-in via `[monitoring].enabled`; printed to stdout on TTY
+sessions only, never into the file logs.
+"""
+function sweep_diagnostic_panel(deltas::AbstractVector, D2_num::AbstractVector,
+    D2_theo::AbstractVector, clean::AbstractVector{Bool},
+    slope::Real, slope_err::Real)
+    pos = D2_num .> 0
+    any(pos) || return "sweep diagnostic: no positive D² values"
+    plt = UnicodePlots.lineplot(log10.(collect(deltas)), log10.(collect(D2_theo));
+        name = "theory", xlabel = "log₁₀ δ",
+        ylabel = "log₁₀ D²", width = 64, height = 14)
+    UnicodePlots.scatterplot!(plt, log10.(collect(deltas[pos])), log10.(D2_num[pos]);
+        name = "numerical")
+    footer = @sprintf("clean points %d/%d; fitted slope %.4f ± %.4f",
+        count(clean), length(clean), slope, slope_err)
+    return sprint(io -> show(io, plt)) * "\n" * footer
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+In-terminal diagnostic of a completed confusion map: capped boundary radius
+against direction angle (UnicodePlots), followed by the prior-limited
+fraction. Opt-in via `[monitoring].enabled`; stdout on TTY sessions only.
+"""
+function map_diagnostic_panel(angle::AbstractVector, r_cap::AbstractVector,
+    prior_frac::Real)
+    plt = UnicodePlots.lineplot(collect(angle), collect(r_cap);
+        xlabel = "φ [rad]", ylabel = "r_cap",
+        width = 64, height = 14)
+    footer = @sprintf("prior-limited directions: %.1f%%", 100 * prior_frac)
+    return sprint(io -> show(io, plt)) * "\n" * footer
 end
 
 # --- tick utilities ---------------------------------------------------------

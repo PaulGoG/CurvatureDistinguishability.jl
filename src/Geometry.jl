@@ -12,8 +12,8 @@ using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
     K_UNDERFLOW,
-    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
-    flat_response, GS_NORM_TOL
+    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
+public flat_response, GS_NORM_TOL, value_and_directional_derivs
 
 """
 Gram–Schmidt drop tolerance: candidate tangent vectors whose orthogonalized

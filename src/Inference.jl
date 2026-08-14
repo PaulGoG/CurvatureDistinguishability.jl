@@ -17,7 +17,7 @@ using ..Backends
 using ..Bounds
 
 export calculate_numerical_distance, optimization_diagnostics, loss_function
-public clear_device_buffers!
+public clear_device_buffers!, column_sums_via!
 
 # --- loss -------------------------------------------------------------------
 

@@ -310,76 +310,18 @@ function load_and_validate_config(config_path::AbstractString)
     noise_cfg = get(config, "noise", Dict{String,Any}())
     warn_unknown_keys(noise_cfg, "noise")
     base_noise = robson_confusion_params(T_obs)
-    noise = NoiseParams(
+    # every numeric field defaults to the Robson Table-1 selection; one loop
+    # instead of twelve mechanical get_number repetitions
+    noise_numeric = (:confusion_amp, :confusion_alpha, :confusion_beta,
+        :confusion_kappa, :confusion_gamma, :confusion_fk, :arm_length,
+        :oms_amplitude, :oms_reddening_freq, :acc_amplitude, :acc_knee_low,
+        :acc_knee_high)
+    noise_values = Dict(
+        field => get_number(noise_cfg, String(field), getfield(base_noise, field),
+            "noise") for field in noise_numeric)
+    noise = NoiseParams(;
         confusion_enabled = get_boolean(noise_cfg, "confusion_enabled", true, "noise"),
-        confusion_amp = get_number(
-            noise_cfg,
-            "confusion_amp",
-            base_noise.confusion_amp,
-            "noise",
-        ),
-        confusion_alpha = get_number(
-            noise_cfg,
-            "confusion_alpha",
-            base_noise.confusion_alpha,
-            "noise",
-        ),
-        confusion_beta = get_number(
-            noise_cfg,
-            "confusion_beta",
-            base_noise.confusion_beta,
-            "noise",
-        ),
-        confusion_kappa = get_number(
-            noise_cfg,
-            "confusion_kappa",
-            base_noise.confusion_kappa,
-            "noise",
-        ),
-        confusion_gamma = get_number(
-            noise_cfg,
-            "confusion_gamma",
-            base_noise.confusion_gamma,
-            "noise",
-        ),
-        confusion_fk = get_number(
-            noise_cfg,
-            "confusion_fk",
-            base_noise.confusion_fk,
-            "noise",
-        ),
-        arm_length = get_number(noise_cfg, "arm_length", base_noise.arm_length, "noise"),
-        oms_amplitude = get_number(
-            noise_cfg,
-            "oms_amplitude",
-            base_noise.oms_amplitude,
-            "noise",
-        ),
-        oms_reddening_freq = get_number(
-            noise_cfg,
-            "oms_reddening_freq",
-            base_noise.oms_reddening_freq,
-            "noise",
-        ),
-        acc_amplitude = get_number(
-            noise_cfg,
-            "acc_amplitude",
-            base_noise.acc_amplitude,
-            "noise",
-        ),
-        acc_knee_low = get_number(
-            noise_cfg,
-            "acc_knee_low",
-            base_noise.acc_knee_low,
-            "noise",
-        ),
-        acc_knee_high = get_number(
-            noise_cfg,
-            "acc_knee_high",
-            base_noise.acc_knee_high,
-            "noise",
-        ),
-    )
+        noise_values...)
     for field in (:arm_length, :oms_amplitude, :oms_reddening_freq,
         :acc_amplitude, :acc_knee_low, :acc_knee_high)
         getfield(noise, field) > 0 ||

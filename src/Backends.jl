@@ -7,8 +7,8 @@ module Backends
 using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, CPU
 
-export get_best_backend, to_backend, backend_name, register_backend!
-public reclaim_device_memory!, cpu_model, device_fingerprint
+export get_best_backend, to_backend, backend_name
+public register_backend!, reclaim_device_memory!, cpu_model, device_fingerprint
 
 """
 Registry of GPU backend probes, populated by the package extensions

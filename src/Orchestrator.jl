@@ -17,7 +17,6 @@ using ProgressMeter: Progress, ProgressUnknown, finish!, next!
 using Logging: Logging, global_logger, with_logger
 using LoggingExtras: FormatLogger, MinLevelLogger, TeeLogger
 using KernelAbstractions: KernelAbstractions
-using UnicodePlots: UnicodePlots
 
 using ..Backends
 using ..Physics
@@ -29,6 +28,7 @@ using ..Bounds
 using ..Config
 using ..Provenance
 using ..Plotting
+using ..Plotting: map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
     MIN_FIT_POINTS, above_floor_mask, loglog_slope, optimizer_floor,
     ratio_correction_fit
@@ -44,6 +44,9 @@ const ANGLE_DEDUPE_TOL = 1e-10
 # prior-limited boundary fraction above which the spin-plane χ_eff
 # degeneracy advisory is logged
 const SPIN_PRIOR_NOTE_FRACTION = 0.25
+# simultaneously live whitened-vector buffers per nested-dual evaluation in
+# the plan_resources memory model (value + two derivative work arrays)
+const NESTED_DUAL_EVAL_BUFFERS = 3
 
 format_time(seconds) = @sprintf(
     "%02d:%02d:%02d",
@@ -94,45 +97,6 @@ physics_kwargs(wp::WaveformParams) = (
 """
 $(TYPEDSIGNATURES)
 
-In-terminal diagnostic of a completed sweep: log-log `D²` against the
-theoretical prediction (UnicodePlots), followed by the clean-point count and
-fitted slope. Opt-in via `[monitoring].enabled`; printed to stdout on TTY
-sessions only, never into the file logs.
-"""
-function sweep_diagnostic_panel(deltas::AbstractVector, D2_num::AbstractVector,
-    D2_theo::AbstractVector, clean::AbstractVector{Bool},
-    slope::Real, slope_err::Real)
-    pos = D2_num .> 0
-    any(pos) || return "sweep diagnostic: no positive D² values"
-    plt = UnicodePlots.lineplot(log10.(collect(deltas)), log10.(collect(D2_theo));
-        name = "theory", xlabel = "log₁₀ δ",
-        ylabel = "log₁₀ D²", width = 64, height = 14)
-    UnicodePlots.scatterplot!(plt, log10.(collect(deltas[pos])), log10.(D2_num[pos]);
-        name = "numerical")
-    footer = @sprintf("clean points %d/%d; fitted slope %.4f ± %.4f",
-        count(clean), length(clean), slope, slope_err)
-    return sprint(io -> show(io, plt)) * "\n" * footer
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-In-terminal diagnostic of a completed confusion map: capped boundary radius
-against direction angle (UnicodePlots), followed by the prior-limited
-fraction. Opt-in via `[monitoring].enabled`; stdout on TTY sessions only.
-"""
-function map_diagnostic_panel(angle::AbstractVector, r_cap::AbstractVector,
-    prior_frac::Real)
-    plt = UnicodePlots.lineplot(collect(angle), collect(r_cap);
-        xlabel = "φ [rad]", ylabel = "r_cap",
-        width = 64, height = 14)
-    footer = @sprintf("prior-limited directions: %.1f%%", 100 * prior_frac)
-    return sprint(io -> show(io, plt)) * "\n" * footer
-end
-
-"""
-$(TYPEDSIGNATURES)
-
 Pre-flight memory estimate against the `[safety]` budget: refuses to start
 when even a single task exceeds it, downscales concurrency otherwise, and
 applies the VRAM budget on GPU backends. Resource planning is stage-aware:
@@ -145,7 +109,7 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     flatlen = 2 * nch * n_bins
     fixed =
         flatlen * N_PARAMS * 8 +               # tangent-basis Jacobian
-        flatlen * 8 * (N_PARAMS + 1) * 3 +     # nested-dual evaluation buffers
+        flatlen * 8 * (N_PARAMS + 1) * NESTED_DUAL_EVAL_BUFFERS +
         N_PARAMS * nch * n_bins * 16 +         # orthonormal basis storage
         4 * n_bins * 8                         # grid + PSD
     per_task = (2 + 3 * nch) * n_bins * 16 # per-δ data streams and temporaries

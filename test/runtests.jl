@@ -42,6 +42,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test ExplicitImports.check_no_stale_explicit_imports(
             CurvatureDistinguishability,
         ) === nothing
+        # the top-module check does not recurse: stale aliases in submodules
+        # were invisible to CI until checked one by one
+        for submodule in (CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
+            CD.Fitting, CD.Inference, CD.Backends, CD.Config, CD.Provenance,
+            CD.Plotting, CD.Orchestrator, CD.RunFigures)
+            @test ExplicitImports.check_no_stale_explicit_imports(submodule) ===
+                  nothing
+        end
         @test ExplicitImports.check_all_explicit_imports_via_owners(
             CurvatureDistinguishability,
         ) === nothing
