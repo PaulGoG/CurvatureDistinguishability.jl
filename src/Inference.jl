@@ -11,6 +11,7 @@ using KernelAbstractions: KernelAbstractions, @Const, @index, @kernel
 using Optim: Optim, Fminbox, IPNewton, LBFGS, OnceDifferentiable,
     TwiceDifferentiable, TwiceDifferentiableConstraints, optimize
 using ..Physics
+using ..Physics: N_PARAMS
 using ..Detector
 using ..Backends
 using ..Bounds
@@ -26,7 +27,7 @@ between the 2-channel (A, E) data and the single-source model at parameters
 `θ` (an isbits `NTuple`, so `ForwardDiff.Dual` elements compile to GPU code).
 """
 @kernel function loss_bins!(out, @Const(freqs), @Const(Sn), @Const(data_A), @Const(data_E),
-    θ::NTuple{6}, wp::WaveformParams)
+    θ::NTuple{N_PARAMS}, wp::WaveformParams)
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
@@ -130,7 +131,7 @@ end
 function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real,
     wp::WaveformParams, backend)
     T = eltype(p)
-    θ = ntuple(i -> p[i], Val(6))
+    θ = ntuple(i -> p[i], Val(N_PARAMS))
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, T, length(freqs))
         return launch_loss!(out, nothing, backend, freqs, Sn_vals, data_A, data_E, θ,
@@ -188,7 +189,7 @@ end
 
 @kernel function loss_bins_lanes!(out, @Const(freqs), @Const(Sn), @Const(data_A),
     @Const(data_E),
-    θ::NTuple{6}, wp::WaveformParams)
+    θ::NTuple{N_PARAMS}, wp::WaveformParams)
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
@@ -229,7 +230,7 @@ end
 
 function device_loss(p::AbstractVector{D}, freqs, Sn_vals, data_A, data_E, df::Real,
     wp::WaveformParams, backend) where {D<:ForwardDiff.Dual}
-    θ = ntuple(i -> p[i], Val(6))
+    θ = ntuple(i -> p[i], Val(N_PARAMS))
     M = sizeof(D) ÷ sizeof(Float64)
     if backend isa KernelAbstractions.CPU
         out = KernelAbstractions.zeros(backend, Float64, (length(freqs), M))

@@ -62,7 +62,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # the analysis gates stable releases only
         if isempty(VERSION.prerelease)
             jet_modules = (CD, CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
-                CD.Inference, CD.Backends, CD.Config, CD.Provenance,
+                CD.Fitting, CD.Inference, CD.Backends, CD.Config, CD.Provenance,
                 CD.Plotting, CD.Orchestrator, CD.RunFigures)
             jet = JET.report_package(CD; target_modules = jet_modules,
                 toplevel_logger = nothing)
@@ -554,17 +554,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     @testset "Ratio-correction fit (O(δ⁵) quantification)" begin
         d = [0.01, 0.05, 0.1, 0.2, 0.3]
         r = 1.0 .+ 0.3 .* d .- 0.1 .* d .^ 2
-        c1, c1_err, c2 = CD.Orchestrator.ratio_correction_fit(d, r)
+        c1, c1_err, c2 = CD.Fitting.ratio_correction_fit(d, r)
         @test c1 ≈ 0.3 atol = 1e-6
         @test c2 ≈ -0.1 atol = 1e-6
         @test c1_err < 1e-10 # exact model → zero residual
-        c1n, _, _ = CD.Orchestrator.ratio_correction_fit(d[1:2], r[1:2])
+        c1n, _, _ = CD.Fitting.ratio_correction_fit(d[1:2], r[1:2])
         @test isnan(c1n) # too few points
 
         # floor detection honors the configurable ratio threshold
-        @test isnan(CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 1.9], 2.0))
-        @test CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0) == 2.0
-        @test CD.Orchestrator.optimizer_floor([1.0, 2.0], [1.1, 1.9], 1.5) == 2.0
+        @test isnan(CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 1.9], 2.0))
+        @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0) == 2.0
+        @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 1.9], 1.5) == 2.0
     end
 
     @testset "Plotting utilities" begin

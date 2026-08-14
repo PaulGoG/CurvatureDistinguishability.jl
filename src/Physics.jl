@@ -9,8 +9,16 @@ using DocStringExtensions: TYPEDSIGNATURES
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
     WaveformParams, waveform_params, spin_beta, strain_bin,
     scaled_waveform_model, SECONDS_PER_YEAR
+public N_PARAMS
 
 const C_LIGHT = 2.99792458e8
+
+"""
+Dimension of the waveform parameter vector θ = (A, 𝓜, t_c, Φ₀, χ₁, χ₂).
+Single source of truth for every parameter-count-dependent structure
+(bounds tuples, kernel parameter tuples, work-item validation).
+"""
+const N_PARAMS = 6
 
 # positive PSD floor returned for non-positive frequencies, so the noise
 # weighting never divides by zero

@@ -21,6 +21,7 @@ using UnicodePlots: UnicodePlots
 
 using ..Backends
 using ..Physics
+using ..Physics: N_PARAMS
 using ..Detector
 using ..Geometry
 using ..Inference
@@ -28,19 +29,16 @@ using ..Bounds
 using ..Config
 using ..Provenance
 using ..Plotting
+using ..Fitting:
+    MIN_FIT_POINTS, above_floor_mask, loglog_slope, optimizer_floor,
+    ratio_correction_fit
 
 export run_pipeline
-public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 
-# minimum clean points for the slope and ratio-correction fits (shared with
-# the display-time refit in RunFigures)
-const MIN_FIT_POINTS = 3
-# determinant underflow guard of the 2×2 ratio-correction normal equations
-const DET_UNDERFLOW = 1e-300
 # angular tolerance below which two map directions are the same vertex
 const ANGLE_DEDUPE_TOL = 1e-10
 # prior-limited boundary fraction above which the spin-plane χ_eff
@@ -96,77 +94,6 @@ physics_kwargs(wp::WaveformParams) = (
 """
 $(TYPEDSIGNATURES)
 
-Least-squares slope of `log10(y)` against `log10(x)` with its standard
-error (NaN with fewer than 3 points). Fits the quartic-law exponent of a
-sweep's clean window; shared with the display-time refit in `RunFigures`.
-"""
-function loglog_slope(x::AbstractVector, y::AbstractVector)
-    lx, ly = log10.(x), log10.(y)
-    mx, my = mean(lx), mean(ly)
-    sxx = sum(abs2, lx .- mx)
-    slope = sum((lx .- mx) .* (ly .- my)) / sxx
-    n = length(lx)
-    se = n > 2 ? sqrt(sum(abs2, ly .- my .- slope .* (lx .- mx)) / ((n - 2) * sxx)) : NaN
-    return slope, se
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Least-squares fit of `ratio − 1 ≈ c₁δ + c₂δ²` (2×2 normal equations solved in
-closed form), quantifying the leading `O(δ⁵)` correction to the quartic law
-relative to `D²_th`. Returns NaNs with fewer than 3 points.
-"""
-function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
-    n = length(deltas)
-    n >= MIN_FIT_POINTS || return NaN, NaN, NaN
-    y = ratio .- 1.0
-    s2 = sum(d^2 for d in deltas)
-    s3 = sum(d^3 for d in deltas)
-    s4 = sum(d^4 for d in deltas)
-    b1 = sum(deltas .* y)
-    b2 = sum(deltas .^ 2 .* y)
-    det = s2 * s4 - s3^2
-    abs(det) < DET_UNDERFLOW && return NaN, NaN, NaN
-    c1 = (s4 * b1 - s3 * b2) / det
-    c2 = (s2 * b2 - s3 * b1) / det
-    resid = y .- c1 .* deltas .- c2 .* deltas .^ 2
-    c1_err = n > 2 ? sqrt(max(0.0, sum(abs2, resid) / (n - 2)) * s4 / det) : NaN
-    return c1, c1_err, c2
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Bootstrap estimate of a sweep's optimizer floor: points whose
-`D²_num/D²_theo` ratio is at or above `ratio_threshold`
-(`[pipeline.sweep_settings].floor_detection_ratio`) are floor-dominated,
-and the floor level is the largest floor-dominated `D²_num`. Returns `NaN`
-when no point is floor-dominated.
-"""
-function optimizer_floor(
-    D2_num::AbstractVector, ratio::AbstractVector, ratio_threshold::Real)
-    floor_pts = findall(>=(ratio_threshold), ratio)
-    return isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Production clean-point rule, shared by the sweep stage and all display-time
-figure regeneration (`RunFigures`): only points strictly above the optimizer
-floor are clean (all positive points when no floor was detected). Borderline
-points inside the floor band are excluded even when their ratio is close to
-unity, and convergence flags never exclude a point — the iteration and
-tolerance caps are strict enough that flagged points at ratio ≈ 1 are
-genuine optima.
-"""
-above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
-    isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
-
-"""
-$(TYPEDSIGNATURES)
-
 In-terminal diagnostic of a completed sweep: log-log `D²` against the
 theoretical prediction (UnicodePlots), followed by the clean-point count and
 fitted slope. Opt-in via `[monitoring].enabled`; printed to stdout on TTY
@@ -216,10 +143,11 @@ backend and therefore always keeps the multi-threaded CPU concurrency.
 """
 function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
     flatlen = 2 * nch * n_bins
-    fixed = flatlen * 6 * 8 +      # tangent-basis Jacobian
-            flatlen * 8 * 7 * 3 +  # nested-dual evaluation buffers
-            6 * nch * n_bins * 16 + # orthonormal basis storage
-            4 * n_bins * 8          # grid + PSD
+    fixed =
+        flatlen * N_PARAMS * 8 +               # tangent-basis Jacobian
+        flatlen * 8 * (N_PARAMS + 1) * 3 +     # nested-dual evaluation buffers
+        N_PARAMS * nch * n_bins * 16 +         # orthonormal basis storage
+        4 * n_bins * 8                         # grid + PSD
     per_task = (2 + 3 * nch) * n_bins * 16 # per-δ data streams and temporaries
     budget = cfg.max_ram_gb * 2^30
 
@@ -396,7 +324,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         # verify the second source stays within the physical bounds at δ_max
         theta_far = theta0 .+ maximum(deltas) .* u_norm
         theta_far[1] = amp_ratio * theta0[1]
-        for i in 1:6
+        for i in 1:N_PARAMS
             cfg.bounds.periodic[i] && continue
             if !(cfg.bounds.lower[i] <= theta_far[i] <= cfg.bounds.upper[i])
                 @warn "Sweep '$name': the second source leaves the physical bounds along " *
@@ -408,7 +336,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         n = cfg.n_deltas
         D2_num = zeros(n)
-        best_fits = zeros(n, 6)
+        best_fits = zeros(n, N_PARAMS)
         conv = falses(n)
         iters = zeros(Int, n)
         gnorm = zeros(n)
@@ -460,7 +388,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
                 pert =
                     guess .+ (cfg.multi_start_parallel_scale * d * randn(rng)) .* u_norm .+
-                    cfg.multi_start_transverse_scale .* randn(rng, 6)
+                    cfg.multi_start_transverse_scale .* randn(rng, N_PARAMS)
                 dist_k, best_k, res_k = solve(clamp_interior(pert, cfg.bounds))
                 if dist_k < dist
                     dist, best, res = dist_k, best_k, res_k
@@ -691,7 +619,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         function eval_angles(phis::Vector{Float64}, prog)
             out = Vector{NTuple{2,Float64}}(undef, length(phis))
             parallel_foreach(length(phis), ctx.map_tasks) do i
-                dir = zeros(6)
+                dir = zeros(N_PARAMS)
                 dir[px] = cos(phis[i])
                 dir[py] = sin(phis[i])
                 K, g = compute_extrinsic_curvature_from_basis(theta0, dir, basis,

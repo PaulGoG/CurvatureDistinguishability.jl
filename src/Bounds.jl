@@ -5,6 +5,7 @@ capping and interior clamping.
 module Bounds
 
 using DocStringExtensions: TYPEDSIGNATURES
+using ..Physics: N_PARAMS
 export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
     ray_box_crossing, clamp_interior, PARAM_KEYS
 
@@ -23,10 +24,10 @@ the constrained optimizer (`±Inf` allowed); `periodic` marks topological axes
 `±period/2` regardless of the absolute value.
 """
 struct ParameterBounds
-    lower::NTuple{6,Float64}
-    upper::NTuple{6,Float64}
-    periodic::NTuple{6,Bool}
-    period::NTuple{6,Float64}
+    lower::NTuple{N_PARAMS,Float64}
+    upper::NTuple{N_PARAMS,Float64}
+    periodic::NTuple{N_PARAMS,Bool}
+    period::NTuple{N_PARAMS,Float64}
 end
 
 """

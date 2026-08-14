@@ -15,6 +15,7 @@ CurvatureDistinguishability.Physics
 CurvatureDistinguishability.Detector
 CurvatureDistinguishability.Bounds
 CurvatureDistinguishability.Geometry
+CurvatureDistinguishability.Fitting
 CurvatureDistinguishability.Inference
 CurvatureDistinguishability.Backends
 CurvatureDistinguishability.Config
@@ -125,14 +126,19 @@ CurvatureDistinguishability.Plotting.residual_figure
 CurvatureDistinguishability.Plotting.zone_figure
 ```
 
+## Fitting
+
+```@docs
+CurvatureDistinguishability.Fitting.loglog_slope
+CurvatureDistinguishability.Fitting.ratio_correction_fit
+CurvatureDistinguishability.Fitting.optimizer_floor
+CurvatureDistinguishability.Fitting.above_floor_mask
+```
+
 ## Orchestrator
 
 ```@docs
 CurvatureDistinguishability.Orchestrator.run_pipeline
-CurvatureDistinguishability.Orchestrator.loglog_slope
-CurvatureDistinguishability.Orchestrator.ratio_correction_fit
-CurvatureDistinguishability.Orchestrator.optimizer_floor
-CurvatureDistinguishability.Orchestrator.above_floor_mask
 ```
 
 ## Run figure regeneration

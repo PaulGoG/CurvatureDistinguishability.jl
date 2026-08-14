@@ -7,6 +7,7 @@ module Config
 using DocStringExtensions: TYPEDSIGNATURES
 using TOML: TOML
 using ..Physics
+using ..Physics: N_PARAMS
 using ..Bounds
 
 export PipelineSettings, load_and_validate_config
@@ -158,8 +159,8 @@ Validate a 6-element finite numeric parameter vector, returning it as
 `Vector{Float64}`; `what` names the offending config entry in errors.
 """
 function validate_theta6(v, what)
-    (v isa AbstractVector && length(v) == 6) ||
-        error("$what must be a 6-element numeric vector, got $(repr(v))")
+    (v isa AbstractVector && length(v) == N_PARAMS) ||
+        error("$what must be a $(N_PARAMS)-element numeric vector, got $(repr(v))")
     all(x -> x isa Real && isfinite(x), v) ||
         error("$what must contain only finite numbers, got $(repr(v))")
     return Float64.(v)
@@ -498,8 +499,11 @@ function load_and_validate_config(config_path::AbstractString)
         push!(seen, name)
         px = get_integer(m, "param_x", 0, "maps[]")
         py = get_integer(m, "param_y", 0, "maps[]")
-        (1 <= px <= 6 && 1 <= py <= 6) ||
-            error("[[maps]] '$name': param_x/param_y must be in 1:6, got ($px, $py)")
+        (1 <= px <= N_PARAMS && 1 <= py <= N_PARAMS) ||
+            error(
+                "[[maps]] '$name': param_x/param_y must be in 1:$(N_PARAMS), " *
+                "got ($px, $py)",
+            )
         px != py || error("[[maps]] '$name': param_x and param_y must differ")
         get_number(m, "rho_thresh", sweep_rho, "maps[]") > 0 ||
             error("[[maps]] '$name'.rho_thresh must be > 0")

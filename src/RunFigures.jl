@@ -2,8 +2,8 @@
 Single implementation of display-time figure regeneration from persisted
 run artifacts, consumed by `scripts/replot.jl` and
 `scripts/collect_plots.jl`. Point classification and refits reuse the
-pipeline's own rules (`Orchestrator`), so run-time and display-time
-figures cannot diverge.
+pipeline's own rules (`Fitting`), so run-time and display-time figures
+cannot diverge.
 """
 module RunFigures
 
@@ -15,7 +15,7 @@ using ..Bounds: deviation_box
 using ..Geometry: K_UNDERFLOW
 using ..Config: load_and_validate_config
 using ..Plotting
-using ..Orchestrator: MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
+using ..Fitting: MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
     above_floor_mask
 
 export run_cases, sweep_figures, zone_map_figure

@@ -10,8 +10,9 @@ signal manifold. The package provides the waveform/detector model
 box-constrained inference (`Inference`), physical parameter bounds
 (`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
-publication plotting (`Plotting`), the pipeline driver (`Orchestrator`) and
-figure regeneration from persisted run artifacts (`RunFigures`).
+shared fit statistics (`Fitting`), publication plotting (`Plotting`), the
+pipeline driver (`Orchestrator`) and figure regeneration from persisted
+run artifacts (`RunFigures`).
 """
 module CurvatureDistinguishability
 
@@ -39,6 +40,9 @@ include("Geometry.jl")
 using .Geometry
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
     compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
+
+include("Fitting.jl")
+using .Fitting
 
 include("Inference.jl")
 using .Inference
