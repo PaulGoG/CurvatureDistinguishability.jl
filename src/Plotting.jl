@@ -16,10 +16,27 @@ using Printf: @sprintf
 using UnicodePlots: UnicodePlots
 using ..Provenance: backup_existing!
 
-export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
+export publication_theme,
+    save_figure, scaling_figure, residual_figure,
+    ResidualFigureMeta, zone_figure
 public decade_ticks, pi_ticks, log_ticks_125, offset_ticks, sci_tick_labels,
     sci_latex, coef_latex, axis_exponent, sweep_diagnostic_panel,
     map_diagnostic_panel
+
+"""
+    ResidualFigureMeta
+
+Annotation record of a [`residual_figure`](@ref): the evaluation
+separation `delta_star`, the frequency resolution `df` [Hz] (setting the
+per-bin noise reference `1/Δf`), and the numerical and theoretical `D²`
+at that separation.
+"""
+struct ResidualFigureMeta
+    delta_star::Float64
+    df::Float64
+    d2_num::Float64
+    d2_theo::Float64
+end
 
 """
 Short LaTeX axis labels for the six model parameters (deviation form is
@@ -469,14 +486,14 @@ shade both channels and are covered by the bottom panel's y-range (depth-
 capped so a cancellation spike cannot compress the curves). Frame limits
 follow the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
-`spec` is the (log-uniformly decimated) spectrum table; `meta` must carry
-the fields `delta_star`, `df`, `d2_num` and `d2_theo` (evaluation
-separation, frequency resolution, and the two integral annotations).
-`delta_symbol` names the evaluation separation in the annotation — the
-default `\\delta^*` for the validity-window panel, `\\delta_{\\mathrm{thr}}`
-for the threshold companion.
+`spec` is the (log-uniformly decimated) spectrum table; `meta` is the
+[`ResidualFigureMeta`](@ref) annotation record. `delta_symbol` names the
+evaluation separation in the annotation — the default `\\delta^*` for the
+validity-window panel, `\\delta_{\\mathrm{thr}}` for the threshold
+companion.
 """
-function residual_figure(spec, meta; delta_symbol::String = "\\delta^*")
+function residual_figure(spec, meta::ResidualFigureMeta;
+    delta_symbol::String = "\\delta^*")
     with_theme(publication_theme()) do
         fig = Figure(size = (950, 950))
         # Limits and ticks follow the plotted data: with log-uniform decimation

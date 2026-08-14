@@ -48,7 +48,7 @@ D2_num = map(deltas) do d
     data = map((a, b) -> a .+ b, project_to_tdi(h1, freqs, theta0, wp),
         project_to_tdi(h2, freqs, p2, wp))
     d2, _, _ = calculate_numerical_distance(data, copy(theta0), freqs, Sn, df;
-        iterations = 60, physics...)
+        iterations = 60, wp = wp)
     d2
 end
 D2_theo = (K_norm / 16) .* deltas .^ 4

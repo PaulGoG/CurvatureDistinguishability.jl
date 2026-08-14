@@ -10,7 +10,42 @@ using ..Physics
 using ..Physics: N_PARAMS
 using ..Bounds
 
-export PipelineSettings, load_and_validate_config
+export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
+
+"""
+    SweepSpec
+
+Validated work item of the 1D sweep stage, parsed once from a `[[sweeps]]`
+entry: filesystem-safe `name`, interior base point `theta_0`, nonzero sweep
+direction `u_dir`, resolved discernibility threshold `rho_thresh` (the
+per-sweep override or the pipeline-wide default) and amplitude ratio
+`amp_ratio` (`A₂/A₁`; 1 for identical amplitudes).
+"""
+struct SweepSpec
+    name::String
+    theta_0::Vector{Float64}
+    u_dir::Vector{Float64}
+    rho_thresh::Float64
+    amp_ratio::Float64
+end
+
+"""
+    MapSpec
+
+Validated work item of the 2D confusion-mapping stage, parsed once from a
+`[[maps]]` entry: filesystem-safe `name`, distinct parameter plane
+`(param_x, param_y)`, interior base point `theta_0`, resolved
+discernibility threshold `rho_thresh` and even angular sample count
+`n_angles` (the per-map override or `[mapping].n_angles`).
+"""
+struct MapSpec
+    name::String
+    param_x::Int
+    param_y::Int
+    theta_0::Vector{Float64}
+    rho_thresh::Float64
+    n_angles::Int
+end
 
 """
 Fully parsed and validated pipeline configuration. Construction goes through
@@ -69,8 +104,8 @@ struct PipelineSettings
     progress_log_fraction::Float64
     # bounds & work items
     bounds::ParameterBounds
-    sweeps::Vector{Dict{String,Any}}
-    maps::Vector{Dict{String,Any}}
+    sweeps::Vector{SweepSpec}
+    maps::Vector{MapSpec}
 end
 
 """
@@ -399,23 +434,25 @@ function load_and_validate_config(config_path::AbstractString)
         "parameter_bounds",
     )
 
-    sweeps = Vector{Dict{String,Any}}(get(config, "sweeps", []))
-    maps = Vector{Dict{String,Any}}(get(config, "maps", []))
+    sweep_tables = Vector{Dict{String,Any}}(get(config, "sweeps", []))
+    map_tables = Vector{Dict{String,Any}}(get(config, "maps", []))
     seen = Set{String}()
-    for s in sweeps
+    sweeps = map(sweep_tables) do s
         warn_unknown_keys(s, "sweeps[]")
         name = String(get(s, "name", ""))
         fs_safe(name) ||
             error("[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))")
         name in seen && error("Duplicate sweep/map name '$name'")
         push!(seen, name)
-        theta0 = validate_theta6(get(s, "theta_0", nothing), "[[sweeps]] '$name'.theta_0")
+        theta0 =
+            validate_theta6(get(s, "theta_0", nothing), "[[sweeps]] '$name'.theta_0")
         check_interior(theta0, bounds, "sweep '$name'")
         u = validate_theta6(get(s, "u_dir", nothing), "[[sweeps]] '$name'.u_dir")
         norm_u = sqrt(sum(abs2, u))
         norm_u > 0 || error("[[sweeps]] '$name'.u_dir must be nonzero")
         amp_ratio = get_number(s, "amp_ratio", 1.0, "sweeps[]")
-        amp_ratio > 0 || error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
+        amp_ratio > 0 ||
+            error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
         if amp_ratio != 1.0 && u[1] != 0
             error(
                 "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
@@ -426,13 +463,11 @@ function load_and_validate_config(config_path::AbstractString)
         u[1] == 0 ||
             @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
-        haskey(s, "rho_thresh") &&
-            (
-                get_number(s, "rho_thresh", sweep_rho, "sweeps[]") > 0 ||
-                error("[[sweeps]] '$name'.rho_thresh must be > 0")
-            )
+        rho = get_number(s, "rho_thresh", sweep_rho, "sweeps[]")
+        rho > 0 || error("[[sweeps]] '$name'.rho_thresh must be > 0")
+        SweepSpec(name, theta0, u, rho, amp_ratio)
     end
-    for m in maps
+    maps = map(map_tables) do m
         warn_unknown_keys(m, "maps[]")
         name = String(get(m, "name", ""))
         fs_safe(name) ||
@@ -447,14 +482,18 @@ function load_and_validate_config(config_path::AbstractString)
                 "got ($px, $py)",
             )
         px != py || error("[[maps]] '$name': param_x and param_y must differ")
-        get_number(m, "rho_thresh", sweep_rho, "maps[]") > 0 ||
-            error("[[maps]] '$name'.rho_thresh must be > 0")
+        rho = get_number(m, "rho_thresh", sweep_rho, "maps[]")
+        rho > 0 || error("[[maps]] '$name'.rho_thresh must be > 0")
         theta0 = validate_theta6(get(m, "theta_0", nothing), "[[maps]] '$name'.theta_0")
         check_interior(theta0, bounds, "map '$name'")
-        if haskey(m, "n_angles")
-            na = get_integer(m, "n_angles", map_n_angles, "maps[]")
-            na >= 8 || error("[[maps]] '$name'.n_angles must be >= 8, got $na")
+        na = get_integer(m, "n_angles", map_n_angles, "maps[]")
+        na >= 8 || error("[[maps]] '$name'.n_angles must be >= 8, got $na")
+        if isodd(na)
+            @warn "[[maps]] '$name'.n_angles = $na is odd; rounding up to $(na + 1) " *
+                  "(mirrored sampling needs an even count)."
+            na += 1
         end
+        MapSpec(name, px, py, theta0, rho, na)
     end
     (run_sweeps && isempty(sweeps)) &&
         @warn "[pipeline].run_1d_sweeps = true but no [[sweeps]] entries are defined."

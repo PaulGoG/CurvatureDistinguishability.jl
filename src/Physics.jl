@@ -197,13 +197,19 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Build a [`WaveformParams`](@ref) from keyword arguments, silently ignoring
-any keys that are not fields (so pipeline call sites can splat a mixed
-configuration NamedTuple through the keyword APIs).
+Build a [`WaveformParams`](@ref) from keyword arguments, rejecting unknown
+keys with an `ArgumentError` naming the offending keyword (typo
+protection at the physical-model boundary).
 """
 function waveform_params(; kwargs...)
-    known = filter(p -> first(p) in fieldnames(WaveformParams), pairs(kwargs))
-    return WaveformParams(; known...)
+    unknown = setdiff(keys(kwargs), fieldnames(WaveformParams))
+    isempty(unknown) || throw(
+        ArgumentError(
+            "Unknown waveform parameter(s): $(join(unknown, ", ")). Valid keys: " *
+            "$(join(fieldnames(WaveformParams), ", ")).",
+        ),
+    )
+    return WaveformParams(; kwargs...)
 end
 
 """

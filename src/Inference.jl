@@ -340,8 +340,9 @@ physical `bounds`:
   Hessian — fast convergence and a much lower convergence floor than L-BFGS.
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
 
-Physics keywords (`mass_scale`, `sky_theta`, …) are accepted via `kwargs`.
-Returns `(D², best_fit, optim_result)`.
+The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
+keyword (defaults to the model defaults). Returns
+`(D², best_fit, optim_result)`.
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
     freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
@@ -350,8 +351,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     optimizer::Symbol = :ipnewton,
     bounds::Union{Nothing,ParameterBounds} = default_bounds(),
     hessian_chunk::Int = 0,
-    kwargs...)
-    wp = waveform_params(; kwargs...)
+    wp::WaveformParams = WaveformParams())
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
     # ForwardDiff configs are constructed once per solve (they depend only on

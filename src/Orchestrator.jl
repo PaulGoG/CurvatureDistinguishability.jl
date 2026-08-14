@@ -88,12 +88,6 @@ function parallel_foreach(f, n::Int, ntasks::Int)
     return nothing
 end
 
-physics_kwargs(wp::WaveformParams) = (
-    mass_scale = wp.mass_scale, time_scale = wp.time_scale, amp_scale = wp.amp_scale,
-    eta = wp.eta, amp_33_factor = wp.amp_33_factor, sky_theta = wp.sky_theta,
-    sky_phi = wp.sky_phi, inclination = wp.inclination, polarization = wp.polarization,
-    include_t_channel = wp.include_t_channel)
-
 """
 $(TYPEDSIGNATURES)
 
@@ -236,15 +230,14 @@ per-δ box-constrained optimization with optional multi-start, floor
 detection and slope/correction fits, and persistence of the results table,
 residual spectrum, metadata and figures into the run directory.
 """
-function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
+function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
     wp = cfg.wp
-    phys = physics_kwargs(wp)
-    name = String(sweep["name"])
-    theta0 = Float64.(sweep["theta_0"])
-    u_raw = Float64.(sweep["u_dir"])
-    rho_sq = Float64(get(sweep, "rho_thresh", cfg.sweep_rho_thresh))^2
-    amp_ratio = Float64(get(sweep, "amp_ratio", 1.0))       # A₂/A₁
+    name = sweep.name
+    theta0 = sweep.theta_0
+    u_raw = sweep.u_dir
+    rho_sq = sweep.rho_thresh^2
+    amp_ratio = sweep.amp_ratio                              # A₂/A₁
     amp_prefactor = (2amp_ratio / (1 + amp_ratio))^2         # (A_harm/A)², = 1 at amp_ratio = 1
 
     out_dir = joinpath(ctx.out_base, "sweeps", name)
@@ -344,7 +337,7 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     optimizer = cfg.optimizer,
                     bounds = cfg.bounds,
                     hessian_chunk = cfg.hessian_chunk,
-                    phys...)
+                    wp = wp)
             dist, best, res = solve(guess)
             dist_canonical = dist
             for k in 2:cfg.n_starts
@@ -486,15 +479,14 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             save_figure(fig, joinpath(out_dir, "scaling_plot"))
             rfig = residual_figure(
                 spec,
-                (delta_star = d_star, df = ctx.df,
-                    d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]),
+                ResidualFigureMeta(d_star, ctx.df, D2_num[idx_star], D2_theo[idx_star]),
             )
             save_figure(rfig, joinpath(out_dir, "residual_plot"))
             if spec_thr !== nothing
                 rfig_thr = residual_figure(
                     spec_thr,
-                    (delta_star = deltas[idx_thr], df = ctx.df,
-                        d2_num = D2_num[idx_thr], d2_theo = D2_theo[idx_thr]);
+                    ResidualFigureMeta(deltas[idx_thr], ctx.df,
+                        D2_num[idx_thr], D2_theo[idx_thr]);
                     delta_symbol = "\\delta_{\\mathrm{thr}}",
                 )
                 save_figure(rfig_thr, joinpath(out_dir, "residual_plot_threshold"))
@@ -578,17 +570,15 @@ angular sweep with adaptive refinement, exact prior-wall and box-corner
 vertices, prior capping, and persistence of the contour table and zone
 figure into the run directory.
 """
-function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
+function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
     wp = cfg.wp
-    name = String(map_cfg["name"])
-    px = Int(map_cfg["param_x"])
-    py = Int(map_cfg["param_y"])
-    # per-map override; defaults to the pipeline-wide threshold
-    rho_sq = Float64(get(map_cfg, "rho_thresh", cfg.sweep_rho_thresh))^2
-    theta0 = Float64.(map_cfg["theta_0"])
-    n_angles = Int(get(map_cfg, "n_angles", cfg.map_n_angles))
-    isodd(n_angles) && (n_angles += 1)
+    name = map_spec.name
+    px = map_spec.param_x
+    py = map_spec.param_y
+    rho_sq = map_spec.rho_thresh^2
+    theta0 = map_spec.theta_0
+    n_angles = map_spec.n_angles
 
     out_dir = joinpath(ctx.out_base, "maps", name)
     mkpath(out_dir)
@@ -982,8 +972,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
             try
                 run_sweep(s, i, length(cfg.sweeps), ctx)
             catch err
-                push!(failures, String(s["name"]))
-                @error "Sweep '$(s["name"])' failed; continuing with remaining stages." exception =
+                push!(failures, s.name)
+                @error "Sweep '$(s.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
             end
             maintain_memory!(ctx.backend, cfg.gc_between_stages)
@@ -998,8 +988,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
             try
                 run_map(m, i, length(cfg.maps), ctx)
             catch err
-                push!(failures, String(m["name"]))
-                @error "Map '$(m["name"])' failed; continuing with remaining stages." exception =
+                push!(failures, m.name)
+                @error "Map '$(m.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
             end
             maintain_memory!(ctx.backend, cfg.gc_between_stages)

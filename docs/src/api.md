@@ -99,6 +99,8 @@ CurvatureDistinguishability.Backends.device_fingerprint
 
 ```@docs
 CurvatureDistinguishability.Config.PipelineSettings
+CurvatureDistinguishability.Config.SweepSpec
+CurvatureDistinguishability.Config.MapSpec
 CurvatureDistinguishability.Config.load_and_validate_config
 ```
 
@@ -123,6 +125,7 @@ CurvatureDistinguishability.Plotting.decade_ticks
 CurvatureDistinguishability.Plotting.pi_ticks
 CurvatureDistinguishability.Plotting.scaling_figure
 CurvatureDistinguishability.Plotting.residual_figure
+CurvatureDistinguishability.Plotting.ResidualFigureMeta
 CurvatureDistinguishability.Plotting.zone_figure
 ```
 

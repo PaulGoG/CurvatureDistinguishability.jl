@@ -102,10 +102,10 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     if rho === nothing && isfile(spec_path)
         spec = CSV.read(spec_path, DataFrame)
         residual = residual_figure(spec,
-            (delta_star = Float64(get(meta, "delta_star", NaN)),
-                df = Float64(get(meta, "df", 1.0)),
-                d2_num = Float64(get(meta, "d2_num_star", NaN)),
-                d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
+            ResidualFigureMeta(Float64(get(meta, "delta_star", NaN)),
+                Float64(get(meta, "df", 1.0)),
+                Float64(get(meta, "d2_num_star", NaN)),
+                Float64(get(meta, "d2_theo_star", NaN))))
     end
     # threshold companion (persisted only when the threshold point lies
     # outside the validity window of the leading-order fit)
@@ -114,10 +114,10 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     if rho === nothing && isfile(thr_path) && haskey(meta, "delta_thr")
         spec_thr = CSV.read(thr_path, DataFrame)
         residual_threshold = residual_figure(spec_thr,
-            (delta_star = Float64(get(meta, "delta_thr", NaN)),
-                df = Float64(get(meta, "df", 1.0)),
-                d2_num = Float64(get(meta, "d2_num_thr", NaN)),
-                d2_theo = Float64(get(meta, "d2_theo_thr", NaN)));
+            ResidualFigureMeta(Float64(get(meta, "delta_thr", NaN)),
+                Float64(get(meta, "df", 1.0)),
+                Float64(get(meta, "d2_num_thr", NaN)),
+                Float64(get(meta, "d2_theo_thr", NaN)));
             delta_symbol = "\\delta_{\\mathrm{thr}}")
     end
     return (scaling = scaling, residual = residual,
@@ -144,12 +144,12 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     dir = joinpath(run_dir, "maps", case)
     contour_stored = CSV.read(joinpath(dir, "confusion_contour.csv"), DataFrame)
     cfg = run_config(run_dir)
-    matches = filter(m -> String(m["name"]) == case, cfg.maps)
+    matches = filter(m -> m.name == case, cfg.maps)
     isempty(matches) &&
         error("Map '$case' is not present in the config snapshot of $run_dir.")
     map_cfg = only(matches)
-    px, py = Int(map_cfg["param_x"]), Int(map_cfg["param_y"])
-    theta0 = Float64.(map_cfg["theta_0"])
+    px, py = map_cfg.param_x, map_cfg.param_y
+    theta0 = map_cfg.theta_0
     box = deviation_box(cfg.bounds, theta0, px, py)
     n = nrow(contour_stored)
     degen =

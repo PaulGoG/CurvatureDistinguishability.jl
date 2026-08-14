@@ -54,11 +54,13 @@ export run_id_from_config, backup_existing!
 
 include("Config.jl")
 using .Config
-export PipelineSettings, load_and_validate_config
+export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
 
 include("Plotting.jl")
 using .Plotting
-export publication_theme, save_figure, scaling_figure, residual_figure, zone_figure
+export publication_theme,
+    save_figure, scaling_figure, residual_figure,
+    ResidualFigureMeta, zone_figure
 
 include("Orchestrator.jl")
 using .Orchestrator

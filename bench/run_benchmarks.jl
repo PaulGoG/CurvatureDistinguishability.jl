@@ -80,11 +80,7 @@ println("\n[7] Full bounded optimization: IPNewton vs Fminbox(LBFGS)")
 for opt in (:ipnewton, :lbfgs_box)
     t0 = time()
     d2, _, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
-        optimizer = opt,
-        mass_scale = wp.mass_scale,
-        time_scale = wp.time_scale,
-        sky_phi = wp.sky_phi,
-        polarization = wp.polarization)
+        optimizer = opt, wp = wp)
     diag = optimization_diagnostics(res, ones(6), default_bounds())
     println(
         "  $(rpad(opt, 10)): D² = $(d2)  iters = $(diag.iterations)  " *

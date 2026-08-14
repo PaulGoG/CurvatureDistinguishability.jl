@@ -139,6 +139,8 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         ]
         @test h_bc == h_sc
         @test eltype(h_bc) <: Complex
+        # the physical-model boundary rejects unknown keywords (typo protection)
+        @test_throws ArgumentError waveform_params(sky_thata = 1.0)
         # type stability of the hot scalar core
         @test (@inferred strain_bin(
             1e-3,
@@ -310,13 +312,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # perfect match → (near-)zero distance
         d0, bf0, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
             FIX_FREQS, FIX_SN, FIX_DF;
-            iterations = 50, FIX_PHYS...)
+            iterations = 50, wp = FIX_WP)
         @test d0 < 1e-5
         # chunked-Hessian option must reproduce the full-chunk optimization
         d0c, _, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
             FIX_FREQS, FIX_SN, FIX_DF;
             iterations = 50, hessian_chunk = 2,
-            FIX_PHYS...)
+            wp = FIX_WP)
         @test d0c < 1e-5
 
         # the gradient-only fallback optimizer must find the same optimum
@@ -324,7 +326,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         d0l, bfl, _ = calculate_numerical_distance((c1[1], c1[2]), copy(THETA0),
             FIX_FREQS, FIX_SN, FIX_DF;
             optimizer = :lbfgs_box, iterations = 200,
-            FIX_PHYS...)
+            wp = FIX_WP)
         @test d0l < 1e-2
         @test all(isfinite, bfl)
 
@@ -357,7 +359,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             guess[1] *= 2.0
             d_new, bf, res =
                 calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN, FIX_DF;
-                    optimizer = :ipnewton, FIX_PHYS...)
+                    optimizer = :ipnewton, wp = FIX_WP)
             @test d_new ≈ row.D2_Numerical rtol = 1e-2
             @test all(abs.(bf[5:6]) .<= 1.0 + 1e-9) # physical bounds respected
             push!(d2_ipn, d_new)
@@ -376,7 +378,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             calculate_numerical_distance(data, diag_guess, FIX_FREQS, FIX_SN,
                 FIX_DF; iterations = 100,
                 optimizer = :ipnewton, bounds = db,
-                FIX_PHYS...)
+                wp = FIX_WP)
         @test all(bf_b .>= collect(db.lower) .- 1e-9)
         @test all(bf_b .<= collect(db.upper) .+ 1e-9)
         diag = optimization_diagnostics(res_b, bf_b, db)
@@ -511,6 +513,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 joinpath(dirname(@__DIR__), "configs", "quickstart.toml"))
             @test length(cfg_quick.sweeps) == 2 && length(cfg_quick.maps) == 2
             @test cfg_quick.monitoring_enabled
+            # work items parse once into typed specs with resolved defaults
+            @test cfg_quick.sweeps isa Vector{SweepSpec}
+            @test cfg_quick.maps isa Vector{MapSpec}
+            @test cfg_quick.sweeps[1].rho_thresh == 1.0 # pipeline-wide default
+            @test cfg_quick.sweeps[1].amp_ratio == 1.0
+            @test cfg_quick.maps[1].n_angles == 256 # [mapping].n_angles fallback
+            cfg_na =
+                @test_logs (:warn, r"odd; rounding up") match_mode = :any load_and_validate_config(
+                    write_cfg(
+                        dir,
+                        "[[maps]]\nname = \"m\"\nparam_x = 5\nparam_y = 6\n" *
+                        "theta_0 = [1,1,1,0,0,0]\nn_angles = 33\n",
+                    ))
+            @test cfg_na.maps[1].n_angles == 34 # per-map override resolved even
 
             # instrumental-noise overrides thread through to NoiseParams and
             # must be strictly positive
