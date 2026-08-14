@@ -403,8 +403,12 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         hidexdecorations!(ax1; grid = false, ticks = false)
         rowsize!(fig.layout, 1, Relative(0.68))
         # clearance between the linked panels so the top panel's lowest and
-        # the ratio panel's highest y-tick labels can never meet
-        rowgap!(fig.layout, 16)
+        # the ratio panel's highest y-tick labels can never meet: each label
+        # extends ~half its height past its frame edge, so the junction gap
+        # must exceed one full label height with margin (the legend gap above
+        # the top panel stays compact)
+        rowgap!(fig.layout, 12)
+        rowgap!(fig.layout, 2, 36)
         return fig
     end
 end
