@@ -43,6 +43,9 @@ function replot(run_dir, rho)
             save_figure(figs.scaling, joinpath(dir, "scaling_plot" * figs.suffix))
             figs.residual === nothing ||
                 save_figure(figs.residual, joinpath(dir, "residual_plot"))
+            figs.residual_threshold === nothing ||
+                save_figure(figs.residual_threshold,
+                    joinpath(dir, "residual_plot_threshold"))
             replotted += 1
             println("replotted sweep: $name$(figs.suffix)")
         catch err

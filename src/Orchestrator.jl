@@ -463,14 +463,37 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             Starts = fill(cfg.n_starts, n), MultiStartGain = ms_gain)
         CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
 
-        # residual spectrum at the separation nearest the discernibility threshold
+        # Residual-spectrum evaluation points. Primary δ*: the largest clean
+        # separation still inside the fitted validity window of the
+        # leading-order law (δ ≤ delta_valid), so the plotted residual is the
+        # normal projection the quartic law integrates. Rule-of-thumb
+        # companion: the separation nearest the discernibility threshold on
+        # the swept range (the old rule). The companion is emitted only when
+        # the two points differ — for on-law directions the threshold point
+        # is itself inside the validity window and one panel suffices.
         pos = findall(>(0), D2_num)
-        idx_star = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
+        idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
+        in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
+        valid_pos = findall(clean .& in_validity .& (D2_num .> 0))
+        idx_star = isempty(valid_pos) ? idx_thr : last(valid_pos)
         d_star = deltas[idx_star]
         spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
             best_fits[idx_star, :],
             ctx, wp)
         CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
+        spec_thr = nothing
+        thr_meta = Dict{String,Any}()
+        if idx_thr != idx_star
+            spec_thr, meta_thr = residual_spectrum(theta0, u_norm, amp_ratio,
+                deltas[idx_thr], best_fits[idx_thr, :], ctx, wp)
+            CSV.write(
+                backup_existing!(joinpath(out_dir, "residual_spectrum_threshold.csv")),
+                spec_thr)
+            thr_meta = Dict{String,Any}("delta_thr" => deltas[idx_thr],
+                "d2_num_thr" => D2_num[idx_thr], "d2_theo_thr" => D2_theo[idx_thr],
+                "residual_thr_d2_integral_A" => meta_thr.int_A,
+                "residual_thr_d2_integral_E" => meta_thr.int_E)
+        end
         open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
             TOML.print(
                 io,
@@ -485,7 +508,8 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     "delta_valid" => delta_valid,
                     "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
                     "residual_d2_integral_A" => meta.int_A,
-                    "residual_d2_integral_E" => meta.int_E),
+                    "residual_d2_integral_E" => meta.int_E,
+                    thr_meta...),
             )
         end
 
@@ -501,6 +525,15 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     d2_num = D2_num[idx_star], d2_theo = D2_theo[idx_star]),
             )
             save_figure(rfig, joinpath(out_dir, "residual_plot"))
+            if spec_thr !== nothing
+                rfig_thr = residual_figure(
+                    spec_thr,
+                    (delta_star = deltas[idx_thr], df = ctx.df,
+                        d2_num = D2_num[idx_thr], d2_theo = D2_theo[idx_thr]);
+                    delta_symbol = "\\delta_{\\mathrm{thr}}",
+                )
+                save_figure(rfig_thr, joinpath(out_dir, "residual_plot_threshold"))
+            end
         catch err
             @warn "Sweep '$name': figure generation failed; numerical results are saved." exception =
                 (err, catch_backtrace())

@@ -72,6 +72,11 @@ function collect_figures(runs, dest)
                     px_per_unit = 4)
                 n += 1
             end
+            if figs.residual_threshold !== nothing
+                save(joinpath(dest, "$(label)_sweep_$(case)_residual_threshold.png"),
+                    figs.residual_threshold; px_per_unit = 4)
+                n += 1
+            end
             println("  sweep: $label/$case")
         end
         for case in cases.maps

@@ -107,7 +107,21 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
                 d2_num = Float64(get(meta, "d2_num_star", NaN)),
                 d2_theo = Float64(get(meta, "d2_theo_star", NaN))))
     end
+    # threshold companion (persisted only when the threshold point lies
+    # outside the validity window of the leading-order fit)
+    residual_threshold = nothing
+    thr_path = joinpath(dir, "residual_spectrum_threshold.csv")
+    if rho === nothing && isfile(thr_path) && haskey(meta, "delta_thr")
+        spec_thr = CSV.read(thr_path, DataFrame)
+        residual_threshold = residual_figure(spec_thr,
+            (delta_star = Float64(get(meta, "delta_thr", NaN)),
+                df = Float64(get(meta, "df", 1.0)),
+                d2_num = Float64(get(meta, "d2_num_thr", NaN)),
+                d2_theo = Float64(get(meta, "d2_theo_thr", NaN)));
+            delta_symbol = "\\delta_{\\mathrm{thr}}")
+    end
     return (scaling = scaling, residual = residual,
+        residual_threshold = residual_threshold,
         suffix = rho === nothing ? "" : rho_tag(rho))
 end
 

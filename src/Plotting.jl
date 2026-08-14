@@ -430,8 +430,11 @@ off-scale-noise annotations sit between the panels, outside the frames.
 `spec` is the (log-uniformly decimated) spectrum table; `meta` must carry
 the fields `delta_star`, `df`, `d2_num` and `d2_theo` (evaluation
 separation, frequency resolution, and the two integral annotations).
+`delta_symbol` names the evaluation separation in the annotation — the
+default `\\delta^*` for the validity-window panel, `\\delta_{\\mathrm{thr}}`
+for the threshold companion.
 """
-function residual_figure(spec, meta)
+function residual_figure(spec, meta; delta_symbol::String = "\\delta^*")
     with_theme(publication_theme()) do
         fig = Figure(size = (950, 950))
         # Limits and ticks follow the plotted data: with log-uniform decimation
@@ -490,9 +493,9 @@ function residual_figure(spec, meta)
         # off-scale noise note right-aligned in the same row (only when the
         # 1/Δf reference cannot be drawn inside the frame)
         Label(fig[2, 1],
-            latexstring("\\delta^* = ", sci_latex(meta.delta_star),
-                ":\\;\\; D^2_{\\delta^*} = ", sci_latex(meta.d2_num),
-                "\\;\\; (D^2_{\\mathrm{th},\\,\\delta^*} = ",
+            latexstring(delta_symbol, " = ", sci_latex(meta.delta_star),
+                ":\\;\\; D^2_{", delta_symbol, "} = ", sci_latex(meta.d2_num),
+                "\\;\\; (D^2_{\\mathrm{th},\\,", delta_symbol, "} = ",
                 sci_latex(meta.d2_theo), ")");
             fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
             padding = (4, 0, 2, 8))
