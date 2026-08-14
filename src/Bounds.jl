@@ -12,7 +12,8 @@ export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
 """
 Canonical TOML keys for the six model parameters, in index order.
 """
-const PARAM_KEYS = ("amplitude", "chirp_mass", "time", "phase", "spin1", "spin2")
+const PARAM_KEYS = ("amplitude", "chirp_mass", "coalescence_time",
+    "coalescence_phase", "spin1", "spin2")
 
 """
     ParameterBounds
@@ -47,9 +48,9 @@ end
 $(TYPEDSIGNATURES)
 
 Build bounds from a `[parameter_bounds]` TOML table mapping parameter names
-(`amplitude`, `chirp_mass`, `time`, `phase`, `spin1`, `spin2`) to
-`[lower, upper]` pairs (`inf`/`-inf` allowed). Missing keys keep the
-defaults; the phase axis stays periodic regardless.
+(`amplitude`, `chirp_mass`, `coalescence_time`, `coalescence_phase`,
+`spin1`, `spin2`) to `[lower, upper]` pairs (`inf`/`-inf` allowed). Missing
+keys keep the defaults; the phase axis stays periodic regardless.
 """
 function bounds_from_config(cfg::AbstractDict)
     b = default_bounds()
@@ -100,20 +101,20 @@ end
 $(TYPEDSIGNATURES)
 
 Distance from the origin to the boundary of the axis-aligned box
-`[lox, hix] × [loy, hiy]` (which must contain the origin) along the ray with
-direction `(cphi, sphi)`. Returns `Inf` when both bounds along the ray are
-infinite.
+`[x_lower, x_upper] × [y_lower, y_upper]` (which must contain the origin)
+along the ray with direction `(cos_phi, sin_phi)`. Returns `Inf` when both
+bounds along the ray are infinite.
 """
 function ray_box_crossing(
-    cphi::Real,
-    sphi::Real,
-    lox::Real,
-    hix::Real,
-    loy::Real,
-    hiy::Real,
+    cos_phi::Real,
+    sin_phi::Real,
+    x_lower::Real,
+    x_upper::Real,
+    y_lower::Real,
+    y_upper::Real,
 )
-    tx = cphi > 0 ? hix / cphi : (cphi < 0 ? lox / cphi : Inf)
-    ty = sphi > 0 ? hiy / sphi : (sphi < 0 ? loy / sphi : Inf)
+    tx = cos_phi > 0 ? x_upper / cos_phi : (cos_phi < 0 ? x_lower / cos_phi : Inf)
+    ty = sin_phi > 0 ? y_upper / sin_phi : (sin_phi < 0 ? y_lower / sin_phi : Inf)
     return min(tx, ty)
 end
 

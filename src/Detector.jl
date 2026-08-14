@@ -31,14 +31,16 @@ $(TYPEDSIGNATURES)
 
 Scalar per-bin complex modulation of the A and E TDI channels: orbital
 Doppler phase (via the SPA time-frequency map `t(f) = t_c − 5M_c/(256 v⁸)`)
-and low-frequency antenna patterns. `Mc`, `tc` in physical units. Generic
-over `Real` (including `ForwardDiff.Dual`); safe inside GPU kernels.
+and low-frequency antenna patterns. `chirp_mass`, `coalescence_time` in
+physical units. Generic over `Real` (including `ForwardDiff.Dual`); safe
+inside GPU kernels.
 """
-@inline function tdi_modulation_bin(f::Real, Mc, tc, wp::WaveformParams)
+@inline function tdi_modulation_bin(f::Real, chirp_mass, coalescence_time,
+    wp::WaveformParams)
     omega_orbit = 2 * π / SECONDS_PER_YEAR
 
-    v = (π * Mc * f)^(1 / 3)
-    t_f = tc - 5.0 * Mc / (256.0 * v^8)
+    pn_velocity = (π * chirp_mass * f)^(1 / 3)
+    t_f = coalescence_time - 5.0 * chirp_mass / (256.0 * pn_velocity^8)
 
     phi_orb = omega_orbit * t_f
     doppler_phase = 2 * π * f * R_ORBIT_SEC * sin(wp.sky_theta) * cos(phi_orb - wp.sky_phi)
@@ -74,15 +76,15 @@ function project_to_tdi(
     p::AbstractVector,
     wp::WaveformParams,
 )
-    Mc = p[2] * wp.mass_scale
-    tc = p[3] * wp.time_scale
+    chirp_mass = p[2] * wp.mass_scale
+    coalescence_time = p[3] * wp.time_scale
 
-    mA1, _ = tdi_modulation_bin(freqs[1], Mc, tc, wp)
+    mA1, _ = tdi_modulation_bin(freqs[1], chirp_mass, coalescence_time, wp)
     CT = typeof(mA1 * h_strain[1])
     A = Vector{CT}(undef, length(freqs))
     E = Vector{CT}(undef, length(freqs))
     @inbounds for i in eachindex(freqs, h_strain)
-        mod_A, mod_E = tdi_modulation_bin(freqs[i], Mc, tc, wp)
+        mod_A, mod_E = tdi_modulation_bin(freqs[i], chirp_mass, coalescence_time, wp)
         A[i] = mod_A * h_strain[i]
         E[i] = mod_E * h_strain[i]
     end

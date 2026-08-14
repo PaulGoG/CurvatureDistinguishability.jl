@@ -71,7 +71,7 @@ corner_bisect_iters = 15
 # The phase is periodic (deviations capped at +-pi) regardless of this table.
 amplitude = [0.0, inf]
 chirp_mass = [0.0, inf]
-time = [0.0, inf]
+coalescence_time = [0.0, inf]
 spin1 = [-1.0, 1.0]
 spin2 = [-1.0, 1.0]
 

@@ -32,11 +32,11 @@ between the 2-channel (A, E) data and the single-source model at parameters
     @inbounds begin
         f = freqs[i]
         A = θ[1] * wp.amp_scale
-        Mc = θ[2] * wp.mass_scale
-        tc = θ[3] * wp.time_scale
+        chirp_mass = θ[2] * wp.mass_scale
+        coalescence_time = θ[3] * wp.time_scale
         beta = spin_beta(θ[5], θ[6], wp.eta)
-        h = strain_bin(f, A, Mc, tc, θ[4], beta, wp.amp_33_factor)
-        mod_A, mod_E = tdi_modulation_bin(f, Mc, tc, wp)
+        h = strain_bin(f, A, chirp_mass, coalescence_time, θ[4], beta, wp.amp_33_factor)
+        mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
         diff_A = data_A[i] - mod_A * h
         diff_E = data_E[i] - mod_E * h
         out[i] = (real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)) / Sn[i]
@@ -194,11 +194,11 @@ end
     @inbounds begin
         f = freqs[i]
         A = θ[1] * wp.amp_scale
-        Mc = θ[2] * wp.mass_scale
-        tc = θ[3] * wp.time_scale
+        chirp_mass = θ[2] * wp.mass_scale
+        coalescence_time = θ[3] * wp.time_scale
         beta = spin_beta(θ[5], θ[6], wp.eta)
-        h = strain_bin(f, A, Mc, tc, θ[4], beta, wp.amp_33_factor)
-        mod_A, mod_E = tdi_modulation_bin(f, Mc, tc, wp)
+        h = strain_bin(f, A, chirp_mass, coalescence_time, θ[4], beta, wp.amp_33_factor)
+        mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
         diff_A = data_A[i] - mod_A * h
         diff_E = data_E[i] - mod_E * h
         c = (real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)) / Sn[i]
@@ -271,17 +271,18 @@ end
 function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Real,
     wp::WaveformParams)
     A = p[1] * wp.amp_scale
-    Mc = p[2] * wp.mass_scale
-    tc = p[3] * wp.time_scale
-    phic = p[4]
+    chirp_mass = p[2] * wp.mass_scale
+    coalescence_time = p[3] * wp.time_scale
+    coalescence_phase = p[4]
     beta = spin_beta(p[5], p[6], wp.eta)
 
     # Allocation-free loop (avoids GC lock contention under outer threading).
     dist_sq = sum(1:length(freqs)) do i
         @inbounds begin
             f = freqs[i]
-            h = strain_bin(f, A, Mc, tc, phic, beta, wp.amp_33_factor)
-            mod_A, mod_E = tdi_modulation_bin(f, Mc, tc, wp)
+            h = strain_bin(f, A, chirp_mass, coalescence_time, coalescence_phase,
+                beta, wp.amp_33_factor)
+            mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
             diff_A = data_stream[1][i] - mod_A * h
             diff_E = data_stream[2][i] - mod_E * h
             c = real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)

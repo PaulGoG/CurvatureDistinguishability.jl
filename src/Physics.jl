@@ -34,36 +34,36 @@ const SECONDS_PER_YEAR = 3.15576e7
 # confusion-noise fit coefficients (α, β, κ, γ, f_k) per mission duration.
 const ROBSON_TABLE = (
     (
-        tobs = 0.5 * SECONDS_PER_YEAR,
+        T_obs = 0.5 * SECONDS_PER_YEAR,
         alpha = 0.133,
         beta = 243.0,
         kappa = 482.0,
         gamma = 917.0,
-        fk = 0.00258,
+        f_knee = 0.00258,
     ),
     (
-        tobs = 1.0 * SECONDS_PER_YEAR,
+        T_obs = 1.0 * SECONDS_PER_YEAR,
         alpha = 0.171,
         beta = 292.0,
         kappa = 1020.0,
         gamma = 1680.0,
-        fk = 0.00215,
+        f_knee = 0.00215,
     ),
     (
-        tobs = 2.0 * SECONDS_PER_YEAR,
+        T_obs = 2.0 * SECONDS_PER_YEAR,
         alpha = 0.165,
         beta = 299.0,
         kappa = 611.0,
         gamma = 1340.0,
-        fk = 0.00173,
+        f_knee = 0.00173,
     ),
     (
-        tobs = 4.0 * SECONDS_PER_YEAR,
+        T_obs = 4.0 * SECONDS_PER_YEAR,
         alpha = 0.138,
         beta = -221.0,
         kappa = 521.0,
         gamma = 1680.0,
-        fk = 0.00113,
+        f_knee = 0.00113,
     ),
 )
 
@@ -94,7 +94,7 @@ Base.@kwdef struct NoiseParams
     confusion_beta::Float64 = 292.0
     confusion_kappa::Float64 = 1020.0
     confusion_gamma::Float64 = 1680.0
-    confusion_fk::Float64 = 0.00215
+    confusion_knee_freq::Float64 = 0.00215
     arm_length::Float64 = 2.5e9
     oms_amplitude::Float64 = 1.5e-11
     oms_reddening_freq::Float64 = 2.0e-3
@@ -110,12 +110,12 @@ Build a [`NoiseParams`](@ref) whose confusion coefficients are the Robson
 et al. (2019) Table 1 column nearest to the observation time `T_obs` [s].
 """
 function robson_confusion_params(T_obs::Real; enabled::Bool = true,
-    amp::Real = GALACTIC_CONFUSION_AMP)
-    row = argmin(r -> abs(log(T_obs / r.tobs)), ROBSON_TABLE)
-    return NoiseParams(confusion_enabled = enabled, confusion_amp = amp,
+    confusion_amp::Real = GALACTIC_CONFUSION_AMP)
+    row = argmin(r -> abs(log(T_obs / r.T_obs)), ROBSON_TABLE)
+    return NoiseParams(confusion_enabled = enabled, confusion_amp = confusion_amp,
         confusion_alpha = row.alpha, confusion_beta = row.beta,
         confusion_kappa = row.kappa, confusion_gamma = row.gamma,
-        confusion_fk = row.fk)
+        confusion_knee_freq = row.f_knee)
 end
 
 """
@@ -154,7 +154,7 @@ function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
             -(f^noise.confusion_alpha) +
             noise.confusion_beta * f * sin(noise.confusion_kappa * f),
         ) *
-        (1 + tanh(noise.confusion_gamma * (noise.confusion_fk - f)))
+        (1 + tanh(noise.confusion_gamma * (noise.confusion_knee_freq - f)))
 
     return s_inst + s_gal
 end
@@ -184,8 +184,8 @@ end
 
 function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
     amp_scale::Real = 1e-21, eta::Real = 0.25,
-    amp_33_factor::Real = 0.1, sky_theta::Real = 1.047,
-    sky_phi::Real = 0.0, inclination::Real = 0.523,
+    amp_33_factor::Real = 0.1, sky_theta::Real = π / 3,
+    sky_phi::Real = 0.0, inclination::Real = π / 6,
     polarization::Real = 0.0, include_t_channel::Bool = false)
     fields = promote(float(mass_scale), float(time_scale), float(amp_scale),
         float(eta), float(amp_33_factor), float(sky_theta),
@@ -227,21 +227,22 @@ $(TYPEDSIGNATURES)
 
 Scalar per-bin frequency-domain strain: dominant (2,2) mode with 1.5PN
 spin-orbit phasing plus the (3,3) harmonic at Newtonian phase ratio
-`Ψ₃₃ = 1.5 Ψ₂₂`. `A`, `Mc`, `tc` are in physical units (s-based geometrised
-units for `Mc`, `tc`). This is the single scalar core shared by the broadcast
-model, the CPU inference loop and the GPU kernel — generic over `Real`
-(including `ForwardDiff.Dual`).
+`Ψ₃₃ = 1.5 Ψ₂₂`. `A`, `chirp_mass`, `coalescence_time` are in physical units
+(s-based geometrised units for the chirp mass). This is the single scalar
+core shared by the broadcast model, the CPU inference loop and the GPU
+kernel — generic over `Real` (including `ForwardDiff.Dual`).
 """
-@inline function strain_bin(f::Real, A, Mc, tc, phic, beta, amp_33_factor)
-    v_param = (π * Mc * f)^(1 / 3)
+@inline function strain_bin(f::Real, A, chirp_mass, coalescence_time,
+    coalescence_phase, beta, amp_33_factor)
+    pn_velocity = (π * chirp_mass * f)^(1 / 3)
 
     amp_22 = A * (f^(-7 / 6))
     phase_22 =
-        2 * π * f * tc - phic -
-        (3 / 128) * (v_param^(-5)) * (1.0 - 4.0 * beta * (v_param^3))
+        2 * π * f * coalescence_time - coalescence_phase -
+        (3 / 128) * (pn_velocity^(-5)) * (1.0 - 4.0 * beta * (pn_velocity^3))
     h_22 = amp_22 * cis(phase_22)
 
-    amp_33 = (amp_33_factor * A) * (f^(-7 / 6)) * v_param
+    amp_33 = (amp_33_factor * A) * (f^(-7 / 6)) * pn_velocity
     h_33 = amp_33 * cis(1.5 * phase_22)
 
     return h_22 + h_33
@@ -260,11 +261,12 @@ function scaled_waveform_model(
     wp::WaveformParams,
 )
     A = theta[1] * wp.amp_scale
-    Mc = theta[2] * wp.mass_scale
-    tc = theta[3] * wp.time_scale
-    phic = theta[4]
+    chirp_mass = theta[2] * wp.mass_scale
+    coalescence_time = theta[3] * wp.time_scale
+    coalescence_phase = theta[4]
     beta = spin_beta(theta[5], theta[6], wp.eta)
-    return strain_bin.(freq_grid, A, Mc, tc, phic, beta, wp.amp_33_factor)
+    return strain_bin.(freq_grid, A, chirp_mass, coalescence_time, coalescence_phase,
+        beta, wp.amp_33_factor)
 end
 
 end # module

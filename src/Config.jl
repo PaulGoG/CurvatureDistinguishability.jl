@@ -94,9 +94,9 @@ const KNOWN_KEYS = Dict(
         "sky_theta", "sky_phi", "inclination", "polarization",
         "include_t_channel"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
-        "confusion_beta", "confusion_kappa", "confusion_gamma", "confusion_fk",
-        "arm_length", "oms_amplitude", "oms_reddening_freq",
-        "acc_amplitude", "acc_knee_low", "acc_knee_high"],
+        "confusion_beta", "confusion_kappa", "confusion_gamma",
+        "confusion_knee_freq", "arm_length", "oms_amplitude",
+        "oms_reddening_freq", "acc_amplitude", "acc_knee_low", "acc_knee_high"],
     "mapping" =>
         ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters",
             "unbounded_cap_factor"],
@@ -313,7 +313,7 @@ function load_and_validate_config(config_path::AbstractString)
     # every numeric field defaults to the Robson Table-1 selection; one loop
     # instead of twelve mechanical get_number repetitions
     noise_numeric = (:confusion_amp, :confusion_alpha, :confusion_beta,
-        :confusion_kappa, :confusion_gamma, :confusion_fk, :arm_length,
+        :confusion_kappa, :confusion_gamma, :confusion_knee_freq, :arm_length,
         :oms_amplitude, :oms_reddening_freq, :acc_amplitude, :acc_knee_low,
         :acc_knee_high)
     noise_values = Dict(

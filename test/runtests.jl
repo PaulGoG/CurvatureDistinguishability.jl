@@ -92,7 +92,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 -(f^np.confusion_alpha) +
                 np.confusion_beta * f * sin(np.confusion_kappa * f),
             ) *
-            (1 + tanh(np.confusion_gamma * (np.confusion_fk - f)))
+            (1 + tanh(np.confusion_gamma * (np.confusion_knee_freq - f)))
         @test analytic_noise_psd(f) ≈ analytic_noise_psd(f; noise = FIX_NOISE_OFF) + sc rtol =
             1e-14
         @test sc > 0
@@ -102,7 +102,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # Table-1 selection by observation time
         @test robson_confusion_params(SECONDS_PER_YEAR).confusion_beta == 292.0
         @test robson_confusion_params(4 * SECONDS_PER_YEAR).confusion_beta == -221.0
-        @test robson_confusion_params(0.4 * SECONDS_PER_YEAR).confusion_fk == 0.00258
+        @test robson_confusion_params(0.4 * SECONDS_PER_YEAR).confusion_knee_freq == 0.00258
 
         @test analytic_noise_psd(0.0) == 1e-30
         @test analytic_noise_psd(-1.0) == 1e-30
@@ -122,17 +122,33 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     @testset "Waveform scalar core" begin
         h_bc = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
         A = THETA0[1] * FIX_WP.amp_scale
-        Mc = THETA0[2] * FIX_WP.mass_scale
-        tc = THETA0[3] * FIX_WP.time_scale
+        chirp_mass = THETA0[2] * FIX_WP.mass_scale
+        coalescence_time = THETA0[3] * FIX_WP.time_scale
         beta = spin_beta(THETA0[5], THETA0[6], FIX_WP.eta)
         h_sc = [
-            strain_bin(f, A, Mc, tc, THETA0[4], beta, FIX_WP.amp_33_factor) for
+            strain_bin(
+                f,
+                A,
+                chirp_mass,
+                coalescence_time,
+                THETA0[4],
+                beta,
+                FIX_WP.amp_33_factor,
+            ) for
             f in FIX_FREQS
         ]
         @test h_bc == h_sc
         @test eltype(h_bc) <: Complex
         # type stability of the hot scalar core
-        @test (@inferred strain_bin(1e-3, A, Mc, tc, 0.0, beta, 0.1)) isa ComplexF64
+        @test (@inferred strain_bin(
+            1e-3,
+            A,
+            chirp_mass,
+            coalescence_time,
+            0.0,
+            beta,
+            0.1,
+        )) isa ComplexF64
     end
 
     @testset "Detector / TDI projection" begin
@@ -147,12 +163,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test all(iszero, T3)
 
         # fused projection ≡ per-bin modulation
-        Mc = THETA0[2] * FIX_WP.mass_scale
-        tc = THETA0[3] * FIX_WP.time_scale
-        mA, mE = tdi_modulation_bin(FIX_FREQS[7], Mc, tc, FIX_WP)
+        chirp_mass = THETA0[2] * FIX_WP.mass_scale
+        coalescence_time = THETA0[3] * FIX_WP.time_scale
+        mA, mE = tdi_modulation_bin(FIX_FREQS[7], chirp_mass, coalescence_time, FIX_WP)
         @test mA * h[7] ≈ A2[7] rtol = 1e-14
         @test mE * h[7] ≈ E2[7] rtol = 1e-14
-        @test (@inferred tdi_modulation_bin(1e-3, Mc, tc, FIX_WP)) isa NTuple{2,ComplexF64}
+        @test (@inferred tdi_modulation_bin(1e-3, chirp_mass, coalescence_time, FIX_WP)) isa
+              NTuple{2,ComplexF64}
 
         # channel count is a WaveformParams type parameter: the projection
         # return type (2- vs 3-tuple) and the flat response infer concretely
@@ -383,7 +400,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test cfg isa PipelineSettings
             @test cfg.optimizer === :ipnewton
             # T_obs = 1e5 s → nearest Robson column is 6 months
-            @test cfg.noise.confusion_fk == 0.00258
+            @test cfg.noise.confusion_knee_freq == 0.00258
 
             @test_throws ErrorException load_and_validate_config(
                 write_cfg(dir, "[pipeline]\noptimizer = \"sgd\"\n"))

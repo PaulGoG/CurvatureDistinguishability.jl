@@ -105,14 +105,14 @@ kernel-dispatch sweep stage (single-task on GPU backends) from the 2D
 mapping stage, which evaluates host-side automatic differentiation on every
 backend and therefore always keeps the multi-threaded CPU concurrency.
 """
-function plan_resources(cfg::PipelineSettings, n_bins::Int, nch::Int, backend)
-    flatlen = 2 * nch * n_bins
+function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
+    flatlen = 2 * n_ch * n_bins
     fixed =
         flatlen * N_PARAMS * 8 +               # tangent-basis Jacobian
         flatlen * 8 * (N_PARAMS + 1) * NESTED_DUAL_EVAL_BUFFERS +
-        N_PARAMS * nch * n_bins * 16 +         # orthonormal basis storage
+        N_PARAMS * n_ch * n_bins * 16 +        # orthonormal basis storage
         4 * n_bins * 8                         # grid + PSD
-    per_task = (2 + 3 * nch) * n_bins * 16 # per-δ data streams and temporaries
+    per_task = (2 + 3 * n_ch) * n_bins * 16 # per-δ data streams and temporaries
     budget = cfg.max_ram_gb * 2^30
 
     if fixed + per_task > budget
@@ -276,9 +276,9 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             )
             return nothing
         end
-        s = 1.0 / sqrt(g_uu)
-        u_norm = u_raw .* s
-        K_norm = K_u * s^4
+        norm_scale = 1.0 / sqrt(g_uu)
+        u_norm = u_raw .* norm_scale
+        K_norm = K_u * norm_scale^4
         delta_min = (16.0 * rho_sq / K_norm)^(1 / 4)
         logline(log_io, @sprintf("        normalized K(u)          : %.6e", K_norm))
         logline(log_io, @sprintf("        delta_min                : %.6e", delta_min))
@@ -301,11 +301,11 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         n = cfg.n_deltas
         D2_num = zeros(n)
         best_fits = zeros(n, N_PARAMS)
-        conv = falses(n)
-        iters = zeros(Int, n)
-        gnorm = zeros(n)
-        atbound = falses(n)
-        ms_gain = ones(n)
+        converged = falses(n)
+        iteration_counts = zeros(Int, n)
+        gradient_norms = zeros(n)
+        at_bound = falses(n)
+        multi_start_gain = ones(n)
 
         logline(
             log_io,
@@ -360,12 +360,12 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             end
             diagnostics = optimization_diagnostics(res, best, cfg.bounds)
             D2_num[i] = dist
-            ms_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
+            multi_start_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
             best_fits[i, :] .= best
-            conv[i] = diagnostics.converged
-            iters[i] = diagnostics.iterations
-            gnorm[i] = diagnostics.g_norm
-            atbound[i] = diagnostics.at_bound
+            converged[i] = diagnostics.converged
+            iteration_counts[i] = diagnostics.iterations
+            gradient_norms[i] = diagnostics.g_norm
+            at_bound[i] = diagnostics.at_bound
             next!(prog)
             note_progress()
         end
@@ -397,16 +397,16 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                     "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
                     c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
             )
-        if cfg.n_starts > 1 && maximum(ms_gain) > cfg.secondary_minimum_gain
+        if cfg.n_starts > 1 && maximum(multi_start_gain) > cfg.secondary_minimum_gain
             @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
-                  "start for $(count(>(cfg.secondary_minimum_gain), ms_gain))/$n separations (max gain " *
-                  "$(round(maximum(ms_gain), digits = 2))) — evidence of secondary minima."
+                  "start for $(count(>(cfg.secondary_minimum_gain), multi_start_gain))/$n separations (max gain " *
+                  "$(round(maximum(multi_start_gain), digits = 2))) — evidence of secondary minima."
         end
-        any(atbound) &&
+        any(at_bound) &&
             @warn "Sweep '$name': the best fit sits on a physical bound for " *
-                  "$(count(atbound))/$n separations (see AtBound column)."
-        all(conv) || @warn "Sweep '$name': optimizer did not converge for " *
-              "$(count(!, conv))/$n separations (see Converged column)."
+                  "$(count(at_bound))/$n separations (see AtBound column)."
+        all(converged) || @warn "Sweep '$name': optimizer did not converge for " *
+              "$(count(!, converged))/$n separations (see Converged column)."
 
         if cfg.monitoring_enabled && progress_enabled()
             println(
@@ -420,11 +420,12 @@ function run_sweep(sweep::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
             D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
             BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
-            BestFit_Time = best_fits[:, 3], BestFit_Phase = best_fits[:, 4],
+            BestFit_CoalescenceTime = best_fits[:, 3],
+            BestFit_CoalescencePhase = best_fits[:, 4],
             BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],
-            Converged = collect(conv), Iterations = iters,
-            GradNorm = gnorm, AtBound = collect(atbound),
-            Starts = fill(cfg.n_starts, n), MultiStartGain = ms_gain)
+            Converged = collect(converged), Iterations = iteration_counts,
+            GradNorm = gradient_norms, AtBound = collect(at_bound),
+            Starts = fill(cfg.n_starts, n), MultiStartGain = multi_start_gain)
         CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
 
         # Residual-spectrum evaluation points. Primary δ*: the largest clean
@@ -607,11 +608,12 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         basis = compute_tangent_basis(theta0, ctx.freqs, ctx.Sn, ctx.df, wp)
         logline(log_io, "        basis rank: $(length(basis)) of $(length(theta0))")
 
-        M = n_angles ÷ 2
+        n_base_directions = n_angles ÷ 2
         # milestones count against the base direction budget; refinement and
         # bisection add a small unknown surplus that the hook simply absorbs
         note_progress = stage_progress_hook(
-            "Map '$name' ($idx/$total): angular sweep", M, cfg.progress_log_fraction)
+            "Map '$name' ($idx/$total): angular sweep", n_base_directions,
+            cfg.progress_log_fraction)
 
         function eval_angles(phis::Vector{Float64}, prog)
             out = Vector{NTuple{2,Float64}}(undef, length(phis))
@@ -630,15 +632,15 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
 
         logline(
             log_io,
-            "  [2/2] mirrored angular sweep ($M base directions on [0, π), " *
-            "adaptive refinement tol $(cfg.neighbor_ratio_tol), " *
+            "  [2/2] mirrored angular sweep ($n_base_directions base directions " *
+            "on [0, π), adaptive refinement tol $(cfg.neighbor_ratio_tol), " *
             "$(cfg.max_refine_levels) levels; $(ctx.map_tasks) concurrent)",
         )
         prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
-        phis = [(k - 1) * π / M for k in 1:M]
+        phis = [(k - 1) * π / n_base_directions for k in 1:n_base_directions]
         curvature_norm_pairs = eval_angles(phis, prog)
         entries = [
-            (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:M
+            (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:n_base_directions
         ]
 
         r_math_of(K) = K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
@@ -691,15 +693,15 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
                 rb = r_box_of(alpha) # cos/sin of the full-circle angle
                 isfinite(rb) && r_math_of(K) >= rb
             end
-            N = length(entries)
+            n_entries = length(entries)
             alphas = vcat([e.phi for e in entries], [e.phi + π for e in entries])
             K_full_circle = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
-            caps = [capped_at(alphas[k], K_full_circle[k]) for k in 1:2N]
+            caps = [capped_at(alphas[k], K_full_circle[k]) for k in 1:(2n_entries)]
             lo = Float64[]
             hi = Float64[]
             lo_capped = Bool[]
-            for k in 1:2N
-                j = mod1(k + 1, 2N)
+            for k in 1:(2n_entries)
+                j = mod1(k + 1, 2n_entries)
                 caps[k] == caps[j] && continue
                 push!(lo, alphas[k])
                 push!(hi, alphas[j] + (j == 1 ? 2π : 0.0))
@@ -800,8 +802,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         r_math = similar(angle)
         r_box_values = similar(angle)
         r_cap = similar(angle)
-        dircos = similar(angle)
-        dirsin = similar(angle)
+        dir_cos = similar(angle)
+        dir_sin = similar(angle)
         prior_lim = falses(2half)
         degen = falses(2half)
         for (i, e) in enumerate(entries), half_idx in (0, 1)
@@ -809,8 +811,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             c, s = cos(e.phi), sin(e.phi)
             half_idx == 1 && ((c, s) = (-c, -s))
             angle[k] = e.phi + half_idx * π
-            dircos[k] = c
-            dirsin[k] = s
+            dir_cos[k] = c
+            dir_sin[k] = s
             K_raw[k] = e.K
             g_uu_values[k] = e.g
             r_math[k] = r_math_of(e.K)
@@ -829,8 +831,8 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             r_cap[.!isfinite.(r_cap)] .= polygon_cap
         end
 
-        X = r_cap .* dircos
-        Y = r_cap .* dirsin
+        X = r_cap .* dir_cos
+        Y = r_cap .* dir_sin
         prior_frac = count(prior_lim) / length(prior_lim)
         degen_frac = count(degen) / length(degen)
         logline(
@@ -857,7 +859,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
         end
 
         df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
-            Dir_Cos = dircos, Dir_Sin = dirsin,
+            Dir_Cos = dir_cos, Dir_Sin = dir_sin,
             R_Capped = r_cap, R_Math = r_math, R_Box = r_box_values,
             Prior_Limited = collect(prior_lim), Degenerate = collect(degen),
             K_Raw = K_raw, G_uu = g_uu_values)
@@ -867,7 +869,7 @@ function run_map(map_cfg::AbstractDict, idx::Int, total::Int, ctx::RunContext)
             fig = zone_figure(X, Y, collect(prior_lim);
                 px = px, py = py, box = box,
                 prior_frac = prior_frac, degenerate_frac = degen_frac,
-                x_math = r_math .* dircos, y_math = r_math .* dirsin)
+                x_math = r_math .* dir_cos, y_math = r_math .* dir_sin)
             save_figure(fig, joinpath(out_dir, "confusion_zone"))
         catch err
             @warn "Map '$name': figure generation failed; numerical results are saved." exception =
@@ -926,7 +928,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
     df = 1.0 / cfg.T_obs
     freqs = collect(cfg.f_min:df:cfg.f_max)
     Sn = analytic_noise_psd.(freqs; noise = cfg.noise)
-    nch = n_channels(cfg.wp)
+    n_ch = n_channels(cfg.wp)
 
     backend = get_best_backend(prefer = cfg.gpu_backend)
     cfg.gpu_backend === :none &&
@@ -938,7 +940,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
         )
     end
 
-    sweep_tasks, map_tasks, est_gb = plan_resources(cfg, length(freqs), nch, backend)
+    sweep_tasks, map_tasks, est_gb = plan_resources(cfg, length(freqs), n_ch, backend)
 
     freqs_dev = backend isa KernelAbstractions.CPU ? freqs : to_backend(freqs, backend)
     Sn_dev = backend isa KernelAbstractions.CPU ? Sn : to_backend(Sn, backend)
@@ -954,7 +956,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
         total_memory_gb = round(Sys.total_memory() / 2^30, digits = 1),
         julia_threads = Threads.nthreads(), active_tasks = sweep_tasks,
         map_tasks = map_tasks,
-        n_frequency_bins = length(freqs), channels = nch,
+        n_frequency_bins = length(freqs), channels = n_ch,
         estimated_ram_gb = round(est_gb, digits = 2),
         optimizer = string(cfg.optimizer),
         n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
@@ -966,7 +968,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
     println("  CurvatureDistinguishability Pipeline")
     println("=" ^ 78)
     @info "Run directory: $out_base"
-    @info "Grid: $(length(freqs)) bins ($(cfg.f_min) – $(cfg.f_max) Hz, df = $df); channels: $nch"
+    @info "Grid: $(length(freqs)) bins ($(cfg.f_min) – $(cfg.f_max) Hz, df = $df); channels: $n_ch"
     @info "Backend: $(backend_name(backend)); concurrency: $sweep_tasks sweep / " *
           "$map_tasks map tasks; estimated peak RAM $(round(est_gb, digits = 2)) GB " *
           "(budget $(cfg.max_ram_gb) GB)"

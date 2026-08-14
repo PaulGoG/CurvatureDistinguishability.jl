@@ -108,7 +108,7 @@ via one ForwardDiff Jacobian of [`flat_response`](@ref) followed by modified
 Gram–Schmidt. Directions whose orthogonalized norm falls below
 [`GS_NORM_TOL`](@ref) (exactly degenerate combinations, e.g. the equal-mass
 spin difference χ_a) are dropped; the returned basis may have fewer than 6
-elements. Each element is an `nch`-tuple of complex channel vectors.
+elements. Each element is an `n_ch`-tuple of complex channel vectors.
 """
 function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
     Sn_vals::AbstractVector, df::Real,

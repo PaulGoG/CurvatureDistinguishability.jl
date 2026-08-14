@@ -51,7 +51,7 @@ include_t_channel = false
 # Robson, Cornish & Liu (2019) noise model. Confusion (Eq. 14) coefficients
 # default to the Table 1 column nearest [grid].T_obs; override any of
 # confusion_amp / confusion_alpha / confusion_beta / confusion_kappa /
-# confusion_gamma / confusion_fk here. false = instrumental-only noise.
+# confusion_gamma / confusion_knee_freq here. false = instrumental-only noise.
 # Instrumental (Eq. 10-12) parameters are overridable likewise: arm_length
 # [m], oms_amplitude [m Hz^-1/2], oms_reddening_freq [Hz], acc_amplitude
 # [m s^-2 Hz^-1/2], acc_knee_low / acc_knee_high [Hz]; all > 0.
@@ -73,7 +73,7 @@ corner_bisect_iters = 25
 # The phase is periodic (deviations capped at +-pi) regardless of this table.
 amplitude = [0.0, inf]
 chirp_mass = [0.0, inf]
-time = [0.0, inf]
+coalescence_time = [0.0, inf]
 spin1 = [-1.0, 1.0]
 spin2 = [-1.0, 1.0]
 

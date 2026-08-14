@@ -182,20 +182,20 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
             r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
             r_cap[.!isfinite.(r_cap)] .= cfg.unbounded_cap_factor * r_cap_max
         end
-        dc =
+        dir_cos =
             hasproperty(contour_stored, :Dir_Cos) ? contour_stored.Dir_Cos :
             cos.(contour_stored.Angle)
-        ds =
+        dir_sin =
             hasproperty(contour_stored, :Dir_Sin) ? contour_stored.Dir_Sin :
             sin.(contour_stored.Angle)
-        X = r_cap .* dc
-        Y = r_cap .* ds
-        x_math = r_math .* dc
-        y_math = r_math .* ds
+        X = r_cap .* dir_cos
+        Y = r_cap .* dir_sin
+        x_math = r_math .* dir_cos
+        y_math = r_math .* dir_sin
         prior =
             collect(isfinite.(contour_stored.R_Box) .& (r_math .>= contour_stored.R_Box))
         contour = DataFrame(Angle = contour_stored.Angle, X_Bound = X, Y_Bound = Y,
-            Dir_Cos = dc, Dir_Sin = ds,
+            Dir_Cos = dir_cos, Dir_Sin = dir_sin,
             R_Capped = r_cap, R_Math = r_math, R_Box = contour_stored.R_Box,
             Prior_Limited = prior, Degenerate = degen,
             K_Raw = contour_stored.K_Raw,
