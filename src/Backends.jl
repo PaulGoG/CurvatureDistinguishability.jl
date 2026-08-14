@@ -8,7 +8,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, CPU
 
 export get_best_backend, to_backend, backend_name, register_backend!
-public reclaim_device_memory!, cpu_model
+public reclaim_device_memory!, cpu_model, device_fingerprint
 
 """
 Registry of GPU backend probes, populated by the package extensions
@@ -97,5 +97,16 @@ maintenance on long campaigns. Package extensions override this per backend
 are no-ops.
 """
 reclaim_device_memory!(_) = nothing
+
+"""
+$(TYPEDSIGNATURES)
+
+Device and runtime fingerprint for hardware provenance: the GPU package's
+`versioninfo` report (driver/runtime versions, device inventory with
+memory), captured as a string for the run's hardware sidecar. Package
+extensions override this per backend; the CPU method returns the empty
+string (the host is fingerprinted separately).
+"""
+device_fingerprint(_) = ""
 
 end # module

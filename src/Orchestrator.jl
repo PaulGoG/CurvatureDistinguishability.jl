@@ -1025,6 +1025,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
         julia_version = string(VERSION), hostname = gethostname(),
         started = string(now()), backend = backend_name(backend),
         cpu_model = Backends.cpu_model(),
+        cpu_threads = Sys.CPU_THREADS,
+        total_memory_gb = round(Sys.total_memory() / 2^30, digits = 1),
         julia_threads = Threads.nthreads(), active_tasks = sweep_tasks,
         map_tasks = map_tasks,
         n_frequency_bins = length(freqs), channels = nch,
@@ -1032,6 +1034,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
         optimizer = string(cfg.optimizer),
         n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
         confusion_noise = cfg.noise.confusion_enabled)
+    write_hardware_fingerprint(out_base;
+        device_report = Backends.device_fingerprint(backend))
 
     println("=" ^ 78)
     println("  CurvatureDistinguishability Pipeline")

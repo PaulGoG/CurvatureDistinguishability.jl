@@ -91,6 +91,7 @@ CurvatureDistinguishability.Backends.backend_name
 CurvatureDistinguishability.Backends.register_backend!
 CurvatureDistinguishability.Backends.reclaim_device_memory!
 CurvatureDistinguishability.Backends.cpu_model
+CurvatureDistinguishability.Backends.device_fingerprint
 ```
 
 ## Configuration
@@ -108,6 +109,7 @@ CurvatureDistinguishability.Provenance.unique_run_dir
 CurvatureDistinguishability.Provenance.snapshot_config
 CurvatureDistinguishability.Provenance.backup_existing!
 CurvatureDistinguishability.Provenance.write_run_metadata
+CurvatureDistinguishability.Provenance.write_hardware_fingerprint
 CurvatureDistinguishability.Provenance.git_state
 ```
 

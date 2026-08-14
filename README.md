@@ -107,6 +107,15 @@ julia --project scripts/replot.jl data/run_<hash> [--rho R]
 # re-render all figures of one or more runs as a flat PNG browsing view
 # (plots/ by default)
 julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
+
+# test suite (unit + physics validation + static QA + end-to-end)
+julia --project -e 'using Pkg; Pkg.test()'
+
+# performance benchmarks (own environment; the package resolves by path)
+julia --threads=auto bench/run_benchmarks.jl
+
+# documentation build (strict mode; own environment)
+julia docs/make.jl
 ```
 
 Everything tunable lives in the `configs/` scenario files (grid, physics, the full

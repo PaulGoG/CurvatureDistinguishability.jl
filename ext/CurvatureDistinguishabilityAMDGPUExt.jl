@@ -11,5 +11,7 @@ Backends.to_backend(data::AbstractArray, ::ROCBackend) = ROCArray(data)
 Backends.backend_name(::ROCBackend) =
     AMDGPU.functional() ? "AMD ROCm GPU ($(AMDGPU.HIP.name(AMDGPU.device())))" :
     "AMD ROCm GPU"
+Backends.device_fingerprint(::ROCBackend) =
+    AMDGPU.functional() ? sprint(io -> AMDGPU.versioninfo(io)) : ""
 
 end

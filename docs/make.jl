@@ -1,6 +1,6 @@
 using Pkg
 Pkg.activate(@__DIR__; io = devnull)
-Pkg.develop(PackageSpec(path = joinpath(@__DIR__, "..")); io = devnull)
+# the package resolves by path via [sources] (unregistered dependency)
 Pkg.instantiate(; io = devnull)
 
 using Documenter

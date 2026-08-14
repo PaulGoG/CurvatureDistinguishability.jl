@@ -1,13 +1,12 @@
 # Performance benchmarks, kept out of the test suite by design (benchmarks
-# measure, tests assert). Uses its own environment with the package dev'd in.
+# measure, tests assert). Uses its own environment; the package resolves by
+# path via [sources].
 #
 #   julia --threads=auto bench/run_benchmarks.jl
 #
 using Pkg
 Pkg.activate(@__DIR__; io = devnull)
-# develop unconditionally (idempotent): the package is unregistered, so a
-# fresh checkout cannot resolve it from the Project.toml [deps] entry alone
-Pkg.develop(path = dirname(@__DIR__); io = devnull)
+# the package resolves by path via [sources] (unregistered dependency)
 Pkg.instantiate(; io = devnull)
 
 using BenchmarkTools

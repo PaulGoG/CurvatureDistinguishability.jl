@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "778c14ebf828f8f49295f73eac6f7cba3489e7e7"
+project_hash = "d231f3c6b19d4d2a904d77b78032ac6610909afe"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "ec6be48a85c93d995563b84bff8a86bc98df45ce"
@@ -384,7 +384,7 @@ uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.2.0"
 
 [[deps.CurvatureDistinguishability]]
-deps = ["CSV", "CairoMakie", "DataFrames", "Dates", "DocStringExtensions", "DrWatson", "ForwardDiff", "KernelAbstractions", "LaTeXStrings", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
+deps = ["CSV", "CairoMakie", "DataFrames", "Dates", "DocStringExtensions", "DrWatson", "ForwardDiff", "InteractiveUtils", "KernelAbstractions", "LaTeXStrings", "LinearAlgebra", "Logging", "LoggingExtras", "MathTeXEngine", "Optim", "Printf", "ProgressMeter", "Random", "SHA", "Statistics", "TOML", "UnicodePlots"]
 path = "."
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
 version = "1.0.0-DEV"

@@ -693,6 +693,9 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             @test isfile(joinpath(out_base, "config.toml"))
             @test isfile(joinpath(out_base, "run.log"))
             meta = TOML.parsefile(joinpath(out_base, "metadata.toml"))
+            # hardware-provenance sidecar: host fingerprint always present
+            @test isfile(joinpath(out_base, "hardware.txt"))
+            @test occursin("BLAS threads", read(joinpath(out_base, "hardware.txt"), String))
             @test haskey(meta, "git") && haskey(meta, "finished")
             @test meta["failed_stages"] == ""
 

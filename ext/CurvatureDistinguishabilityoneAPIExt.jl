@@ -15,5 +15,7 @@ Backends.backend_name(::oneAPIBackend) =
     oneAPI.functional() ?
     "Intel oneAPI GPU ($(strip(oneAPI.oneL0.properties(oneAPI.device()).name)))" :
     "Intel oneAPI GPU"
+Backends.device_fingerprint(::oneAPIBackend) =
+    oneAPI.functional() ? sprint(io -> oneAPI.versioninfo(io)) : ""
 
 end

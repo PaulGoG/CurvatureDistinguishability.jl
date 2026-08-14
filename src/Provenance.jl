@@ -8,10 +8,12 @@ using DocStringExtensions: TYPEDSIGNATURES
 using SHA: sha256
 using TOML: TOML
 using DrWatson: gitdescribe
+using InteractiveUtils: versioninfo
+using LinearAlgebra: BLAS
 
 export run_id_from_config,
     unique_run_dir, snapshot_config, backup_existing!,
-    write_run_metadata, git_state
+    write_run_metadata, write_hardware_fingerprint, git_state
 
 """
 $(TYPEDSIGNATURES)
@@ -103,6 +105,36 @@ function write_run_metadata(run_dir::AbstractString; kwargs...)
     end
     open(path, "w") do io
         TOML.print(io, meta)
+    end
+    return path
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Write the platform fingerprint sidecar `hardware.txt` into the run
+directory: Julia's own `versioninfo` report (Julia/OS/CPU/threads), host
+totals not covered by it (logical CPU threads, total memory, BLAS
+threads), and, when a GPU backend is active, the backend runtime's device
+fingerprint (`device_fingerprint`: driver/runtime versions and device
+inventory). Together with `metadata.toml` (config hash, git state) this
+makes every result attributable to config + commit + hardware.
+"""
+function write_hardware_fingerprint(run_dir::AbstractString;
+    device_report::AbstractString = "")
+    path = joinpath(run_dir, "hardware.txt")
+    open(path, "w") do io
+        versioninfo(io)
+        println(io)
+        println(io, "Logical CPU threads: ", Sys.CPU_THREADS)
+        println(io, "Total memory: ",
+            round(Sys.total_memory() / 2^30, digits = 1), " GiB")
+        println(io, "BLAS threads: ", BLAS.get_num_threads())
+        if !isempty(device_report)
+            println(io)
+            println(io, "── GPU backend ──")
+            print(io, device_report)
+        end
     end
     return path
 end

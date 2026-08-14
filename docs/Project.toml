@@ -10,3 +10,6 @@ CairoMakie = "0.13, 0.14, 0.15, 0.16"
 Documenter = "1"
 DocumenterCitations = "1"
 Literate = "2"
+
+[sources]
+CurvatureDistinguishability = {path = ".."}
