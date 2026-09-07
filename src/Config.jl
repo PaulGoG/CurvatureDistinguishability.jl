@@ -52,9 +52,12 @@ end
 Fully parsed and validated pipeline configuration. Construction goes through
 [`load_and_validate_config`](@ref), which fails fast with a descriptive
 error for unusable input, emits warnings for suspicious-but-runnable
-values, and warns on every unknown key (typo protection).
+values, and warns on every unknown key (typo protection). Constructed by
+keyword only (every field is required): the per-section parse helpers
+return NamedTuples keyed by field name, so no positional field order exists
+to get wrong.
 """
-struct PipelineSettings
+Base.@kwdef struct PipelineSettings
     # pipeline
     run_1d_sweeps::Bool
     run_2d_mapping::Bool
@@ -226,32 +229,74 @@ function load_and_validate_config(config_path::AbstractString)
     catch err
         error("Failed to parse $config_path as TOML: $(sprint(showerror, err))")
     end
-    warn_unknown_keys(config, "")
+    return settings_from_config(config)
+end
 
+"""
+Validate a parsed configuration table section by section and assemble the
+[`PipelineSettings`](@ref). Sections are parsed in file order by dedicated
+helpers, each returning a NamedTuple whose keys are `PipelineSettings`
+field names; the keyword constructor assembles them.
+"""
+function settings_from_config(config::AbstractDict)
+    warn_unknown_keys(config, "")
+    pipeline = parse_pipeline(config)
+    sweep_settings = parse_sweep_settings(config)
+    grid = parse_grid(config)
+    physics = parse_physics(config)
+    noise = parse_noise(config, grid.T_obs)
+    mapping = parse_mapping(config)
+    hardware = parse_hardware(config)
+    safety = parse_safety(config)
+    bounds = parse_bounds(config)
+    work_items = parse_work_items(config, bounds.bounds, sweep_settings.sweep_rho_thresh,
+        mapping.map_n_angles, pipeline.run_1d_sweeps, pipeline.run_2d_mapping)
+    monitoring = parse_monitoring(config)
+    return PipelineSettings(; pipeline..., sweep_settings..., grid..., physics...,
+        noise..., mapping..., hardware..., safety..., bounds..., work_items...,
+        monitoring...)
+end
+
+"""
+`[pipeline]` stage switches, optimizer choice and RNG seed.
+"""
+function parse_pipeline(config::AbstractDict)
     pipeline = get(config, "pipeline", Dict{String,Any}())
     warn_unknown_keys(pipeline, "pipeline")
-    run_sweeps = get_boolean(pipeline, "run_1d_sweeps", true, "pipeline")
-    run_maps = get_boolean(pipeline, "run_2d_mapping", true, "pipeline")
+    run_1d_sweeps = get_boolean(pipeline, "run_1d_sweeps", true, "pipeline")
+    run_2d_mapping = get_boolean(pipeline, "run_2d_mapping", true, "pipeline")
     opt_str = get(pipeline, "optimizer", "ipnewton")
     optimizer = Symbol(lowercase(String(opt_str)))
     optimizer in (:ipnewton, :lbfgs_box) ||
         error("[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'")
     rng_seed = get_integer(pipeline, "rng_seed", 42, "pipeline")
+    return (; run_1d_sweeps, run_2d_mapping, optimizer, rng_seed)
+end
 
+"""
+`[pipeline.sweep_settings]`: separation grid, discernibility threshold,
+optimizer tolerances, multi-start and analysis tunables.
+"""
+function parse_sweep_settings(config::AbstractDict)
+    pipeline = get(config, "pipeline", Dict{String,Any}())
     sweep_settings = get(pipeline, "sweep_settings", Dict{String,Any}())
     warn_unknown_keys(sweep_settings, "pipeline.sweep_settings")
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 || error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
-    min_log = get_number(sweep_settings, "min_log_delta", -4.5, "pipeline.sweep_settings")
-    max_log = get_number(sweep_settings, "max_log_delta", -0.5, "pipeline.sweep_settings")
-    min_log < max_log ||
+    min_log_delta =
+        get_number(sweep_settings, "min_log_delta", -4.5, "pipeline.sweep_settings")
+    max_log_delta =
+        get_number(sweep_settings, "max_log_delta", -0.5, "pipeline.sweep_settings")
+    min_log_delta < max_log_delta ||
         error(
-            "[pipeline.sweep_settings]: min_log_delta ($min_log) must be < max_log_delta ($max_log)",
+            "[pipeline.sweep_settings]: min_log_delta ($min_log_delta) must be < max_log_delta ($max_log_delta)",
         )
-    sweep_rho = get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
-    sweep_rho > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
-    g_deg = get_number(sweep_settings, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
-    g_deg > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
+    sweep_rho_thresh =
+        get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
+    sweep_rho_thresh > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
+    g_uu_degenerate =
+        get_number(sweep_settings, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
+    g_uu_degenerate > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = get_integer(sweep_settings, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
     # Safe-by-default optimizer tolerances: fits at the numerical precision
@@ -270,35 +315,45 @@ function load_and_validate_config(config_path::AbstractString)
         @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits " *
               "exhaust the full cap by construction — a large cap costs wall time " *
               "without improving accuracy."
-    floor_ratio = get_number(
+    floor_detection_ratio = get_number(
         sweep_settings, "floor_detection_ratio", 2.0, "pipeline.sweep_settings")
-    floor_ratio > 1 ||
+    floor_detection_ratio > 1 ||
         error(
-            "[pipeline.sweep_settings].floor_detection_ratio must be > 1, got $floor_ratio",
+            "[pipeline.sweep_settings].floor_detection_ratio must be > 1, got $floor_detection_ratio",
         )
-    ms_gain_thr = get_number(
+    secondary_minimum_gain = get_number(
         sweep_settings, "secondary_minimum_gain", 1.5, "pipeline.sweep_settings")
-    ms_gain_thr > 1 ||
+    secondary_minimum_gain > 1 ||
         error(
-            "[pipeline.sweep_settings].secondary_minimum_gain must be > 1, got $ms_gain_thr",
+            "[pipeline.sweep_settings].secondary_minimum_gain must be > 1, got $secondary_minimum_gain",
         )
-    ms_parallel = get_number(
+    multi_start_parallel_scale = get_number(
         sweep_settings, "multi_start_parallel_scale", 0.35, "pipeline.sweep_settings")
-    ms_parallel > 0 ||
+    multi_start_parallel_scale > 0 ||
         error("[pipeline.sweep_settings].multi_start_parallel_scale must be > 0")
-    ms_transverse = get_number(
+    multi_start_transverse_scale = get_number(
         sweep_settings, "multi_start_transverse_scale", 1e-3, "pipeline.sweep_settings")
-    ms_transverse >= 0 ||
+    multi_start_transverse_scale >= 0 ||
         error("[pipeline.sweep_settings].multi_start_transverse_scale must be >= 0")
-    validity_fraction = get_number(
+    correction_validity_fraction = get_number(
         sweep_settings, "correction_validity_fraction", 0.1, "pipeline.sweep_settings")
-    validity_fraction > 0 ||
+    correction_validity_fraction > 0 ||
         error("[pipeline.sweep_settings].correction_validity_fraction must be > 0")
-    spectrum_windows = get_integer(
+    residual_spectrum_windows = get_integer(
         sweep_settings, "residual_spectrum_windows", 600, "pipeline.sweep_settings")
-    spectrum_windows >= 8 ||
+    residual_spectrum_windows >= 8 ||
         error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
+    return (; n_deltas, min_log_delta, max_log_delta, sweep_rho_thresh, g_uu_degenerate,
+        n_starts, g_tol, max_iterations, floor_detection_ratio, secondary_minimum_gain,
+        multi_start_parallel_scale, multi_start_transverse_scale,
+        correction_validity_fraction, residual_spectrum_windows)
+end
 
+"""
+`[grid]`: observation time and frequency band; the implied bin count is
+checked for a usable minimum.
+"""
+function parse_grid(config::AbstractDict)
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
     T_obs = get_number(grid, "T_obs", SECONDS_PER_YEAR, "grid")
@@ -312,10 +367,16 @@ function load_and_validate_config(config_path::AbstractString)
         "[grid]: only $n_bins frequency bins at df = 1/T_obs — " *
         "increase T_obs or the [f_min, f_max] band",
     )
+    return (; T_obs, f_min, f_max)
+end
 
+"""
+`[physics]` into a [`WaveformParams`](@ref); defaults are owned by the
+struct and never restated here.
+"""
+function parse_physics(config::AbstractDict)
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
-    # defaults are owned by WaveformParams — never restated as literals here
     wp_default = WaveformParams()
     wp = WaveformParams(
         mass_scale = get_number(phys, "mass_scale", wp_default.mass_scale, "physics"),
@@ -342,12 +403,17 @@ function load_and_validate_config(config_path::AbstractString)
         error("[physics].eta must be in (0, 0.25] (symmetric mass ratio), got $(wp.eta)")
     0.0 <= wp.sky_theta <= π ||
         @warn "[physics].sky_theta = $(wp.sky_theta) is outside [0, π]; interpreting as-is."
+    return (; wp)
+end
 
+"""
+`[noise]` into a [`NoiseParams`](@ref): every numeric field defaults to the
+Robson Table-1 selection for `T_obs` and is overridable individually.
+"""
+function parse_noise(config::AbstractDict, T_obs::Real)
     noise_cfg = get(config, "noise", Dict{String,Any}())
     warn_unknown_keys(noise_cfg, "noise")
     base_noise = robson_confusion_params(T_obs)
-    # every numeric field defaults to the Robson Table-1 selection; one loop
-    # instead of twelve mechanical get_number repetitions
     noise_numeric = (:confusion_amp, :confusion_alpha, :confusion_beta,
         :confusion_kappa, :confusion_gamma, :confusion_knee_freq, :arm_length,
         :oms_amplitude, :oms_reddening_freq, :acc_amplitude, :acc_knee_low,
@@ -364,7 +430,14 @@ function load_and_validate_config(config_path::AbstractString)
             error("[noise].$field must be > 0, got $(getfield(noise, field))")
     end
     noise.confusion_amp >= 0 || error("[noise].confusion_amp must be >= 0")
+    return (; noise)
+end
 
+"""
+`[mapping]`: angular resolution (rounded up to an even count), refinement
+and corner-bisection controls, and the unbounded-direction polygon cap.
+"""
+function parse_mapping(config::AbstractDict)
     mapping = get(config, "mapping", Dict{String,Any}())
     warn_unknown_keys(mapping, "mapping")
     map_n_angles = get_integer(mapping, "n_angles", 2000, "mapping")
@@ -374,21 +447,31 @@ function load_and_validate_config(config_path::AbstractString)
               "$(map_n_angles + 1) (mirrored sampling needs an even count)."
         map_n_angles += 1
     end
-    ratio_tol = get_number(mapping, "neighbor_ratio_tol", 1.25, "mapping")
-    ratio_tol > 1 || error("[mapping].neighbor_ratio_tol must be > 1, got $ratio_tol")
-    refine_levels = get_integer(mapping, "max_refine_levels", 6, "mapping")
-    0 <= refine_levels <= 16 ||
-        error("[mapping].max_refine_levels must be in 0:16, got $refine_levels")
-    corner_iters = get_integer(mapping, "corner_bisect_iters", 25, "mapping")
-    0 <= corner_iters <= 60 ||
+    neighbor_ratio_tol = get_number(mapping, "neighbor_ratio_tol", 1.25, "mapping")
+    neighbor_ratio_tol > 1 ||
+        error("[mapping].neighbor_ratio_tol must be > 1, got $neighbor_ratio_tol")
+    max_refine_levels = get_integer(mapping, "max_refine_levels", 6, "mapping")
+    0 <= max_refine_levels <= 16 ||
+        error("[mapping].max_refine_levels must be in 0:16, got $max_refine_levels")
+    corner_bisect_iters = get_integer(mapping, "corner_bisect_iters", 25, "mapping")
+    0 <= corner_bisect_iters <= 60 ||
         error(
             "[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
-            "bisection), got $corner_iters",
+            "bisection), got $corner_bisect_iters",
         )
-    unbounded_cap = get_number(mapping, "unbounded_cap_factor", 5.0, "mapping")
-    unbounded_cap > 1 ||
-        error("[mapping].unbounded_cap_factor must be > 1, got $unbounded_cap")
+    unbounded_cap_factor = get_number(mapping, "unbounded_cap_factor", 5.0, "mapping")
+    unbounded_cap_factor > 1 ||
+        error("[mapping].unbounded_cap_factor must be > 1, got $unbounded_cap_factor")
+    return (; map_n_angles, neighbor_ratio_tol, max_refine_levels, corner_bisect_iters,
+        unbounded_cap_factor)
+end
 
+"""
+`[hardware]`: backend selection, concurrency cap, Hessian chunking and
+inter-stage memory maintenance. `heap_size_hint_gb` is validated here but
+consumed only by the detached launcher.
+"""
+function parse_hardware(config::AbstractDict)
     hardware = get(config, "hardware", Dict{String,Any}())
     warn_unknown_keys(hardware, "hardware")
     gpu_str = get(hardware, "gpu_backend", "auto")
@@ -411,30 +494,54 @@ function load_and_validate_config(config_path::AbstractString)
         error(
             "[hardware].heap_size_hint_gb must be >= 0 (0 = no hint), got $heap_size_hint_gb",
         )
+    return (; gpu_backend, max_threads, hessian_chunk, gc_between_stages)
+end
 
+"""
+`[safety]`: host and device memory budgets.
+"""
+function parse_safety(config::AbstractDict)
     safety = get(config, "safety", Dict{String,Any}())
     warn_unknown_keys(safety, "safety")
     default_ram = DEFAULT_RAM_FRACTION * Sys.total_memory() / 2^30
     max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
-    gpu_bytes = get_integer(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
-    gpu_bytes > 0 ||
-        error("[safety].bytes_per_bin_per_task_gpu must be > 0, got $gpu_bytes")
+    bytes_per_bin_per_task_gpu =
+        get_integer(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
+    bytes_per_bin_per_task_gpu > 0 ||
+        error(
+            "[safety].bytes_per_bin_per_task_gpu must be > 0, got $bytes_per_bin_per_task_gpu",
+        )
     max_vram_gb = get_number(safety, "max_vram_gb", 8.0, "safety")
     max_vram_gb > 0 || error("[safety].max_vram_gb must be > 0, got $max_vram_gb")
-    os_vram_gb = get_number(safety, "os_vram_overhead_gb", 1.0, "safety")
-    os_vram_gb >= 0 || error("[safety].os_vram_overhead_gb must be >= 0, got $os_vram_gb")
+    os_vram_overhead_gb = get_number(safety, "os_vram_overhead_gb", 1.0, "safety")
+    os_vram_overhead_gb >= 0 ||
+        error("[safety].os_vram_overhead_gb must be >= 0, got $os_vram_overhead_gb")
+    return (; max_ram_gb, bytes_per_bin_per_task_gpu, max_vram_gb, os_vram_overhead_gb)
+end
 
+"""
+`[parameter_bounds]` into a [`ParameterBounds`](@ref).
+"""
+function parse_bounds(config::AbstractDict)
+    table = get(config, "parameter_bounds", Dict{String,Any}())
     bounds = try
-        bounds_from_config(get(config, "parameter_bounds", Dict{String,Any}()))
+        bounds_from_config(table)
     catch err
         error("Invalid [parameter_bounds]: $(sprint(showerror, err))")
     end
-    warn_unknown_keys(
-        get(config, "parameter_bounds", Dict{String,Any}()),
-        "parameter_bounds",
-    )
+    warn_unknown_keys(table, "parameter_bounds")
+    return (; bounds)
+end
 
+"""
+`[[sweeps]]` and `[[maps]]` into [`SweepSpec`](@ref) / [`MapSpec`](@ref)
+vectors: unique filesystem-safe names, interior base points, resolved
+per-item thresholds and even angular counts.
+"""
+function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
+    sweep_rho_thresh::Real, map_n_angles::Integer,
+    run_1d_sweeps::Bool, run_2d_mapping::Bool)
     sweep_tables = Vector{Dict{String,Any}}(get(config, "sweeps", []))
     map_tables = Vector{Dict{String,Any}}(get(config, "maps", []))
     seen = Set{String}()
@@ -464,7 +571,7 @@ function load_and_validate_config(config_path::AbstractString)
         u[1] == 0 ||
             @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
-        rho = get_number(s, "rho_thresh", sweep_rho, "sweeps[]")
+        rho = get_number(s, "rho_thresh", sweep_rho_thresh, "sweeps[]")
         rho > 0 || error("[[sweeps]] '$name'.rho_thresh must be > 0")
         SweepSpec(name, theta0, u, rho, amp_ratio)
     end
@@ -483,7 +590,7 @@ function load_and_validate_config(config_path::AbstractString)
                 "got ($px, $py)",
             )
         px != py || error("[[maps]] '$name': param_x and param_y must differ")
-        rho = get_number(m, "rho_thresh", sweep_rho, "maps[]")
+        rho = get_number(m, "rho_thresh", sweep_rho_thresh, "maps[]")
         rho > 0 || error("[[maps]] '$name'.rho_thresh must be > 0")
         theta0 = validate_theta6(get(m, "theta_0", nothing), "[[maps]] '$name'.theta_0")
         check_interior(theta0, bounds, "map '$name'")
@@ -496,11 +603,17 @@ function load_and_validate_config(config_path::AbstractString)
         end
         MapSpec(name, px, py, theta0, rho, na)
     end
-    (run_sweeps && isempty(sweeps)) &&
+    (run_1d_sweeps && isempty(sweeps)) &&
         @warn "[pipeline].run_1d_sweeps = true but no [[sweeps]] entries are defined."
-    (run_maps && isempty(maps)) &&
+    (run_2d_mapping && isempty(maps)) &&
         @warn "[pipeline].run_2d_mapping = true but no [[maps]] entries are defined."
+    return (; sweeps, maps)
+end
 
+"""
+`[monitoring]`: in-terminal diagnostics switch and run-log progress cadence.
+"""
+function parse_monitoring(config::AbstractDict)
     monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
     warn_unknown_keys(monitoring_cfg, "monitoring")
     monitoring_enabled = get_boolean(monitoring_cfg, "enabled", false, "monitoring")
@@ -511,18 +624,7 @@ function load_and_validate_config(config_path::AbstractString)
             "[monitoring].progress_log_fraction must be in [0, 1] (0 disables " *
             "stage-progress log lines), got $progress_log_fraction",
         )
-
-    return PipelineSettings(run_sweeps, run_maps, optimizer, rng_seed,
-        n_deltas, min_log, max_log, sweep_rho, g_deg, n_starts,
-        g_tol, max_iterations,
-        floor_ratio, ms_gain_thr, ms_parallel, ms_transverse,
-        validity_fraction, spectrum_windows,
-        T_obs, f_min, f_max, wp, noise,
-        map_n_angles, ratio_tol, refine_levels, corner_iters, unbounded_cap,
-        gpu_backend, max_threads, hessian_chunk, gc_between_stages,
-        max_ram_gb, gpu_bytes, max_vram_gb, os_vram_gb,
-        monitoring_enabled, progress_log_fraction,
-        bounds, sweeps, maps)
+    return (; monitoring_enabled, progress_log_fraction)
 end
 
 """

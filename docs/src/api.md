@@ -109,6 +109,7 @@ CurvatureDistinguishability.Config.PipelineSettings
 CurvatureDistinguishability.Config.SweepSpec
 CurvatureDistinguishability.Config.MapSpec
 CurvatureDistinguishability.Config.load_and_validate_config
+CurvatureDistinguishability.Config.settings_from_config
 ```
 
 ## Provenance
