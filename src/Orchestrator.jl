@@ -855,7 +855,7 @@ function run_pipeline(config_path::String, project_root::String, output_dir::Str
     tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
     try
         with_logger(tee) do
-            _run_pipeline(cfg, project_root, out_base)
+            _run_pipeline(cfg, project_root, out_base, config_path)
         end
     finally
         close(log_stream)
@@ -863,7 +863,8 @@ function run_pipeline(config_path::String, project_root::String, output_dir::Str
     return out_base
 end
 
-function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::String)
+function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::String,
+    config_path::String)
     start_time = time()
     df = 1.0 / cfg.T_obs
     freqs = collect(cfg.f_min:df:cfg.f_max)
@@ -889,6 +890,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
 
     write_run_metadata(out_base;
         run_id = basename(out_base), git = git_state(project_root),
+        config_file = basename(config_path),
+        base_config = string(get(TOML.parsefile(config_path), "base_config", "")),
         julia_version = string(VERSION), hostname = gethostname(),
         started = string(now()), backend = backend_name(backend),
         cpu_model = Backends.cpu_model(),

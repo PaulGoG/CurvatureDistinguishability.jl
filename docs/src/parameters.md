@@ -7,6 +7,23 @@ configuration (`configs/production_cpu.toml`): the global grid, the seven 1D sep
 sweeps, and the seven 2D confusion maps. It is the companion piece for
 interpreting pipeline outputs.
 
+## 0. Configuration Files
+
+Two runnable base files ship: `configs/quickstart.toml` (minutes-scale
+demonstration, the pipeline default) and `configs/production_cpu.toml`
+(the reference campaign documented below). The GPU variants —
+`quickstart_gpu.toml`, `production_gpu.toml`, `production_oneapi.toml` —
+are thin overlays: each opens with `base_config = "<base>.toml"` (a path
+relative to the overlay) followed by only the `[hardware]` keys that
+differ. At load the overlay is deep-merged onto its base (sub-tables
+recurse; scalars, arrays and `[[sweeps]]`/`[[maps]]` lists present in the
+overlay replace the base's; one overlay level only), the merged table is
+validated and hashed into the run ID, and the run directory receives the
+merged, self-contained `config.toml`; `metadata.toml` records
+`config_file` and `base_config`. Any configuration may use the mechanism —
+for instance a per-host `[hardware]`/`[safety]` overlay on the production
+base.
+
 ## 1. Global Simulation Grid
 
 *   **Observation Time ($T_{\mathrm{obs}}$):** $3.15576 \times 10^7$ s

@@ -620,6 +620,109 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         end
     end
 
+    @testset "Provenance: base + overlay configurations" begin
+        mktempdir() do dir
+            base = joinpath(dir, "base.toml")
+            overlay = joinpath(dir, "overlay.toml")
+            mono = joinpath(dir, "monolithic.toml")
+            write(
+                base,
+                """
+[grid]
+T_obs = 1.0e5
+f_min = 1.0e-3
+f_max = 2.0e-3
+[hardware]
+gpu_backend = "none"
+max_threads = 4
+hessian_chunk = 0
+[[sweeps]]
+name = "a"
+theta_0 = [1, 1, 1, 0, 0, 0]
+u_dir = [0, 1, 0, 0, 0, 0]
+""",
+            )
+            write(
+                overlay,
+                """
+base_config = "base.toml"
+[hardware]
+gpu_backend = "auto"
+hessian_chunk = 3
+[[sweeps]]
+name = "b"
+theta_0 = [1, 1, 1, 0, 0, 0]
+u_dir = [0, 0, 1, 0, 0, 0]
+""",
+            )
+            write(
+                mono,
+                """
+[grid]
+T_obs = 1.0e5
+f_min = 1.0e-3
+f_max = 2.0e-3
+[hardware]
+gpu_backend = "auto"
+max_threads = 4
+hessian_chunk = 3
+[[sweeps]]
+name = "b"
+theta_0 = [1, 1, 1, 0, 0, 0]
+u_dir = [0, 0, 1, 0, 0, 0]
+""",
+            )
+            # merge semantics: sub-tables recurse, scalars and arrays of
+            # tables replace, the base_config key is stripped
+            eff = effective_config(overlay)
+            @test !haskey(eff, "base_config")
+            @test eff["hardware"]["max_threads"] == 4
+            @test eff["hardware"]["gpu_backend"] == "auto"
+            @test length(eff["sweeps"]) == 1 && eff["sweeps"][1]["name"] == "b"
+            @test eff["grid"]["T_obs"] == 1.0e5
+            # identity: an overlay hashes exactly like the equivalent monolithic file
+            @test run_id_from_config(overlay) == run_id_from_config(mono)
+            @test run_id_from_config(overlay) != run_id_from_config(base)
+            cfg = load_and_validate_config(overlay)
+            @test cfg.gpu_backend === :auto && cfg.max_threads == 4 &&
+                  cfg.hessian_chunk == 3
+            @test [s.name for s in cfg.sweeps] == ["b"]
+            # the snapshot of an overlay is the self-contained merged table and
+            # rehashes to the run's identifier; plain files are copied verbatim
+            run_dir = mktempdir(dir)
+            snap = CD.Provenance.snapshot_config(overlay, run_dir)
+            @test !haskey(TOML.parsefile(snap), "base_config")
+            @test run_id_from_config(snap) == run_id_from_config(overlay)
+            @test_throws ErrorException CD.Provenance.snapshot_config(overlay, run_dir)
+            run_dir2 = mktempdir(dir)
+            snap2 = CD.Provenance.snapshot_config(mono, run_dir2)
+            @test read(snap2, String) == read(mono, String)
+            # one overlay level only; a missing base fails loudly
+            nested = joinpath(dir, "nested.toml")
+            write(nested, "base_config = \"overlay.toml\"\n")
+            @test_throws ErrorException effective_config(nested)
+            @test_throws ErrorException load_and_validate_config(nested)
+            absent = joinpath(dir, "absent.toml")
+            write(absent, "base_config = \"no_such_file.toml\"\n")
+            @test_throws ErrorException effective_config(absent)
+            write(absent, "base_config = 3\n")
+            @test_throws ErrorException effective_config(absent)
+        end
+        # the shipped GPU variants are thin [hardware] overlays on their bases
+        configs = joinpath(dirname(@__DIR__), "configs")
+        for (overlay, base) in (("production_gpu.toml", "production_cpu.toml"),
+            ("production_oneapi.toml", "production_cpu.toml"),
+            ("quickstart_gpu.toml", "quickstart.toml"))
+            raw = TOML.parsefile(joinpath(configs, overlay))
+            @test raw["base_config"] == base
+            @test collect(keys(raw)) ⊆ ["base_config", "hardware"]
+            eff = effective_config(joinpath(configs, overlay))
+            @test eff["sweeps"] == TOML.parsefile(joinpath(configs, base))["sweeps"]
+            @test run_id_from_config(joinpath(configs, overlay)) !=
+                  run_id_from_config(joinpath(configs, base))
+        end
+    end
+
     @testset "Monitoring diagnostic panels" begin
         d = 10 .^ range(-3, -1, length = 8)
         th = d .^ 4
@@ -940,6 +1043,39 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             # rerun with the same config must NOT overwrite: suffixed run dir
             out2 = run_pipeline(cfg_path, dir, "outputs")
             @test out2 != out_base && isdir(out2)
+
+            # an overlay (base_config + partial tables) runs end to end: the
+            # merged [pipeline]/[mapping] values take effect, the snapshot is
+            # self-contained and rehashes to the run's identifier, and the
+            # metadata records both files
+            overlay_path = joinpath(dir, "overlay.toml")
+            write(
+                overlay_path,
+                """
+base_config = "config.toml"
+[pipeline]
+run_1d_sweeps = false
+[mapping]
+n_angles = 16
+max_refine_levels = 1
+corner_bisect_iters = 0
+""",
+            )
+            out3 = run_pipeline(overlay_path, dir, "outputs")
+            @test startswith(basename(out3), run_id_from_config(overlay_path))
+            snap = TOML.parsefile(joinpath(out3, "config.toml"))
+            @test !haskey(snap, "base_config")
+            @test snap["pipeline"]["run_1d_sweeps"] == false
+            @test snap["pipeline"]["rng_seed"] == 11
+            @test snap["mapping"]["n_angles"] == 16
+            @test run_id_from_config(joinpath(out3, "config.toml")) ==
+                  run_id_from_config(overlay_path)
+            meta3 = TOML.parsefile(joinpath(out3, "metadata.toml"))
+            @test meta3["config_file"] == "overlay.toml"
+            @test meta3["base_config"] == "config.toml"
+            @test meta["config_file"] == "config.toml" && meta["base_config"] == ""
+            @test isfile(joinpath(out3, "maps", "mini_spin_map", "confusion_contour.csv"))
+            @test !isdir(joinpath(out3, "sweeps"))
         end
     end
 

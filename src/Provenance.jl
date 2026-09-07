@@ -11,21 +11,71 @@ using DrWatson: gitdescribe
 using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 
-export run_id_from_config,
+export run_id_from_config, effective_config,
     unique_run_dir, snapshot_config, backup_existing!,
     write_run_metadata, write_hardware_fingerprint, git_state
+
+# top-level key naming the base file an overlay configuration is merged onto
+const BASE_CONFIG_KEY = "base_config"
+
+"""
+$(TYPEDSIGNATURES)
+
+Parsed configuration with its base file resolved. A top-level
+`base_config = "file.toml"` (path relative to the overlay's directory)
+names a base whose tables are deep-merged beneath the overlay's: sub-tables
+recurse, while scalars, arrays and arrays of tables (`[[sweeps]]`,
+`[[maps]]`) present in the overlay replace the base's. One level only — a
+base that itself declares `base_config` is an error, as is a missing base.
+The `base_config` key is stripped, so the result is the self-contained
+table every consumer (validation, run-ID hashing, snapshots) operates on; a
+file without `base_config` parses as-is.
+"""
+function effective_config(config_path::AbstractString)
+    config = TOML.parsefile(config_path)
+    haskey(config, BASE_CONFIG_KEY) || return config
+    base_rel = pop!(config, BASE_CONFIG_KEY)
+    base_rel isa AbstractString || error(
+        "$BASE_CONFIG_KEY in $config_path must be a file path, got $(repr(base_rel))",
+    )
+    base_path = normpath(joinpath(dirname(abspath(config_path)), base_rel))
+    isfile(base_path) ||
+        error("$BASE_CONFIG_KEY of $config_path names a missing file: $base_path")
+    base = TOML.parsefile(base_path)
+    haskey(base, BASE_CONFIG_KEY) && error(
+        "base configuration $base_path declares $BASE_CONFIG_KEY itself; " *
+        "only one overlay level is supported",
+    )
+    return merge_config(base, config)
+end
+
+"""
+Deep merge of `overlay` into `base`: sub-tables recurse; scalars, arrays and
+arrays of tables in the overlay replace the base value. Neither input is
+modified.
+"""
+function merge_config(base::AbstractDict, overlay::AbstractDict)
+    merged = Dict{String,Any}(base)
+    for (key, value) in overlay
+        merged[key] =
+            (value isa AbstractDict && get(merged, key, nothing) isa AbstractDict) ?
+            merge_config(merged[key], value) : value
+    end
+    return merged
+end
 
 """
 $(TYPEDSIGNATURES)
 
 Deterministic run identifier: the first 8 hex characters of the SHA-256 of
-the canonically serialized *parsed* configuration (keys sorted, values
-only — never the wall clock), so identical physical/numerical content maps
-to identical IDs and reruns are recognizable. Comments and formatting do
-not affect a run's identity.
+the canonically serialized *effective* configuration
+([`effective_config`](@ref): keys sorted, values only — never the wall
+clock), so identical physical/numerical content maps to identical IDs and
+reruns are recognizable. Comments, formatting and the split between a base
+file and its overlay do not affect a run's identity.
 """
 function run_id_from_config(config_path::AbstractString)
-    canonical = sprint(io -> TOML.print(io, TOML.parsefile(config_path); sorted = true))
+    canonical = sprint(io -> TOML.print(io, effective_config(config_path); sorted = true))
     return "run_" * first(bytes2hex(sha256(canonical)), 8)
 end
 
@@ -50,11 +100,24 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Copy the configuration file into the run directory so every result set
-carries the exact configuration that produced it.
+Write the configuration into the run directory as `config.toml`, so every
+result set carries the exact configuration that produced it. A plain file
+is copied verbatim; an overlay (`base_config`) is written as its merged
+[`effective_config`](@ref), so the snapshot is self-contained and rehashes
+to the run's identifier. Never overwrites an existing snapshot.
 """
-snapshot_config(config_path::AbstractString, run_dir::AbstractString) =
-    cp(config_path, joinpath(run_dir, "config.toml"); force = false)
+function snapshot_config(config_path::AbstractString, run_dir::AbstractString)
+    dest = joinpath(run_dir, "config.toml")
+    isfile(dest) && error("configuration snapshot already exists: $dest")
+    if haskey(TOML.parsefile(config_path), BASE_CONFIG_KEY)
+        open(dest, "w") do io
+            TOML.print(io, effective_config(config_path); sorted = true)
+        end
+    else
+        cp(config_path, dest; force = false)
+    end
+    return dest
+end
 
 """
 $(TYPEDSIGNATURES)

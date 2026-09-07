@@ -3,7 +3,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 using Dates
-using TOML
+using CurvatureDistinguishability: effective_config
 
 const PIPELINE_SCRIPT = joinpath(@__DIR__, "run_pipeline.jl")
 const LOG_DIR = joinpath(PROJECT_ROOT, "data", "logs")
@@ -24,7 +24,7 @@ function heap_hint_flags(argv)
     end
     config_path = joinpath(PROJECT_ROOT, config_rel)
     isfile(config_path) || return String[]
-    hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
+    hw = get(effective_config(config_path), "hardware", Dict{String,Any}())
     gb = get(hw, "heap_size_hint_gb", 0.0)
     gb isa Real && gb > 0 || return String[]
     return gb >= 1 ? ["--heap-size-hint=$(round(Int, gb))G"] :

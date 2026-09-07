@@ -5,11 +5,11 @@ TOML configuration parsing and validation into an immutable
 module Config
 
 using DocStringExtensions: TYPEDSIGNATURES
-using TOML: TOML
 using ..Physics
 using ..Physics: N_PARAMS
 using ..Detector: n_channels
 using ..Bounds
+using ..Provenance: effective_config
 
 export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
 
@@ -117,8 +117,8 @@ Recognized configuration keys per `[section]` context — the whitelist behind
 [`warn_unknown_keys`](@ref)'s typo protection.
 """
 const KNOWN_KEYS = Dict(
-    "" => ["pipeline", "grid", "physics", "noise", "mapping", "hardware",
-        "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
+    "" => ["base_config", "pipeline", "grid", "physics", "noise", "mapping",
+        "hardware", "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
     "monitoring" => ["enabled", "progress_log_fraction"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
         "sweep_settings"],
@@ -218,16 +218,17 @@ const DEFAULT_RAM_FRACTION = 0.8
 """
 $(TYPEDSIGNATURES)
 
-Parse a configuration TOML file, validating every field (types, ranges, name uniqueness,
-interior base points) with descriptive errors; warn on unknown keys and
-physically suspicious values.
+Parse a configuration TOML file — an overlay's `base_config` resolved and
+merged first ([`effective_config`](@ref)) — validating every field (types,
+ranges, name uniqueness, interior base points) with descriptive errors;
+warn on unknown keys and physically suspicious values.
 """
 function load_and_validate_config(config_path::AbstractString)
     isfile(config_path) || error("Configuration file not found: $config_path")
     config = try
-        TOML.parsefile(config_path)
+        effective_config(config_path)
     catch err
-        error("Failed to parse $config_path as TOML: $(sprint(showerror, err))")
+        error("Failed to load $config_path: $(sprint(showerror, err))")
     end
     return settings_from_config(config)
 end

@@ -21,11 +21,11 @@ CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
 ├── Manifest.toml           # version-controlled — portability guarantee
 ├── configs/
-│   ├── quickstart.toml     # minutes-scale demonstration run (the default)
-│   ├── quickstart_gpu.toml # quickstart physics on the GPU path (smoke test)
-│   ├── production_cpu.toml # CPU reference campaign configuration
-│   ├── production_gpu.toml # portable GPU variant (gpu_backend = "auto")
-│   └── production_oneapi.toml # GPU variant (oneAPI backend, chunked Hessian)
+│   ├── quickstart.toml     # base: minutes-scale demonstration run (the default)
+│   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
+│   ├── production_cpu.toml # base: CPU reference campaign configuration
+│   ├── production_gpu.toml # [hardware] overlay: portable GPU (gpu_backend = "auto")
+│   └── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
@@ -80,11 +80,16 @@ into your default (stacked) environment — the pipeline resolves it through
 the load path and the corresponding package extension activates
 automatically; without one, the pipeline runs on the multi-threaded CPU
 backend (`[hardware].gpu_backend = "none"` forces this).
-`configs/production_oneapi.toml` (Intel, chunked Hessian) and
-`configs/production_gpu.toml` (portable, backend auto-detection) are the
-committed GPU run variants (identical
-physics; oneAPI backend with `hessian_chunk = 3` — the full 49-lane
-nested-dual kernel exceeds the Intel iGPU's kernel-argument size limit). GPU runs are pinned to a single task by the pipeline and all GPU
+`configs/production_gpu.toml` (portable, backend auto-detection) and
+`configs/production_oneapi.toml` (Intel, `hessian_chunk = 3` — the full
+49-lane nested-dual kernel exceeds the Intel iGPU's kernel-argument size
+limit) are thin overlays on `configs/production_cpu.toml`: each declares
+`base_config = "production_cpu.toml"` and only the `[hardware]` keys that
+differ, so the physics is shared by construction. The pipeline merges base
+and overlay at load (sub-tables recurse; scalars and `[[sweeps]]`/`[[maps]]`
+lists in the overlay replace), hashes the merged configuration into the
+run ID and snapshots the merged file into the run directory. GPU runs are
+pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
 since the device serializes kernels anyway.

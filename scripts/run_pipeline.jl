@@ -3,7 +3,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 
-using TOML
+using CurvatureDistinguishability
 
 const USAGE = """
 Curvature-Distinguishability Unified Pipeline
@@ -44,10 +44,13 @@ config_path = joinpath(PROJECT_ROOT, args["config"])
 isfile(config_path) || error("Configuration file not found: $config_path")
 
 # Load a GPU package only when the configuration asks for one AND it is
-# installed in this environment — no blind try/catch, loud diagnostics.
+# installed in this environment — no blind try/catch, loud diagnostics. The
+# package extension activates whichever of the two is loaded last, so the
+# GPU package may follow the package itself; the [hardware] table is read
+# from the effective configuration (an overlay merged onto its base).
 const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
     "metal" => "Metal", "oneapi" => "oneAPI")
-let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
+let hw = get(effective_config(config_path), "hardware", Dict{String,Any}())
     requested = lowercase(String(get(hw, "gpu_backend", "auto")))
     wanted =
         requested == "auto" ? collect(keys(GPU_PACKAGES)) :
@@ -67,7 +70,5 @@ let hw = get(TOML.parsefile(config_path), "hardware", Dict{String,Any}())
         end
     end
 end
-
-using CurvatureDistinguishability
 
 run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])

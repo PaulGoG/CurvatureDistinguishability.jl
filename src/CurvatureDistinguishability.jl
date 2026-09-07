@@ -55,7 +55,7 @@ export calculate_numerical_distance, optimization_diagnostics, loss_function
 
 include("Provenance.jl")
 using .Provenance
-export run_id_from_config, backup_existing!
+export run_id_from_config, effective_config, backup_existing!
 
 include("Config.jl")
 using .Config
