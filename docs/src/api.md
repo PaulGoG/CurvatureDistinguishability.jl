@@ -1,8 +1,8 @@
 # API Reference & Module Documentation
 
 Core functionality exported by `CurvatureDistinguishability.jl`, decoupled
-into physics, detector response, bounds, geometry, inference, backends,
-configuration, provenance, plotting and orchestration.
+into physics, detector response, residual diagnostics, bounds, geometry,
+inference, backends, configuration, provenance, plotting and orchestration.
 
 ```@docs
 CurvatureDistinguishability
@@ -13,6 +13,7 @@ CurvatureDistinguishability
 ```@docs
 CurvatureDistinguishability.Physics
 CurvatureDistinguishability.Detector
+CurvatureDistinguishability.Residuals
 CurvatureDistinguishability.Bounds
 CurvatureDistinguishability.Geometry
 CurvatureDistinguishability.Fitting
@@ -45,6 +46,12 @@ CurvatureDistinguishability.Physics.SECONDS_PER_YEAR
 CurvatureDistinguishability.Detector.tdi_modulation_bin
 CurvatureDistinguishability.Detector.project_to_tdi
 CurvatureDistinguishability.Detector.n_channels
+```
+
+## Residuals
+
+```@docs
+CurvatureDistinguishability.Residuals.residual_spectrum
 ```
 
 ## Bounds

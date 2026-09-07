@@ -38,6 +38,12 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   `project_to_tdi`. Channels A and E by default; the identically zero null
   channel T is opt-in (`[physics].include_t_channel`) and exists only for
   diagnostic comparisons — it adds dead compute.
+- **`Residuals.jl`** — residual-spectrum diagnostics of the sweeps: the
+  decimated `d(SNR²)/df` densities of the two-source data, the best-fit
+  single source and the unabsorbed residual (channels A and E, log-uniform
+  windows with rms and min/max envelope) and the per-channel residual `D²`
+  integrals. Host-side signal processing behind a typed signature; the
+  driver only persists its table.
 - **`Bounds.jl`** — hard physical parameter bounds (`[parameter_bounds]`),
   deviation-space boxes around a base point (phase treated topologically,
   ``\pm\pi``), ray–box crossing distances for the polar capping, and

@@ -6,7 +6,8 @@ gravitational-wave interferometry: the squared distance between a two-source
 signal and the best-fit single-source template scales as
 `D² ≈ (1/16) K(u) δ⁴`, governed by the extrinsic curvature `K(u)` of the
 signal manifold. The package provides the waveform/detector model
-(`Physics`, `Detector`), the differential-geometry engine (`Geometry`),
+(`Physics`, `Detector`), residual-spectrum diagnostics (`Residuals`), the
+differential-geometry engine (`Geometry`),
 box-constrained inference (`Inference`), physical parameter bounds
 (`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
@@ -29,6 +30,10 @@ export NoiseParams, robson_confusion_params, analytic_noise_psd,
 include("Detector.jl")
 using .Detector
 export tdi_modulation_bin, project_to_tdi, n_channels
+
+include("Residuals.jl")
+using .Residuals
+export residual_spectrum
 
 include("Bounds.jl")
 using .Bounds

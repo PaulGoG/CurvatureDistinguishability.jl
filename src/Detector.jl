@@ -15,9 +15,9 @@ const R_ORBIT_SEC = 499.00478383615643 # 1 AU in light-seconds
 $(TYPEDSIGNATURES)
 
 Number of active TDI channels: 2 (A, E) by default, 3 when the identically
-zero null channel T is explicitly requested via `wp.include_t_channel`.
-Derived from the `WaveformParams` type parameter, so it constant-folds in
-specialized code.
+zero null channel T is explicitly requested through the `include_t_channel`
+keyword of [`WaveformParams`](@ref). Read from the type parameter, so it
+constant-folds in specialized code.
 
 ```jldoctest
 julia> n_channels(waveform_params())
@@ -68,7 +68,7 @@ $(TYPEDSIGNATURES)
 
 Project a frequency-domain strain into the TDI response channels in a single
 fused pass (one loop, one allocation per channel). Returns `(A, E)` or
-`(A, E, T)` depending on `wp.include_t_channel`; `T` is identically zero.
+`(A, E, T)` depending on the channel count of `wp`; `T` is identically zero.
 """
 function project_to_tdi(
     h_strain::AbstractVector,

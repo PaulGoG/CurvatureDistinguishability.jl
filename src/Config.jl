@@ -8,6 +8,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using TOML: TOML
 using ..Physics
 using ..Physics: N_PARAMS
+using ..Detector: n_channels
 using ..Bounds
 
 export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
@@ -329,7 +330,7 @@ function load_and_validate_config(config_path::AbstractString)
         polarization = get_number(
             phys, "polarization", wp_default.polarization, "physics"),
         include_t_channel = get_boolean(
-            phys, "include_t_channel", wp_default.include_t_channel, "physics"),
+            phys, "include_t_channel", n_channels(wp_default) == 3, "physics"),
     )
     for (fname, val, lo, hi) in (("mass_scale", wp.mass_scale, 0.0, Inf),
         ("time_scale", wp.time_scale, 0.0, Inf),

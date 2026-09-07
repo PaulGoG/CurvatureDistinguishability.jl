@@ -44,9 +44,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         ) === nothing
         # the top-module check does not recurse: stale aliases in submodules
         # were invisible to CI until checked one by one
-        for submodule in (CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
-            CD.Fitting, CD.Inference, CD.Backends, CD.Config, CD.Provenance,
-            CD.Plotting, CD.Orchestrator, CD.RunFigures)
+        for submodule in (CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
+            CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
+            CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures)
             @test ExplicitImports.check_no_stale_explicit_imports(submodule) ===
                   nothing
         end
@@ -69,9 +69,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # Julia (observed: internal UndefRefError on the CI `pre` leg), so
         # the analysis gates stable releases only
         if isempty(VERSION.prerelease)
-            jet_modules = (CD, CD.Physics, CD.Detector, CD.Bounds, CD.Geometry,
-                CD.Fitting, CD.Inference, CD.Backends, CD.Config, CD.Provenance,
-                CD.Plotting, CD.Orchestrator, CD.RunFigures)
+            jet_modules = (CD, CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
+                CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
+                CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures)
             jet = JET.report_package(CD; target_modules = jet_modules,
                 toplevel_logger = nothing)
             @test length(JET.get_reports(jet)) == 3
@@ -195,6 +195,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test isapprox(ip, i == j ? 1.0 : 0.0; atol = 1e-9)
         end
 
+        # single-channel inner product through the public path: the closed
+        # form 4 df Σ Re(h1* h2)/Sn, and the multi-channel sum reducing to it
+        h = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
+        A2, E2 = project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)
+        ip_closed =
+            4 * FIX_DF * sum(real(conj(a) * e) / s for (a, e, s) in zip(A2, E2, FIX_SN))
+        @test inner_product(A2, E2, FIX_SN, FIX_DF) ≈ ip_closed rtol = 1e-12
+        @test inner_product(A2, A2, FIX_SN, FIX_DF) > 0
+        @test multi_channel_inner_product((A2,), (E2,), FIX_SN, FIX_DF) ≈
+              inner_product(A2, E2, FIX_SN, FIX_DF) rtol = 1e-14
+        @test multi_channel_inner_product((A2, E2), (A2, E2), FIX_SN, FIX_DF) ≈
+              inner_product(A2, A2, FIX_SN, FIX_DF) + inner_product(E2, E2, FIX_SN, FIX_DF) rtol =
+            1e-14
+
         # fused nested-dual derivatives against independent ForwardDiff passes
         gvec(s) = [sin(2s) + s^3, exp(s) * cos(s)]
         h0, dh, d2h = CD.Geometry.value_and_directional_derivs(gvec, 0.3)
@@ -239,6 +253,35 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 end
             end
         end
+    end
+
+    @testset "Residual spectrum (Residuals)" begin
+        u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
+        _, g_uu =
+            compute_extrinsic_curvature(THETA0, u_raw, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+        u_norm = u_raw ./ sqrt(g_uu)
+        delta = 0.05
+        spec, integrals = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0,
+            FIX_FREQS, FIX_SN, FIX_DF, FIX_WP; n_windows = 16)
+        @test spec isa DataFrame
+        # f plus rms/min/max of signal, best fit and residual for A and E
+        @test names(spec)[1] == "f" && ncol(spec) == 19
+        @test issorted(spec.f) && nrow(spec) <= 16
+        @test FIX_FREQS[1] <= spec.f[1] && spec.f[end] <= FIX_FREQS[end]
+        @test all(spec.res_min_A .<= spec.res_rms_A .<= spec.res_max_A)
+        @test all(spec.sig_min_E .<= spec.sig_rms_E .<= spec.sig_max_E)
+        # with the base source as the "best fit" the residual is exactly the
+        # second source, so the residual integrals sum to its SNR²
+        p2 = THETA0 .+ delta .* u_norm
+        h2 = scaled_waveform_model(p2, FIX_FREQS, FIX_WP)
+        ch2 = project_to_tdi(h2, FIX_FREQS, p2, FIX_WP)
+        @test integrals.int_A + integrals.int_E ≈
+              multi_channel_inner_product(ch2, ch2, FIX_SN, FIX_DF) rtol = 1e-12
+        @test integrals.int_A > 0 && integrals.int_E > 0
+        # a window budget beyond the bin count is capped at one window per bin
+        spec_fine, _ = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0,
+            FIX_FREQS, FIX_SN, FIX_DF, FIX_WP; n_windows = 10^6)
+        @test nrow(spec_fine) <= length(FIX_FREQS)
     end
 
     @testset "Bounds and polar capping" begin

@@ -31,6 +31,7 @@ CurvatureDistinguishability/
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
 │   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
 │   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
+│   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
 │   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
 │   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel

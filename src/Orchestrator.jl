@@ -12,7 +12,6 @@ using TOML: TOML
 using CSV: CSV
 using DataFrames: DataFrame
 using Random: Xoshiro
-using Statistics: mean
 using ProgressMeter: Progress, ProgressUnknown, finish!, next!
 using Logging: Logging, global_logger, with_logger
 using LoggingExtras: FormatLogger, MinLevelLogger, TeeLogger
@@ -22,6 +21,7 @@ using ..Backends
 using ..Physics
 using ..Physics: N_PARAMS
 using ..Detector
+using ..Residuals
 using ..Geometry
 using ..Inference
 using ..Bounds
@@ -436,14 +436,15 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         idx_star = isempty(valid_pos) ? idx_thr : last(valid_pos)
         d_star = deltas[idx_star]
         spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
-            best_fits[idx_star, :],
-            ctx, wp)
+            best_fits[idx_star, :], ctx.freqs, ctx.Sn, ctx.df, wp;
+            n_windows = cfg.residual_spectrum_windows)
         CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
         spec_thr = nothing
         thr_meta = Dict{String,Any}()
         if idx_thr != idx_star
             spec_thr, meta_thr = residual_spectrum(theta0, u_norm, amp_ratio,
-                deltas[idx_thr], best_fits[idx_thr, :], ctx, wp)
+                deltas[idx_thr], best_fits[idx_thr, :], ctx.freqs, ctx.Sn, ctx.df,
+                wp; n_windows = cfg.residual_spectrum_windows)
             CSV.write(
                 backup_existing!(joinpath(out_dir, "residual_spectrum_threshold.csv")),
                 spec_thr)
@@ -505,57 +506,6 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         close(log_io)
     end
     return nothing
-end
-
-"""
-Decimated residual spectrum (density units, `d(SNR²)/df = 4|x|²/Sn`) of the
-two-source data, the best-fit single source and the unabsorbed residual, for
-channels A and E.
-"""
-function residual_spectrum(theta0, u_norm, amp_ratio, d_star, best_fit,
-    ctx::RunContext, wp::WaveformParams)
-    p2 = theta0 .+ d_star .* u_norm
-    p2[1] = amp_ratio * theta0[1]
-    h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
-    h2 = scaled_waveform_model(p2, ctx.freqs, wp)
-    ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
-    ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
-    data = map((a, b) -> a .+ b, ch1, ch2)
-    hb = scaled_waveform_model(best_fit, ctx.freqs, wp)
-    bf = project_to_tdi(hb, ctx.freqs, best_fit, wp)
-
-    dens(x, i) = 4 * abs2(x) / ctx.Sn[i]
-    n = length(ctx.freqs)
-    # log-uniform decimation: ~equal plotted points per decade, and the first/
-    # last plotted frequencies sit at the band ends. (Linear windows left a
-    # half-window gap at the low end of the log axis and compressed the first
-    # decade into a handful of points.) Log-sparse low-frequency windows hold
-    # single bins and pass them through unaveraged; empty windows are skipped.
-    nwin = min(ctx.cfg.residual_spectrum_windows, n)
-    edges = 10.0 .^ range(log10(ctx.freqs[1]), log10(ctx.freqs[end]), nwin + 1)
-    window_bounds = [searchsortedfirst(ctx.freqs, e) for e in edges]
-    window_bounds[end] = n + 1
-    windows = [
-        window_bounds[i]:(window_bounds[i+1]-1) for
-        i in 1:nwin if window_bounds[i+1] > window_bounds[i]
-    ]
-    agg(v, stat) = [stat(view(v, r)) for r in windows]
-    rms(v) = sqrt(mean(abs2, v))
-
-    cols = Dict{Symbol,Vector{Float64}}(:f => agg(ctx.freqs, mean))
-    for (tag, cA, cE) in (("sig", data[1], data[2]), ("bf", bf[1], bf[2]),
-        ("res", data[1] .- bf[1], data[2] .- bf[2]))
-        for (ch, arr) in (("A", cA), ("E", cE))
-            d = [dens(arr[i], i) for i in 1:n]
-            cols[Symbol("$(tag)_rms_$ch")] = agg(d, rms)
-            cols[Symbol("$(tag)_min_$ch")] = agg(d, minimum)
-            cols[Symbol("$(tag)_max_$ch")] = agg(d, maximum)
-        end
-    end
-    int_A = sum(dens(data[1][i] - bf[1][i], i) for i in 1:n) * ctx.df
-    int_E = sum(dens(data[2][i] - bf[2][i], i) for i in 1:n) * ctx.df
-    order = [:f; sort(collect(keys(delete!(copy(cols), :f))))]
-    return DataFrame([c => cols[c] for c in order]), (int_A = int_A, int_E = int_E)
 end
 
 # -----------------------------------------------------------------------------
@@ -923,7 +873,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
     backend = get_best_backend(prefer = cfg.gpu_backend)
     cfg.gpu_backend === :none &&
         @info "[hardware].gpu_backend = \"none\": GPU detection bypassed, running on the CPU backend."
-    if !(backend isa KernelAbstractions.CPU) && cfg.wp.include_t_channel
+    if !(backend isa KernelAbstractions.CPU) && n_channels(cfg.wp) == 3
         error(
             "GPU backends support the 2-channel (A, E) configuration only; " *
             "set [physics].include_t_channel = false (T is identically zero).",

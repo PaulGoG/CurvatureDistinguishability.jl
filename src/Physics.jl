@@ -166,8 +166,9 @@ Immutable, isbits container for every physical parameter of the waveform and
 detector-response model; the single source of parameter defaults, safe to
 pass into GPU kernels. Values are overridden by the `[physics]` section of the run
 configuration. The active channel count (2, or 3 with the identically zero
-T channel) is carried as the type parameter `NCH`, so channel-dependent
-tuple types are inferable throughout the geometry and inference paths.
+T channel, requested through the `include_t_channel` keyword) is carried
+only as the type parameter `NCH`, so channel-dependent tuple types are
+inferable throughout the geometry and inference paths.
 """
 struct WaveformParams{T<:Real,NCH}
     mass_scale::T
@@ -179,7 +180,6 @@ struct WaveformParams{T<:Real,NCH}
     sky_phi::T
     inclination::T
     polarization::T
-    include_t_channel::Bool
 end
 
 function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
@@ -190,9 +190,12 @@ function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
     fields = promote(float(mass_scale), float(time_scale), float(amp_scale),
         float(eta), float(amp_33_factor), float(sky_theta),
         float(sky_phi), float(inclination), float(polarization))
-    return WaveformParams{typeof(fields[1]),include_t_channel ? 3 : 2}(fields...,
-        include_t_channel)
+    return WaveformParams{typeof(fields[1]),include_t_channel ? 3 : 2}(fields...)
 end
+
+# keywords accepted by the WaveformParams constructor: every field plus the
+# channel-count switch, which lives in the type parameter rather than a field
+const WAVEFORM_KEYWORDS = (fieldnames(WaveformParams)..., :include_t_channel)
 
 """
 $(TYPEDSIGNATURES)
@@ -202,11 +205,11 @@ keys with an `ArgumentError` naming the offending keyword (typo
 protection at the physical-model boundary).
 """
 function waveform_params(; kwargs...)
-    unknown = setdiff(keys(kwargs), fieldnames(WaveformParams))
+    unknown = setdiff(keys(kwargs), WAVEFORM_KEYWORDS)
     isempty(unknown) || throw(
         ArgumentError(
             "Unknown waveform parameter(s): $(join(unknown, ", ")). Valid keys: " *
-            "$(join(fieldnames(WaveformParams), ", ")).",
+            "$(join(WAVEFORM_KEYWORDS, ", ")).",
         ),
     )
     return WaveformParams(; kwargs...)
