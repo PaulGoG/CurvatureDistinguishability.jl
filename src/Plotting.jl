@@ -471,9 +471,10 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         # the ratio panel's highest y-tick labels can never meet: each label
         # extends ~half its height past its frame edge, so the junction gap
         # must exceed one full label height with margin (the legend gap above
-        # the top panel stays compact)
+        # the top panel stays compact). Gap indices follow the layout's row
+        # numbering (legend row 0, panels 1 and 2): gap 1 lies below row 1.
         rowgap!(fig.layout, 12)
-        rowgap!(fig.layout, 2, 36)
+        rowgap!(fig.layout, 1, 36)
         return fig
     end
 end
