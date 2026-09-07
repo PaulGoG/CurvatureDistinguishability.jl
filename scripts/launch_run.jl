@@ -3,7 +3,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 Pkg.activate(PROJECT_ROOT; io = devnull)
 Pkg.instantiate(; io = devnull)
 using Dates
-using CurvatureDistinguishability: effective_config
+using CurvatureDistinguishability: effective_config, DEFAULT_CONFIG
 
 const PIPELINE_SCRIPT = joinpath(@__DIR__, "run_pipeline.jl")
 const LOG_DIR = joinpath(PROJECT_ROOT, "data", "logs")
@@ -18,7 +18,7 @@ collections also release device buffers, whose host handles are too small
 to trigger collection on their own.
 """
 function heap_hint_flags(argv)
-    config_rel = joinpath("configs", "quickstart.toml")
+    config_rel = DEFAULT_CONFIG
     for (i, a) in enumerate(argv)
         a == "--config" && i < length(argv) && (config_rel = argv[i+1])
     end

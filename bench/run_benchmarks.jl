@@ -15,12 +15,12 @@ using KernelAbstractions
 using CurvatureDistinguishability
 
 # Moderate grid: large enough to be representative, small enough to finish fast.
-T_obs = 3.15576e7
+T_obs = SECONDS_PER_YEAR
 df = 1.0 / T_obs
 freqs = collect(1.0e-3:df:2.0e-3)
 noise = NoiseParams()
 Sn_vals = analytic_noise_psd.(freqs; noise = noise)
-wp = waveform_params(time_scale = 100.0, sky_phi = 3.1415, polarization = 0.785)
+wp = waveform_params(time_scale = 100.0, sky_phi = π, polarization = 0.785)
 
 theta_0 = [1.0, 2.0, 1.0, 0.0, 0.5, 0.5]
 u_dir = [0.0, 1.0, 0.1, 0.0, 0.0, 0.0]
@@ -58,7 +58,7 @@ println()
 
 loss = loss_function(data, freqs, Sn_vals, df, wp, CPU())
 p0 = [2.0, 2.0, 1.0, 0.0, 0.5, 0.5]
-G = zeros(6)
+G = zeros(CurvatureDistinguishability.Physics.N_PARAMS)
 
 println("\n[4] Loss value: allocation-free CPU loop")
 display(@benchmark $loss($p0))
@@ -81,7 +81,11 @@ for opt in (:ipnewton, :lbfgs_box)
     t0 = time()
     d2, _, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
         optimizer = opt, wp = wp)
-    diag = optimization_diagnostics(res, ones(6), default_bounds())
+    diag = optimization_diagnostics(
+        res,
+        ones(CurvatureDistinguishability.Physics.N_PARAMS),
+        default_bounds(),
+    )
     println(
         "  $(rpad(opt, 10)): D² = $(d2)  iters = $(diag.iterations)  " *
         "wall = $(round(time() - t0, digits = 2)) s",

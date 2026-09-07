@@ -20,7 +20,7 @@ Curvature-Distinguishability Unified Pipeline
 """
 
 function parse_commandline(argv)
-    options = Dict("config" => joinpath("configs", "quickstart.toml"),
+    options = Dict("config" => CurvatureDistinguishability.DEFAULT_CONFIG,
         "output-dir" => "data")
     i = 1
     while i <= length(argv)

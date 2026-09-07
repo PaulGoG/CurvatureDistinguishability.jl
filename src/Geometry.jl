@@ -11,16 +11,20 @@ using ..Physics
 using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
-    K_UNDERFLOW,
-    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
-public flat_response, GS_NORM_TOL, value_and_directional_derivs
+    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
+    boundary_radius, cap_unbounded_radii!
+public flat_response, GS_NORM_TOL, K_UNDERFLOW, value_and_directional_derivs
 
 """
-Gram–Schmidt drop tolerance: candidate tangent vectors whose orthogonalized
-noise-weighted norm falls below this are treated as linearly dependent
-(degenerate parameter directions) and excluded from the basis.
+Gram–Schmidt drop tolerance, relative to the candidate's norm before
+orthogonalization: a tangent vector whose orthogonalized noise-weighted norm
+falls below this fraction of its original norm is treated as linearly
+dependent (a degenerate parameter direction) and excluded from the basis.
+Relative, because the Jacobian columns span several orders of magnitude in
+norm and an absolute threshold would compare round-off of a large column
+with the genuine residual of a small one.
 """
-const GS_NORM_TOL = 1e-14
+const GS_NORM_TOL = 1e-10
 
 """
 Curvature underflow guard: `K` values at or below this are treated as
@@ -28,6 +32,33 @@ exactly flat directions (infinite mathematical boundary radius) instead of
 dividing into the `(16ρ²/K)^{1/4}` radius.
 """
 const K_UNDERFLOW = 1e-300
+
+"""
+$(TYPEDSIGNATURES)
+
+Mathematical boundary radius `(16 ρ²/K)^{1/4}` of the leading-order law
+`D² = K r⁴/16` at the threshold `rho_sq`; `Inf` for curvatures at or below
+[`K_UNDERFLOW`](@ref) (exactly flat directions).
+"""
+boundary_radius(K::Real, rho_sq::Real) =
+    K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+
+"""
+$(TYPEDSIGNATURES)
+
+Close the boundary polygon of a map with unbounded directions (no curvature
+limit and no finite prior wall): every non-finite entry of `r_cap` is
+replaced by `cap_factor` times the largest finite capped radius. Returns
+`(n_capped, polygon_cap)`, with `polygon_cap = NaN` when nothing was capped.
+"""
+function cap_unbounded_radii!(r_cap::AbstractVector, cap_factor::Real)
+    unbounded = .!isfinite.(r_cap)
+    n_capped = count(unbounded)
+    n_capped == 0 && return 0, NaN
+    polygon_cap = cap_factor * maximum(filter(isfinite, r_cap); init = 1.0)
+    r_cap[unbounded] .= polygon_cap
+    return n_capped, polygon_cap
+end
 
 """
 $(TYPEDSIGNATURES)
@@ -122,6 +153,7 @@ function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
     for i in 1:n_params
         w = map(c -> collect(ComplexF64, c),
             unflatten_channels(view(J_flat, :, i), n_bins, Val(NCH)))
+        norm_w0 = sqrt(multi_channel_inner_product(w, w, Sn_vals, df))
         for e in basis
             proj = multi_channel_inner_product(w, e, Sn_vals, df)
             for c in 1:NCH
@@ -129,7 +161,7 @@ function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
             end
         end
         norm_w = sqrt(multi_channel_inner_product(w, w, Sn_vals, df))
-        if norm_w > GS_NORM_TOL
+        if norm_w > GS_NORM_TOL * norm_w0
             push!(basis, map(c -> c ./ norm_w, w))
         end
     end

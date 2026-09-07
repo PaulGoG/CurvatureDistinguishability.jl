@@ -7,11 +7,28 @@ module Physics
 
 using DocStringExtensions: TYPEDSIGNATURES
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
-    WaveformParams, waveform_params, spin_beta, strain_bin,
-    scaled_waveform_model, SECONDS_PER_YEAR
-public N_PARAMS
+    WaveformParams, waveform_params, spin_beta, spin_orbit_coefficient,
+    harmonic_phase, strain_bin, scaled_waveform_model, second_source,
+    SECONDS_PER_YEAR
+public N_PARAMS, LISA_ARM_LENGTH, transfer_frequency
 
 const C_LIGHT = 2.99792458e8
+
+"""
+LISA arm length [m] (Robson et al. 2019); the single default behind the
+instrumental noise (`NoiseParams.arm_length`) and the response transfer
+frequency of `WaveformParams`.
+"""
+const LISA_ARM_LENGTH = 2.5e9
+
+"""
+$(TYPEDSIGNATURES)
+
+Transfer frequency `f★ = c/(2π L)` [Hz] of an arm of length `L` [m]: the
+scale above which the long-wavelength response rolls off (Robson et al.
+2019, Eq. 13).
+"""
+transfer_frequency(arm_length::Real) = C_LIGHT / (2 * π * arm_length)
 
 """
 Dimension of the waveform parameter vector θ = (A, 𝓜, t_c, Φ₀, χ₁, χ₂).
@@ -95,7 +112,7 @@ Base.@kwdef struct NoiseParams
     confusion_kappa::Float64 = 1020.0
     confusion_gamma::Float64 = 1680.0
     confusion_knee_freq::Float64 = 0.00215
-    arm_length::Float64 = 2.5e9
+    arm_length::Float64 = LISA_ARM_LENGTH
     oms_amplitude::Float64 = 1.5e-11
     oms_reddening_freq::Float64 = 2.0e-3
     acc_amplitude::Float64 = 3.0e-15
@@ -165,10 +182,12 @@ end
 Immutable, isbits container for every physical parameter of the waveform and
 detector-response model; the single source of parameter defaults, safe to
 pass into GPU kernels. Values are overridden by the `[physics]` section of the run
-configuration. The active channel count (2, or 3 with the identically zero
-T channel, requested through the `include_t_channel` keyword) is carried
-only as the type parameter `NCH`, so channel-dependent tuple types are
-inferable throughout the geometry and inference paths.
+configuration; `transfer_frequency` is the response roll-off scale
+`f★ = c/(2πL)` [Hz] derived from the instrument's arm length. The active
+channel count (2, or 3 with the identically zero T channel, requested
+through the `include_t_channel` keyword) is carried only as the type
+parameter `NCH`, so channel-dependent tuple types are inferable throughout
+the geometry and inference paths.
 """
 struct WaveformParams{T<:Real,NCH}
     mass_scale::T
@@ -180,16 +199,20 @@ struct WaveformParams{T<:Real,NCH}
     sky_phi::T
     inclination::T
     polarization::T
+    transfer_frequency::T
 end
 
 function WaveformParams(; mass_scale::Real = 10.0, time_scale::Real = 1000.0,
     amp_scale::Real = 1e-21, eta::Real = 0.25,
     amp_33_factor::Real = 0.1, sky_theta::Real = π / 3,
     sky_phi::Real = 0.0, inclination::Real = π / 6,
-    polarization::Real = 0.0, include_t_channel::Bool = false)
+    polarization::Real = 0.0,
+    transfer_frequency::Real = transfer_frequency(LISA_ARM_LENGTH),
+    include_t_channel::Bool = false)
     fields = promote(float(mass_scale), float(time_scale), float(amp_scale),
         float(eta), float(amp_33_factor), float(sky_theta),
-        float(sky_phi), float(inclination), float(polarization))
+        float(sky_phi), float(inclination), float(polarization),
+        float(transfer_frequency))
     return WaveformParams{typeof(fields[1]),include_t_channel ? 3 : 2}(fields...)
 end
 
@@ -218,8 +241,12 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Leading-order (1.5PN) spin-orbit phase coefficient
-`β = (113/3 − 76η/3) χ_eff / 4` with `χ_eff = (χ₁ + χ₂)/2`.
+Leading-order (1.5PN) spin–orbit phase coefficient
+`β = (113/3 − 76η/3) χ_eff / 4` with `χ_eff = (χ₁ + χ₂)/2` — the
+symmetric-spin part of the Poisson–Will coefficient
+`β = (1/12) Σᵢ [113 (mᵢ/M)² + 75η] χᵢ`, which is the complete coefficient at
+equal mass (`η = 1/4`, where the antisymmetric-spin term vanishes). The
+model is therefore restricted to equal masses.
 
 ```jldoctest
 julia> spin_beta(0.5, 0.3, 0.25)
@@ -234,27 +261,93 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Scalar per-bin frequency-domain strain: dominant (2,2) mode with 1.5PN
-spin-orbit phasing plus the (3,3) harmonic at Newtonian phase ratio
-`Ψ₃₃ = 1.5 Ψ₂₂`. `A`, `chirp_mass`, `coalescence_time` are in physical units
-(s-based geometrised units for the chirp mass). This is the single scalar
-core shared by the broadcast model, the CPU inference loop and the GPU
-kernel — generic over `Real` (including `ForwardDiff.Dual`).
+Coefficient `σ = 4β η^{-3/5}` of `v³` in the 1.5PN phasing written in the
+chirp-mass velocity `v = (π𝓜f)^{1/3}`: the TaylorF2 spin–orbit term is
+`4β v_M³` in the total-mass velocity `v_M = (πMf)^{1/3}`, and
+`M = 𝓜 η^{-3/5}` gives `v_M³ = η^{-3/5} v³`.
+"""
+@inline spin_orbit_coefficient(chi1, chi2, eta) =
+    4.0 * spin_beta(chi1, chi2, eta) * eta^(-3 / 5)
+
+"""
+$(TYPEDSIGNATURES)
+
+Post-Newtonian phase `(3/128) v⁻⁵ (1 + σ v³)` of the (2,2) harmonic at
+gravitational-wave frequency `f`, with `v = (π𝓜f)^{1/3}` the chirp-mass
+velocity (exact for the 0PN term) and `σ` the spin–orbit coefficient
+([`spin_orbit_coefficient`](@ref)). The 1PN and tail terms are not
+modelled.
+"""
+@inline function pn_phase(f::Real, chirp_mass, spin_orbit)
+    pn_velocity = (π * chirp_mass * f)^(1 / 3)
+    return (3 / 128) * pn_velocity^(-5) * (1.0 + spin_orbit * pn_velocity^3)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Stationary-phase-approximation phase of harmonic `m` at gravitational-wave
+frequency `f`: `Ψₘ(f) = 2πf t_c − (m/2) φ_c + (m/2) ψ_PN(2f/m)`, where
+`ψ_PN` is [`pn_phase`](@ref) of the (2,2) harmonic and `2f/m` is the (2,2)
+frequency at which harmonic `m` radiates at `f`. The arrival-time term is
+common to every harmonic; for `m = 3` the 0PN term scales by `(3/2)^{8/3}`
+and the spin–orbit term by `(3/2)^{5/3}`. Sign conventions follow TaylorF2
+(`h̃(f) ∝ e^{iΨ}` with `Ψ = 2πf t_c − φ_c + (3/128) v⁻⁵ [1 + …]`), so
+`dΨ₂/df = 2π t(f)` with `t(f) = t_c − 5𝓜/(256 v⁸)` — the map on which
+`Detector.tdi_modulation_bin` evaluates the detector motion.
+"""
+@inline function harmonic_phase(f::Real, m::Integer, chirp_mass, coalescence_time,
+    coalescence_phase, spin_orbit)
+    half_m = m / 2
+    return 2 * π * f * coalescence_time - half_m * coalescence_phase +
+           half_m * pn_phase(f / half_m, chirp_mass, spin_orbit)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Scalar per-bin frequency-domain strain: the dominant (2,2) harmonic with
+0PN + 1.5PN spin–orbit phasing ([`harmonic_phase`](@ref)) plus a (3,3)
+harmonic with its own SPA phase and the phenomenological amplitude
+`amp_33_factor · A f^{-7/6} v` (a degeneracy-breaking perturbation — the
+physical (3,3) amplitude vanishes at the equal masses the phasing assumes).
+`A`, `chirp_mass` and `coalescence_time` are in physical units (the chirp
+mass in geometrised seconds), `spin_orbit` is
+[`spin_orbit_coefficient`](@ref). This is the single scalar core shared by
+the broadcast model, the CPU inference loop and the GPU kernel — generic
+over `Real` (including `ForwardDiff.Dual`).
 """
 @inline function strain_bin(f::Real, A, chirp_mass, coalescence_time,
-    coalescence_phase, beta, amp_33_factor)
+    coalescence_phase, spin_orbit, amp_33_factor)
     pn_velocity = (π * chirp_mass * f)^(1 / 3)
-
     amp_22 = A * (f^(-7 / 6))
-    phase_22 =
-        2 * π * f * coalescence_time - coalescence_phase -
-        (3 / 128) * (pn_velocity^(-5)) * (1.0 - 4.0 * beta * (pn_velocity^3))
-    h_22 = amp_22 * cis(phase_22)
-
+    h_22 =
+        amp_22 * cis(
+            harmonic_phase(f, 2, chirp_mass, coalescence_time,
+                coalescence_phase, spin_orbit),
+        )
     amp_33 = (amp_33_factor * A) * (f^(-7 / 6)) * pn_velocity
-    h_33 = amp_33 * cis(1.5 * phase_22)
-
+    h_33 =
+        amp_33 * cis(
+            harmonic_phase(f, 3, chirp_mass, coalescence_time,
+                coalescence_phase, spin_orbit),
+        )
     return h_22 + h_33
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Parameter vector of the second source of a two-source configuration:
+`theta0` displaced by `delta` along `u_norm`, with the amplitude component
+replaced by `amp_ratio · theta0[1]` — the amplitude separation is carried
+by the ratio, never by the direction.
+"""
+function second_source(theta0::AbstractVector, u_norm::AbstractVector, delta::Real,
+    amp_ratio::Real)
+    p2 = theta0 .+ delta .* u_norm
+    p2[1] = amp_ratio * theta0[1]
+    return p2
 end
 
 """
@@ -273,9 +366,9 @@ function scaled_waveform_model(
     chirp_mass = theta[2] * wp.mass_scale
     coalescence_time = theta[3] * wp.time_scale
     coalescence_phase = theta[4]
-    beta = spin_beta(theta[5], theta[6], wp.eta)
+    spin_orbit = spin_orbit_coefficient(theta[5], theta[6], wp.eta)
     return strain_bin.(freq_grid, A, chirp_mass, coalescence_time, coalescence_phase,
-        beta, wp.amp_33_factor)
+        spin_orbit, wp.amp_33_factor)
 end
 
 end # module

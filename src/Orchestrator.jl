@@ -21,6 +21,7 @@ using KernelAbstractions: KernelAbstractions
 using ..Backends
 using ..Physics
 using ..Physics: N_PARAMS
+using ..Bounds: SPIN_INDICES
 using ..Detector
 using ..Residuals
 using ..Geometry
@@ -35,7 +36,14 @@ using ..Fitting:
     ratio_correction_fit
 
 export run_pipeline
-public ResourceBudgetError
+public ResourceBudgetError, DEFAULT_CONFIG
+
+"""
+Configuration the pipeline scripts run without an explicit `--config`: the
+minutes-scale quickstart scenario, relative to the project root, so a bare
+invocation never launches a campaign.
+"""
+const DEFAULT_CONFIG = joinpath("configs", "quickstart.toml")
 
 """
     ResourceBudgetError(msg)
@@ -61,6 +69,9 @@ const SPIN_PRIOR_NOTE_FRACTION = 0.25
 # simultaneously live whitened-vector buffers per nested-dual evaluation in
 # the plan_resources memory model (value + two derivative work arrays)
 const NESTED_DUAL_EVAL_BUFFERS = 3
+# boundary-radius floor guarding the neighbour-ratio division of the
+# angular refinement against exactly vanishing capped radii
+const RADIUS_UNDERFLOW = 1e-300
 
 format_time(seconds) = @sprintf(
     "%02d:%02d:%02d",
@@ -292,15 +303,15 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         norm_scale = 1.0 / sqrt(g_uu)
         u_norm = u_raw .* norm_scale
         K_norm = K_u * norm_scale^4
-        delta_min = (16.0 * rho_sq / K_norm)^(1 / 4)
+        # D² = (p/16) K δ⁴ = ρ² with the amplitude prefactor p = (A_harm/A)²
+        delta_min = (16.0 * rho_sq / (amp_prefactor * K_norm))^(1 / 4)
         logline(log_io, @sprintf("        normalized K(u)          : %.6e", K_norm))
         logline(log_io, @sprintf("        delta_min                : %.6e", delta_min))
 
         deltas = 10 .^ range(cfg.min_log_delta, cfg.max_log_delta, length = cfg.n_deltas)
 
         # verify the second source stays within the physical bounds at δ_max
-        theta_far = theta0 .+ maximum(deltas) .* u_norm
-        theta_far[1] = amp_ratio * theta0[1]
+        theta_far = second_source(theta0, u_norm, maximum(deltas), amp_ratio)
         for i in 1:N_PARAMS
             cfg.bounds.periodic[i] && continue
             if !(cfg.bounds.lower[i] <= theta_far[i] <= cfg.bounds.upper[i])
@@ -387,8 +398,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
     note_progress = stage_progress_hook(label, n, cfg.progress_log_fraction)
     parallel_foreach(n, ctx.sweep_tasks) do i
         d = deltas[i]
-        p2 = theta0 .+ d .* u_norm
-        p2[1] = amp_ratio * theta0[1]
+        p2 = second_source(theta0, u_norm, d, amp_ratio)
         h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
         h2 = scaled_waveform_model(p2, ctx.freqs, wp)
         ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
@@ -525,7 +535,7 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
     (; D2_num, best_fits) = fits
     (; D2_theo, clean, floor_level, slope, slope_err, c1, c1_err, c2, delta_valid) = law
 
-    df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
+    results_table = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
         D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
         BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
         BestFit_CoalescenceTime = best_fits[:, 3],
@@ -534,7 +544,7 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
         Converged = collect(fits.converged), Iterations = fits.iteration_counts,
         GradNorm = fits.gradient_norms, AtBound = collect(fits.at_bound),
         Starts = fill(cfg.n_starts, n), MultiStartGain = fits.multi_start_gain)
-    CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
+    CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), results_table)
 
     # Residual-spectrum evaluation points. Primary δ*: the largest clean
     # separation still inside the fitted validity window of the
@@ -694,11 +704,14 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:n_base_directions
         ]
 
-        r_math_of(K) = K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+        r_math_of(K) = boundary_radius(K, rho_sq)
         r_box_of(phi) = ray_box_crossing(cos(phi), sin(phi), box...)
-        r_cap_of(e) = min(r_math_of(e.K), r_box_of(e.phi))
+        # capped radii of a half-circle direction and of its mirror image: the
+        # prior box need not be symmetric, so both halves drive refinement
+        r_cap_pair(e) = (min(r_math_of(e.K), r_box_of(e.phi)),
+            min(r_math_of(e.K), r_box_of(e.phi + π)))
 
-        added = refine_directions!(entries, eval_angles, r_cap_of, cfg)
+        added = refine_directions!(entries, eval_angles, r_cap_pair, cfg)
         logline(
             log_io,
             "        refinement added $added directions " *
@@ -728,14 +741,11 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
 
         polar = mirror_to_full_circle(entries, box, r_math_of, cfg.g_uu_degenerate)
         r_cap = polar.r_cap
-        if any(!isfinite, r_cap)
-            r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
-            polygon_cap = cfg.unbounded_cap_factor * r_cap_max
-            @warn "Map '$name': $(count(!isfinite, r_cap)) directions are unbounded " *
+        n_unbounded, polygon_cap = cap_unbounded_radii!(r_cap, cfg.unbounded_cap_factor)
+        n_unbounded > 0 &&
+            @warn "Map '$name': $n_unbounded directions are unbounded " *
                   "(no curvature limit and no finite physical bound); capping them at " *
                   "$polygon_cap for the polygon. Consider adding [parameter_bounds]."
-            r_cap[.!isfinite.(r_cap)] .= polygon_cap
-        end
 
         prior_frac = count(polar.prior_limited) / length(polar.prior_limited)
         degen_frac = count(polar.degenerate) / length(polar.degenerate)
@@ -748,7 +758,7 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 log_io,
                 @sprintf("        degenerate directions    : %.1f%%", 100degen_frac)
             )
-        if px in (5, 6) && py in (5, 6) && prior_frac > SPIN_PRIOR_NOTE_FRACTION
+        if px in SPIN_INDICES && py in SPIN_INDICES && prior_frac > SPIN_PRIOR_NOTE_FRACTION
             logline(
                 log_io,
                 "  [note] the waveform depends on the spins only through " *
@@ -780,25 +790,31 @@ $(TYPEDSIGNATURES)
 
 Adaptive angular refinement of the half-circle `entries` (NamedTuples
 `(phi, K, g)`): up to `cfg.max_refine_levels` passes insert the midpoint
-direction wherever the capped radius `r_cap_of` of cyclically consecutive
-directions jumps by more than `cfg.neighbor_ratio_tol`; each pass
-evaluates all midpoints as one batch through `eval_angles`. Leaves
+direction wherever the capped radius of cyclically consecutive directions
+jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle —
+`r_cap_pair(e)` returns the capped radii of a direction and of its mirror
+image, whose prior-box crossing differs when the box is asymmetric. Each
+pass evaluates all midpoints as one batch through `eval_angles`. Leaves
 `entries` sorted by angle and returns the number of directions added.
 """
-function refine_directions!(entries::Vector, eval_angles, r_cap_of,
+function refine_directions!(entries::Vector, eval_angles, r_cap_pair,
     cfg::PipelineSettings)
     added = 0
     for _ in 1:cfg.max_refine_levels
         sort!(entries, by = e -> e.phi)
-        rcaps = [r_cap_of(e) for e in entries]
+        rcaps = [r_cap_pair(e) for e in entries]
         mids = Float64[]
         for i in 1:length(entries)
             j = mod1(i + 1, length(entries))
             gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
-            r1, r2 = rcaps[i], rcaps[j]
-            (isfinite(r1) && isfinite(r2)) || continue
-            ratio = max(r1, r2) / max(min(r1, r2), K_UNDERFLOW)
-            ratio > cfg.neighbor_ratio_tol && push!(mids, entries[i].phi + gap / 2)
+            jump = false
+            for half in (1, 2)
+                r1, r2 = rcaps[i][half], rcaps[j][half]
+                (isfinite(r1) && isfinite(r2)) || continue
+                ratio = max(r1, r2) / max(min(r1, r2), RADIUS_UNDERFLOW)
+                ratio > cfg.neighbor_ratio_tol && (jump = true)
+            end
+            jump && push!(mids, entries[i].phi + gap / 2)
         end
         isempty(mids) && break
         curvature_new = eval_angles(mids)
@@ -985,13 +1001,13 @@ function persist_map_results(out_dir::AbstractString, map_spec::MapSpec,
     py = map_spec.param_y
     X = polar.r_cap .* polar.dir_cos
     Y = polar.r_cap .* polar.dir_sin
-    df_map = DataFrame(Angle = polar.angle, X_Bound = X, Y_Bound = Y,
+    contour_table = DataFrame(Angle = polar.angle, X_Bound = X, Y_Bound = Y,
         Dir_Cos = polar.dir_cos, Dir_Sin = polar.dir_sin,
         R_Capped = polar.r_cap, R_Math = polar.r_math, R_Box = polar.r_box,
         Prior_Limited = collect(polar.prior_limited),
         Degenerate = collect(polar.degenerate),
         K_Raw = polar.K_raw, G_uu = polar.g_uu)
-    CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
+    CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), contour_table)
 
     try
         fig = zone_figure(X, Y, collect(polar.prior_limited);
@@ -1021,7 +1037,8 @@ configuration-hashed run directory, then executes the 1D sweep and 2D
 mapping modules. Each sweep/map is guarded individually — a failing stage is
 logged with its backtrace and the remaining stages continue.
 """
-function run_pipeline(config_path::String, project_root::String, output_dir::String)
+function run_pipeline(config_path::AbstractString, project_root::AbstractString,
+    output_dir::AbstractString)
     cfg = load_and_validate_config(config_path)
     run_id = run_id_from_config(config_path)
     out_base = unique_run_dir(joinpath(project_root, output_dir), run_id)
@@ -1043,8 +1060,8 @@ function run_pipeline(config_path::String, project_root::String, output_dir::Str
     return out_base
 end
 
-function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::String,
-    config_path::String)
+function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
+    out_base::AbstractString, config_path::AbstractString)
     start_time = time()
     df = 1.0 / cfg.T_obs
     freqs = collect(cfg.f_min:df:cfg.f_max)

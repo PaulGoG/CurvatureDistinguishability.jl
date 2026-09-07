@@ -24,8 +24,9 @@ export get_best_backend, to_backend, backend_name
 include("Physics.jl")
 using .Physics
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
-    WaveformParams, waveform_params, spin_beta, strain_bin,
-    scaled_waveform_model, SECONDS_PER_YEAR
+    WaveformParams, waveform_params, spin_beta, spin_orbit_coefficient,
+    harmonic_phase, strain_bin, scaled_waveform_model, second_source,
+    SECONDS_PER_YEAR
 
 include("Detector.jl")
 using .Detector
@@ -44,7 +45,8 @@ export ParameterBounds,
 include("Geometry.jl")
 using .Geometry
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
-    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature
+    compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
+    boundary_radius, cap_unbounded_radii!
 
 include("Fitting.jl")
 using .Fitting
@@ -69,7 +71,9 @@ export publication_theme,
 
 include("Orchestrator.jl")
 using .Orchestrator
+using .Orchestrator: DEFAULT_CONFIG
 export run_pipeline
+public DEFAULT_CONFIG
 
 include("RunFigures.jl")
 using .RunFigures

@@ -30,10 +30,16 @@ n_channels(::WaveformParams{T,NCH}) where {T,NCH} = NCH
 $(TYPEDSIGNATURES)
 
 Scalar per-bin complex modulation of the A and E TDI channels: orbital
-Doppler phase (via the SPA time-frequency map `t(f) = t_c − 5M_c/(256 v⁸)`)
-and low-frequency antenna patterns. `chirp_mass`, `coalescence_time` in
-physical units. Generic over `Real` (including `ForwardDiff.Dual`); safe
-inside GPU kernels.
+Doppler phase and antenna patterns evaluated at the Newtonian SPA
+time–frequency map `t(f) = t_c − 5𝓜/(256 v⁸)`, and the long-wavelength
+transfer roll-off `[1 + 0.6 (f/f★)²]^{-1/2}` (Robson et al. 2019, Eq. 13;
+`f★ = wp.transfer_frequency`). The antenna patterns are those of a 90°
+detector rotating once per year in the ecliptic plane, evaluated at the
+source azimuth `φ_orb − φ_sky` in the detector frame — the same azimuth
+the Doppler term uses; A and E carry the identical `√3/2` normalisation
+of the long-wavelength limit, E being A rotated by 45° in polarisation.
+`chirp_mass`, `coalescence_time` in physical units. Generic over `Real`
+(including `ForwardDiff.Dual`); safe inside GPU kernels.
 """
 @inline function tdi_modulation_bin(f::Real, chirp_mass, coalescence_time,
     wp::WaveformParams)
@@ -43,22 +49,26 @@ inside GPU kernels.
     t_f = coalescence_time - 5.0 * chirp_mass / (256.0 * pn_velocity^8)
 
     phi_orb = omega_orbit * t_f
-    doppler_phase = 2 * π * f * R_ORBIT_SEC * sin(wp.sky_theta) * cos(phi_orb - wp.sky_phi)
+    azimuth = phi_orb - wp.sky_phi # source azimuth in the rotating detector frame
+    doppler_phase = 2 * π * f * R_ORBIT_SEC * sin(wp.sky_theta) * cos(azimuth)
 
     F_plus =
-        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * cos(2 * wp.polarization) -
-        cos(wp.sky_theta) * sin(2 * phi_orb) * sin(2 * wp.polarization)
+        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * azimuth) * cos(2 * wp.polarization) -
+        cos(wp.sky_theta) * sin(2 * azimuth) * sin(2 * wp.polarization)
     F_cross =
-        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * phi_orb) * sin(2 * wp.polarization) +
-        cos(wp.sky_theta) * sin(2 * phi_orb) * cos(2 * wp.polarization)
+        0.5 * (1 + cos(wp.sky_theta)^2) * cos(2 * azimuth) * sin(2 * wp.polarization) +
+        cos(wp.sky_theta) * sin(2 * azimuth) * cos(2 * wp.polarization)
 
     h_plus_amp = 0.5 * (1 + cos(wp.inclination)^2)
     h_cross_amp = cos(wp.inclination)
 
-    phase_shift = cis(doppler_phase)
+    # long-wavelength normalisation √3/2 of both channels, Doppler phase and
+    # the finite-arm transfer roll-off
+    response = sqrt(3 / 4) / sqrt(1 + 0.6 * (f / wp.transfer_frequency)^2)
+    phase_shift = response * cis(doppler_phase)
 
-    mod_A = sqrt(3 / 4) * (F_plus * h_plus_amp - 1im * F_cross * h_cross_amp) * phase_shift
-    mod_E = sqrt(1 / 4) * (F_cross * h_plus_amp + 1im * F_plus * h_cross_amp) * phase_shift
+    mod_A = (F_plus * h_plus_amp - 1im * F_cross * h_cross_amp) * phase_shift
+    mod_E = (F_cross * h_plus_amp + 1im * F_plus * h_cross_amp) * phase_shift
 
     return mod_A, mod_E
 end

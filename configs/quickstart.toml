@@ -36,11 +36,17 @@ f_min = 1.0e-3
 f_max = 1.65e-2
 
 [physics]
+# chirp-mass unit in geometrised seconds (1 s ≈ 2.03e5 solar masses), > 0
 mass_scale = 10.0
+# coalescence-time unit [s], > 0
 time_scale = 10000.0
+# strain-amplitude unit (dimensionless), > 0
 amp_scale = 1e-21
+# symmetric mass ratio; the equal-mass model requires 0.25
 eta = 0.25
+# (3,3)-harmonic amplitude factor relative to the (2,2) harmonic, > 0
 amp_33_factor = 0.1
+# source direction, inclination and polarisation angles [rad]
 sky_theta = 1.047
 sky_phi = 3.1415
 inclination = 0.523
@@ -104,19 +110,15 @@ enabled = true
 # (0 disables intra-stage progress logging)
 progress_log_fraction = 0.25
 
-# Two sweeps contrasting a well-measured and a near-degenerate direction,
-# and two maps including the prior-limited spin wedge
-# (docs/src/parameters.md for the physical rationale)
+# 1D sweeps and 2D maps; scenario rationale: docs/src/parameters.md
 
 [[sweeps]]
 name = "massive_binary_mass_time"
-# chirp-rate/arrival-time direction of the reference massive binary
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 
 [[sweeps]]
 name = "near_degenerate_antisymmetric_spin"
-# near-null antisymmetric-spin direction with a 15% chirp-mass admixture
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
 u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
 

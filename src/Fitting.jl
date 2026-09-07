@@ -13,7 +13,10 @@ using Statistics: mean
 public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask,
     MIN_FIT_POINTS
 
-# minimum clean points for the slope and ratio-correction fits
+"""
+Minimum number of clean points for the log-log slope and the
+ratio-correction fits; with fewer points both return `NaN`.
+"""
 const MIN_FIT_POINTS = 3
 # determinant underflow guard of the 2×2 ratio-correction normal equations
 const DET_UNDERFLOW = 1e-300
@@ -63,16 +66,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Bootstrap estimate of a sweep's optimizer floor: points whose
+Bootstrap estimate of a sweep's optimizer floor: the floor-dominated points
+are the contiguous run of separations, starting from the smallest, whose
 `D²_num/D²_theo` ratio is at or above `ratio_threshold`
-(`[pipeline.sweep_settings].floor_detection_ratio`) are floor-dominated,
-and the floor level is the largest floor-dominated `D²_num`. Returns `NaN`
-when no point is floor-dominated.
+(`[pipeline.sweep_settings].floor_detection_ratio`) — a flat floor under a
+`δ⁴` theory makes that ratio decrease monotonically with `δ`, so
+super-threshold ratios at large `δ` mark the breakdown of the leading-order
+law, not the floor. The floor level is the largest floor-dominated
+`D²_num`; `NaN` when the smallest separation is already clean.
 """
 function optimizer_floor(
     D2_num::AbstractVector, ratio::AbstractVector, ratio_threshold::Real)
-    floor_pts = findall(>=(ratio_threshold), ratio)
-    return isempty(floor_pts) ? NaN : maximum(D2_num[floor_pts])
+    n_floor = 0
+    for r in ratio
+        r >= ratio_threshold || break
+        n_floor += 1
+    end
+    return n_floor == 0 ? NaN : maximum(view(D2_num, 1:n_floor))
 end
 
 """

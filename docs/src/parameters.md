@@ -46,6 +46,12 @@ identifiers.
     ``\delta_{\max}`` depends on how well the direction is measured; every
     base/direction pair below keeps the second source inside the physical
     priors at ``\delta_{\max}`` on the production grid.
+*   **Domain of validity:** the inspiral model carries no merger cutoff
+    and the band reaches ``2.6 f_\star``; for the massive base points
+    (``\mathcal{M} = 15`` s) the innermost stable circular orbit lies at
+    ``0.63`` mHz, far below ``f_{\max}`` — see
+    [Physics and Waveform Model](physics.md), §7. The maps assume equal
+    source amplitudes.
 
 ## 2. 1D Parameter Separation Sweeps
 
@@ -109,7 +115,22 @@ across seven physical scenarios.
 
 ## 3. 2D Zone of Confusion Mappings
 
-These configurations evaluate the extrinsic curvature over a 2D plane to draw the ``\delta_{\mathrm{min}}`` boundary. The angular resolution comes from the global `[mapping].n_angles` (per-map override allowed); the solver computes half the directions and mirrors (``K`` is exactly even), refining adaptively near boundary spikes, and caps every direction at the physical prior box (`Prior_Limited` flags in the CSV). Wherever consecutive directions straddle a capping transition, the solver additionally bisects for the exact crossover direction ``r_{\mathrm{math}}(\varphi) = r_{\mathrm{box}}(\varphi)`` and inserts it as a boundary vertex (`[mapping].corner_bisect_iters`, default 25; 0 disables), so zone corners at prior walls are exact rather than chamfered by a polygon chord — the neighbor-ratio refinement alone cannot resolve them, because the capped radius saturates at ``r_{\mathrm{box}}`` on the wall side. Note that `replot.jl --rho` reuses the stored directions, so corner vertices are exact only for the original threshold; rerun the map stage for publication-grade corners at a very different ``\rho``.
+These configurations evaluate the extrinsic curvature over a 2D plane to
+draw the ``\delta_{\mathrm{min}}`` boundary. The angular resolution comes
+from the global `[mapping].n_angles` (per-map override allowed); the solver
+computes half the directions and mirrors (``K`` is exactly even), refining
+adaptively near boundary spikes, and caps every direction at the physical
+prior box (`Prior_Limited` flags in the CSV). Wherever consecutive
+directions straddle a capping transition, the solver additionally bisects
+for the exact crossover direction ``r_{\mathrm{math}}(\varphi) =
+r_{\mathrm{box}}(\varphi)`` and inserts it as a boundary vertex
+(`[mapping].corner_bisect_iters`, default 25; 0 disables), so zone corners
+at prior walls are exact rather than chamfered by a polygon chord — the
+neighbor-ratio refinement alone cannot resolve them, because the capped
+radius saturates at ``r_{\mathrm{box}}`` on the wall side. Note that
+`replot.jl --rho` reuses the stored directions, so corner vertices are exact
+only for the original threshold; rerun the map stage for publication-grade
+corners at a very different ``\rho``.
 
 1.  **Mass vs. Time (`mass_vs_time_degeneracy`, 2 vs 3)** — the classic chirp-rate / arrival-time degeneracy; base ``\theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]``.
 2.  **Spin 1 vs. Spin 2 (`spin1_vs_spin2_coupling`, 5 vs 6)** — the waveform sees only ``\chi_{\mathrm{eff}} = \frac{1}{2}(\chi_1 + \chi_2)``, so the anti-symmetric direction is exactly flat: the mathematical zone diverges there and the published zone is limited by the spin prior ``[-1, 1]`` (a wedge, not an ellipse).

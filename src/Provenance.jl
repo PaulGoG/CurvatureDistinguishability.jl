@@ -183,7 +183,10 @@ dirty flag) via DrWatson, or `"unknown"` outside a repository.
 function git_state(project_root::AbstractString)
     desc = try
         gitdescribe(project_root)
-    catch
+    catch err
+        # outside a repository (containers, tarballs) DrWatson throws; the
+        # metadata then records "unknown" rather than aborting the run
+        @debug "git state unavailable" project_root exception = err
         nothing
     end
     return desc === nothing ? "unknown" : desc

@@ -34,11 +34,17 @@ f_min = 1.0e-4
 f_max = 0.05
 
 [physics]
+# chirp-mass unit in geometrised seconds (1 s ≈ 2.03e5 solar masses), > 0
 mass_scale = 10.0
+# coalescence-time unit [s], > 0
 time_scale = 10000.0
+# strain-amplitude unit (dimensionless), > 0
 amp_scale = 1e-21
+# symmetric mass ratio; the equal-mass model requires 0.25
 eta = 0.25
+# (3,3)-harmonic amplitude factor relative to the (2,2) harmonic, > 0
 amp_33_factor = 0.1
+# source direction, inclination and polarisation angles [rad]
 sky_theta = 1.047
 sky_phi = 3.1415
 inclination = 0.523
@@ -96,48 +102,41 @@ os_vram_overhead_gb = 4.0
 bytes_per_bin_per_task_gpu = 1000
 
 
-# 1D sweeps and 2D maps (docs/src/parameters.md for the physical rationale)
+# 1D sweeps and 2D maps; case rationale: docs/src/parameters.md
 
 [[sweeps]]
 name = "six_dimensional_diagonal_stress"
-# simultaneous displacement in mass, time, phase and both spins
 theta_0 = [1.0, 1.25, 300.0, 1.57, 0.6, -0.4]
 u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]
 
 [[sweeps]]
 name = "massive_binary_mass_time"
-# chirp-rate/arrival-time direction of the reference massive binary
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 
 [[sweeps]]
 name = "unequal_amplitude_mass_time"
-# A_harm prefactor validation at amplitude ratio q = A2/A1 = 0.5
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.8, 0.8]
 u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
 amp_ratio = 0.5
 
 [[sweeps]]
 name = "extreme_spin_orbit_coupling"
-# phase and both spins at the strongly anti-aligned high-spin base
 theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
 u_dir = [0.0, 0.0, 0.0, 1.0, 0.5, 0.5]
 
 [[sweeps]]
 name = "low_mass_time_shift"
-# pure coalescence-time displacement (orbital Doppler/TDI response)
 theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
 
 [[sweeps]]
 name = "seed_binary_mass_spin_compensation"
-# 1.5PN chirp-mass/spin-orbit compensation direction of the light-seed binary
 theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]
 u_dir = [0.0, 0.6, 0.0, 0.0, -0.55, -0.55]
 
 [[sweeps]]
 name = "near_degenerate_antisymmetric_spin"
-# near-null antisymmetric-spin direction with a 15% chirp-mass admixture
 theta_0 = [1.0, 1.5, 200.0, 0.0, 0.3, -0.3]
 u_dir = [0.0, 0.15, 0.0, 0.0, 0.7, -0.7]
 
@@ -173,14 +172,12 @@ theta_0 = [0.5, 0.1, 500.0, 0.0, 0.9, 0.0]
 
 [[maps]]
 name = "time_vs_spin1_high_spin"
-# t_c-spin correlation at the strongly anti-aligned high-spin base
 param_x = 3
 param_y = 5
 theta_0 = [1.0, 2.0, 150.0, 1.57, 0.7, -0.7]
 
 [[maps]]
 name = "phase_vs_spin1_seed"
-# phase-spin plane of the light-seed binary (periodic and spin walls)
 param_x = 4
 param_y = 5
 theta_0 = [0.8, 0.3, 400.0, 0.0, 0.7, 0.5]

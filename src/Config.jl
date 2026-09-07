@@ -9,6 +9,7 @@ using ..Physics
 using ..Physics: N_PARAMS
 using ..Detector: n_channels
 using ..Bounds
+using ..Bounds: PARAM_KEYS
 using ..Provenance: effective_config
 
 export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
@@ -253,8 +254,8 @@ function settings_from_config(config::AbstractDict)
     pipeline = parse_pipeline(config)
     sweep_settings = parse_sweep_settings(config)
     grid = parse_grid(config)
-    physics = parse_physics(config)
     noise = parse_noise(config, grid.T_obs)
+    physics = parse_physics(config, noise.noise.arm_length)
     mapping = parse_mapping(config)
     hardware = parse_hardware(config)
     safety = parse_safety(config)
@@ -388,9 +389,11 @@ end
 
 """
 `[physics]` into a [`WaveformParams`](@ref); defaults are owned by the
-struct and never restated here.
+struct and never restated here. The response transfer frequency follows
+from the instrument's `arm_length` (parsed with `[noise]`), so the noise
+model and the signal response share one arm length.
 """
-function parse_physics(config::AbstractDict)
+function parse_physics(config::AbstractDict, arm_length::Real)
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
@@ -406,19 +409,18 @@ function parse_physics(config::AbstractDict)
         inclination = get_number(phys, "inclination", wp_default.inclination, "physics"),
         polarization = get_number(
             phys, "polarization", wp_default.polarization, "physics"),
+        transfer_frequency = Physics.transfer_frequency(arm_length),
         include_t_channel = get_boolean(
             phys, "include_t_channel", n_channels(wp_default) == 3, "physics"),
     )
-    for (fname, val, lo, hi) in (("mass_scale", wp.mass_scale, 0.0, Inf),
-        ("time_scale", wp.time_scale, 0.0, Inf),
-        ("amp_scale", wp.amp_scale, 0.0, Inf),
-        ("amp_33_factor", wp.amp_33_factor, 0.0, Inf))
-        val > lo || config_error("[physics].$fname must be > $lo, got $val")
+    for (fname, val) in (("mass_scale", wp.mass_scale), ("time_scale", wp.time_scale),
+        ("amp_scale", wp.amp_scale), ("amp_33_factor", wp.amp_33_factor))
+        val > 0 || config_error("[physics].$fname must be > 0, got $val")
     end
-    0.0 < wp.eta <= 0.25 ||
-        config_error(
-            "[physics].eta must be in (0, 0.25] (symmetric mass ratio), got $(wp.eta)",
-        )
+    wp.eta == 0.25 || config_error(
+        "[physics].eta must be 0.25: the spin–orbit coefficient and the exact χ_a " *
+        "degeneracy of the waveform assume equal masses (got $(wp.eta))",
+    )
     0.0 <= wp.sky_theta <= π ||
         @warn "[physics].sky_theta = $(wp.sky_theta) is outside [0, π]; interpreting as-is."
     return (; wp)
@@ -591,9 +593,11 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
                 "sweep direction.",
             )
         end
-        u[1] == 0 ||
-            @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
-                  "equal-amplitude absorption argument assumes u_dir[1] = 0."
+        u[1] == 0 || config_error(
+            "[[sweeps]] '$name'.u_dir must have a zero amplitude component: the " *
+            "second source's amplitude is set by amp_ratio, so an amplitude " *
+            "displacement in u_dir would enter the theory curve but not the data",
+        )
         rho = get_number(s, "rho_thresh", sweep_rho_thresh, "sweeps[]")
         rho > 0 || config_error("[[sweeps]] '$name'.rho_thresh must be > 0")
         SweepSpec(name, theta0, u, rho, amp_ratio)

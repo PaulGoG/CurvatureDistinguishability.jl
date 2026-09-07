@@ -35,9 +35,16 @@ CurvatureDistinguishability.Physics.analytic_noise_psd
 CurvatureDistinguishability.Physics.WaveformParams
 CurvatureDistinguishability.Physics.waveform_params
 CurvatureDistinguishability.Physics.spin_beta
+CurvatureDistinguishability.Physics.spin_orbit_coefficient
+CurvatureDistinguishability.Physics.pn_phase
+CurvatureDistinguishability.Physics.harmonic_phase
 CurvatureDistinguishability.Physics.strain_bin
 CurvatureDistinguishability.Physics.scaled_waveform_model
+CurvatureDistinguishability.Physics.second_source
+CurvatureDistinguishability.Physics.N_PARAMS
 CurvatureDistinguishability.Physics.SECONDS_PER_YEAR
+CurvatureDistinguishability.Physics.LISA_ARM_LENGTH
+CurvatureDistinguishability.Physics.transfer_frequency
 ```
 
 ## Detector
@@ -64,6 +71,8 @@ CurvatureDistinguishability.Bounds.deviation_box
 CurvatureDistinguishability.Bounds.ray_box_crossing
 CurvatureDistinguishability.Bounds.clamp_interior
 CurvatureDistinguishability.Bounds.PARAM_KEYS
+CurvatureDistinguishability.Bounds.PHASE_INDEX
+CurvatureDistinguishability.Bounds.SPIN_INDICES
 ```
 
 ## Geometry
@@ -78,6 +87,8 @@ CurvatureDistinguishability.Geometry.compute_extrinsic_curvature_from_basis
 CurvatureDistinguishability.Geometry.compute_extrinsic_curvature
 CurvatureDistinguishability.Geometry.GS_NORM_TOL
 CurvatureDistinguishability.Geometry.K_UNDERFLOW
+CurvatureDistinguishability.Geometry.boundary_radius
+CurvatureDistinguishability.Geometry.cap_unbounded_radii!
 ```
 
 ## Inference
@@ -133,7 +144,15 @@ CurvatureDistinguishability.Provenance.git_state
 CurvatureDistinguishability.Plotting.publication_theme
 CurvatureDistinguishability.Plotting.save_figure
 CurvatureDistinguishability.Plotting.decade_ticks
+CurvatureDistinguishability.Plotting.log_ticks_125
 CurvatureDistinguishability.Plotting.pi_ticks
+CurvatureDistinguishability.Plotting.offset_ticks
+CurvatureDistinguishability.Plotting.sci_tick_labels
+CurvatureDistinguishability.Plotting.sci_latex
+CurvatureDistinguishability.Plotting.coef_latex
+CurvatureDistinguishability.Plotting.axis_exponent
+CurvatureDistinguishability.Plotting.sweep_diagnostic_panel
+CurvatureDistinguishability.Plotting.map_diagnostic_panel
 CurvatureDistinguishability.Plotting.scaling_figure
 CurvatureDistinguishability.Plotting.residual_figure
 CurvatureDistinguishability.Plotting.ResidualFigureMeta
@@ -147,12 +166,16 @@ CurvatureDistinguishability.Fitting.loglog_slope
 CurvatureDistinguishability.Fitting.ratio_correction_fit
 CurvatureDistinguishability.Fitting.optimizer_floor
 CurvatureDistinguishability.Fitting.above_floor_mask
+CurvatureDistinguishability.Fitting.MIN_FIT_POINTS
 ```
 
 ## Orchestrator
 
 ```@docs
 CurvatureDistinguishability.Orchestrator.run_pipeline
+CurvatureDistinguishability.Orchestrator.plan_resources
+CurvatureDistinguishability.Orchestrator.ResourceBudgetError
+CurvatureDistinguishability.Orchestrator.DEFAULT_CONFIG
 ```
 
 ## Run figure regeneration

@@ -124,7 +124,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         A = THETA0[1] * FIX_WP.amp_scale
         chirp_mass = THETA0[2] * FIX_WP.mass_scale
         coalescence_time = THETA0[3] * FIX_WP.time_scale
-        beta = spin_beta(THETA0[5], THETA0[6], FIX_WP.eta)
+        spin_orbit = spin_orbit_coefficient(THETA0[5], THETA0[6], FIX_WP.eta)
         h_sc = [
             strain_bin(
                 f,
@@ -132,13 +132,35 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 chirp_mass,
                 coalescence_time,
                 THETA0[4],
-                beta,
+                spin_orbit,
                 FIX_WP.amp_33_factor,
             ) for
             f in FIX_FREQS
         ]
         @test h_bc == h_sc
         @test eltype(h_bc) <: Complex
+
+        # TaylorF2 conventions: the (2,2) phase derivative is 2π t(f) with the
+        # Newtonian SPA map the detector modulation evaluates on, the
+        # spin–orbit term is the Poisson–Will β at the total-mass velocity, and
+        # the (3,3) harmonic shares the arrival time (its 0PN term scales by
+        # (3/2)^{8/3}, the spin–orbit term by (3/2)^{5/3}, the phase by 3/2)
+        f0 = 2e-3
+        dpsi_df = ForwardDiff.derivative(
+            f -> harmonic_phase(f, 2, chirp_mass, coalescence_time, 0.3, 0.0), f0)
+        v0 = (π * chirp_mass * f0)^(1 / 3)
+        @test dpsi_df / (2π) ≈ coalescence_time - 5 * chirp_mass / (256 * v0^8) rtol = 1e-10
+        @test spin_orbit_coefficient(0.5, 0.3, 0.25) ≈ 4 * 3.1333333333333333 * 0.25^(-0.6) rtol =
+            1e-14
+        psi2 = harmonic_phase(f0, 2, chirp_mass, coalescence_time, 0.3, spin_orbit)
+        psi3 = harmonic_phase(f0, 3, chirp_mass, coalescence_time, 0.3, spin_orbit)
+        pn0 = (3 / 128) * v0^(-5)
+        @test psi3 - psi2 ≈
+              -0.15 + ((3 / 2)^(8 / 3) - 1) * pn0 +
+              ((3 / 2)^(5 / 3) - 1) * pn0 * spin_orbit * v0^3 rtol = 1e-12
+        @test ForwardDiff.derivative(
+            f -> harmonic_phase(f, 3, chirp_mass, coalescence_time, 0.3, 0.0), 1e3) / (2π) ≈
+              coalescence_time rtol = 1e-6 # arrival time common to the harmonics
         # the physical-model boundary rejects unknown keywords (typo protection)
         @test_throws ArgumentError waveform_params(sky_thata = 1.0)
         # type stability of the hot scalar core
@@ -148,7 +170,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             chirp_mass,
             coalescence_time,
             0.0,
-            beta,
+            spin_orbit,
             0.1,
         )) isa ComplexF64
     end
@@ -164,8 +186,30 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test A3 == A2 && E3 == E2
         @test all(iszero, T3)
 
-        # fused projection ≡ per-bin modulation
+        # A and E carry the same long-wavelength normalisation: E is A rotated
+        # by 45° in polarisation, so the polarisation-averaged powers agree
         chirp_mass = THETA0[2] * FIX_WP.mass_scale
+        coalescence_time = THETA0[3] * FIX_WP.time_scale
+        power(ch) = sum(
+            abs2(
+                tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time,
+                    waveform_params(; FIX_PHYS..., polarization = psi))[ch],
+            )
+            for psi in (0.0, π / 4, π / 2, 3π / 4))
+        @test power(1) ≈ power(2) rtol = 1e-12
+        # transfer roll-off: response power falls to 1/1.6 at f = f★
+        wp_star = waveform_params(; FIX_PHYS..., transfer_frequency = FIX_FREQS[1])
+        wp_flat = waveform_params(; FIX_PHYS..., transfer_frequency = Inf)
+        @test abs2(
+            tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time, wp_star)[1],
+        ) ≈
+              abs2(
+            tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time, wp_flat)[1],
+        ) /
+              1.6 rtol = 1e-12
+        @test FIX_WP.transfer_frequency ≈ 2.99792458e8 / (2π * 2.5e9) rtol = 1e-14
+
+        # fused projection ≡ per-bin modulation
         coalescence_time = THETA0[3] * FIX_WP.time_scale
         mA, mE = tdi_modulation_bin(FIX_FREQS[7], chirp_mass, coalescence_time, FIX_WP)
         @test mA * h[7] ≈ A2[7] rtol = 1e-14
@@ -268,8 +312,8 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test names(spec)[1] == "f" && ncol(spec) == 19
         @test issorted(spec.f) && nrow(spec) <= 16
         @test FIX_FREQS[1] <= spec.f[1] && spec.f[end] <= FIX_FREQS[end]
-        @test all(spec.res_min_A .<= spec.res_rms_A .<= spec.res_max_A)
-        @test all(spec.sig_min_E .<= spec.sig_rms_E .<= spec.sig_max_E)
+        @test all(spec.res_min_A .<= spec.res_mean_A .<= spec.res_max_A)
+        @test all(spec.sig_min_E .<= spec.sig_mean_E .<= spec.sig_max_E)
         # with the base source as the "best fit" the residual is exactly the
         # second source, so the residual integrals sum to its SNR²
         p2 = THETA0 .+ delta .* u_norm
@@ -282,6 +326,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         spec_fine, _ = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0,
             FIX_FREQS, FIX_SN, FIX_DF, FIX_WP; n_windows = 10^6)
         @test nrow(spec_fine) <= length(FIX_FREQS)
+    end
+
+    @testset "Second source, boundary radius, unbounded cap" begin
+        p2 = second_source([1.0, 2.0, 3.0, 0.0, 0.5, 0.5], [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            0.1, 0.5)
+        @test p2 == [0.5, 2.1, 3.0, 0.0, 0.5, 0.5]
+        @test boundary_radius(16.0, 1.0) == 1.0
+        @test boundary_radius(16.0, 4.0) ≈ sqrt(2.0)
+        @test isinf(boundary_radius(0.0, 1.0)) && isinf(boundary_radius(1e-320, 1.0))
+        r = [1.0, Inf, 2.0, Inf]
+        @test cap_unbounded_radii!(r, 5.0) == (2, 10.0)
+        @test r == [1.0, 10.0, 2.0, 10.0]
+        @test cap_unbounded_radii!(r, 5.0) == (0, NaN) ||
+              isnan(cap_unbounded_radii!(r, 5.0)[2])
     end
 
     @testset "Bounds and polar capping" begin
@@ -501,7 +559,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[mapping]\ncorner_bisect_iters = -1\n"))
 
-            # amp_ratio and multi-start guardrails
+            # amp_ratio and multi-start guardrails; an amplitude component in
+            # the sweep direction is rejected (amp_ratio carries it)
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(
+                    dir,
+                    "[[sweeps]]\nname = \"s\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0.2,1,0,0,0,0]\n",
+                ))
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
@@ -857,9 +921,25 @@ enabled = true
         @test polar.prior_limited == [false, true, false, true]
         @test polar.degenerate == [false, true, false, true]
 
+        # box-corner insertion: a ray through a finite box corner that is capped
+        # there becomes a boundary vertex; the four corners fold onto two
+        # half-circle directions
+        entries_c = [(phi = 0.0, K = 1.0, g = 1.0), (phi = π / 2, K = 1.0, g = 1.0)]
+        n_inserted = CD.Orchestrator.insert_box_corner_vertices!(entries_c,
+            phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> true,
+            (-1.0, 1.0, -1.0, 1.0))
+        @test n_inserted == 2 && length(entries_c) == 4
+        @test any(e -> isapprox(e.phi, π / 4), entries_c) &&
+              any(e -> isapprox(e.phi, 3π / 4), entries_c)
+        @test issorted([e.phi for e in entries_c])
+        # an uncapped corner inserts nothing
+        @test CD.Orchestrator.insert_box_corner_vertices!(copy(entries_c),
+            phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> false, (-1.0, 1.0, -1.0, 1.0),
+        ) == 0
+
         # boundary runs: contiguous same-class edges join into NaN-separated
         # polylines; the wrap-around edge starts a new run
-        xs, ys = CD.Plotting._boundary_runs([0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 1.0, 1.0],
+        xs, ys = CD.Plotting.boundary_runs([0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 1.0, 1.0],
             [true, true, false, true], true)
         @test isequal(xs, [0.0, 1.0, 2.0, NaN, 3.0, 0.0])
         @test isequal(ys, [0.0, 0.0, 1.0, NaN, 1.0, 0.0])
@@ -875,10 +955,13 @@ enabled = true
         c1n, _, _ = CD.Fitting.ratio_correction_fit(d[1:2], r[1:2])
         @test isnan(c1n) # too few points
 
-        # floor detection honors the configurable ratio threshold
+        # floor detection: the contiguous small-δ run above the ratio
+        # threshold; a super-threshold ratio at large δ (breakdown of the
+        # leading-order law) is not a floor
         @test isnan(CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 1.9], 2.0))
-        @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0) == 2.0
-        @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 1.9], 1.5) == 2.0
+        @test isnan(CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0))
+        @test CD.Fitting.optimizer_floor([2.0, 1.0, 3.0], [2.5, 2.2, 1.0], 2.0) == 2.0
+        @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.9, 1.1], 1.5) == 1.0
     end
 
     @testset "Plotting utilities" begin
@@ -1053,6 +1136,10 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 joinpath(out_base, "sweeps", "mini_unequal", "sweep_meta.toml"),
             )
             @test meta_u["amp_ratio"] == 0.5
+            # δ_min inverts the amplitude-prefactored law (p/16) K δ⁴ = ρ²
+            @test meta_u["delta_min"] ≈
+                  (16 * meta_u["rho_sq"] / ((2 * 0.5 / 1.5)^2 * meta_u["K_u_norm"]))^(1 / 4) rtol =
+                1e-12
 
             for map_name in ("mini_spin_map", "mini_mass_time")
                 mdir = joinpath(out_base, "maps", map_name)
@@ -1087,14 +1174,16 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 count(cm.Prior_Limited) in (0, n) || @test n_trans >= 2
             end
 
-            # exact box-corner vertex: both walls of the mass-time box are
-            # active, so the boundary must pass through their corner exactly
+            # exact box-corner vertex: whenever both walls of the mass-time box
+            # are active, the boundary must pass through their corner exactly
             cmt = CSV.read(
                 joinpath(out_base, "maps", "mini_mass_time", "confusion_contour.csv"),
                 DataFrame)
-            @test any(
-                (abs.(cmt.X_Bound .+ 1.5) .< 1e-9) .& (abs.(cmt.Y_Bound .+ 2.0) .< 1e-9),
-            )
+            x_wall = abs.(cmt.X_Bound .+ 1.5) .< 1e-9
+            y_wall = abs.(cmt.Y_Bound .+ 2.0) .< 1e-9
+            if any(x_wall) && any(y_wall)
+                @test any(x_wall .& y_wall)
+            end
 
             # the spin map must be capped inside the physical box
             cm = CSV.read(

@@ -7,7 +7,20 @@ module Bounds
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics: N_PARAMS
 export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
-    ray_box_crossing, clamp_interior, PARAM_KEYS
+    ray_box_crossing, clamp_interior
+public PARAM_KEYS, PHASE_INDEX, SPIN_INDICES
+
+"""
+Index of the coalescence phase in the parameter vector — the one periodic
+coordinate (deviations live on `[-π, π]`).
+"""
+const PHASE_INDEX = 4
+
+"""
+Indices of the two aligned spins in the parameter vector; the only pair of
+parameters sharing a unit, and the plane of the exact `χ_a` degeneracy.
+"""
+const SPIN_INDICES = (5, 6)
 
 """
 Canonical TOML keys for the six model parameters, in index order.

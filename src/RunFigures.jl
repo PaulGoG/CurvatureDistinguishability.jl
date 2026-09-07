@@ -9,10 +9,10 @@ module RunFigures
 
 using DocStringExtensions: TYPEDSIGNATURES
 using CSV: CSV
-using DataFrames: DataFrame, nrow
+using DataFrames: DataFrame
 using TOML: TOML
 using ..Bounds: deviation_box
-using ..Geometry: K_UNDERFLOW
+using ..Geometry: boundary_radius, cap_unbounded_radii!
 using ..Config: load_and_validate_config
 using ..Plotting
 using ..Fitting: MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
@@ -61,7 +61,7 @@ $(TYPEDSIGNATURES)
 Rebuild the figures of one 1D sweep from its persisted CSVs — no geometry or
 optimization is recomputed. Point classification always follows the
 production above-floor rule on the persisted optimizer floor
-(`Orchestrator.above_floor_mask`). With `refit = false` the
+(`Fitting.above_floor_mask`). With `refit = false` the
 annotated slope and correction coefficients are the persisted run-time
 values from `sweep_meta.toml`; with `refit = true` they are refitted from
 the CSV with the current fitting code (persisted metadata is never
@@ -155,45 +155,30 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     px, py = map_cfg.param_x, map_cfg.param_y
     theta0 = map_cfg.theta_0
     box = deviation_box(cfg.bounds, theta0, px, py)
-    n = nrow(contour_stored)
-    degen =
-        hasproperty(contour_stored, :Degenerate) ?
-        collect(Bool, contour_stored.Degenerate) : falses(n)
+    required = (:Angle, :X_Bound, :Y_Bound, :Dir_Cos, :Dir_Sin, :R_Math, :R_Box,
+        :Prior_Limited, :Degenerate, :K_Raw, :G_uu)
+    missing_cols = filter(c -> !hasproperty(contour_stored, c), required)
+    isempty(missing_cols) || throw(
+        ArgumentError(
+            "contour CSV of map '$case' lacks the columns $(join(missing_cols, ", ")); " *
+            "regenerate the run with the current pipeline",
+        ),
+    )
+    degen = collect(Bool, contour_stored.Degenerate)
     contour = nothing
     suffix = ""
     if rho === nothing
         X, Y = contour_stored.X_Bound, contour_stored.Y_Bound
-        prior =
-            hasproperty(contour_stored, :Prior_Limited) ?
-            collect(Bool, contour_stored.Prior_Limited) : falses(n)
-        has_math =
-            hasproperty(contour_stored, :R_Math) && hasproperty(contour_stored, :Dir_Cos)
-        x_math = has_math ? contour_stored.R_Math .* contour_stored.Dir_Cos : nothing
-        y_math = has_math ? contour_stored.R_Math .* contour_stored.Dir_Sin : nothing
+        prior = collect(Bool, contour_stored.Prior_Limited)
+        x_math = contour_stored.R_Math .* contour_stored.Dir_Cos
+        y_math = contour_stored.R_Math .* contour_stored.Dir_Sin
     else
         suffix = rho_tag(rho)
-        hasproperty(contour_stored, :K_Raw) && hasproperty(contour_stored, :R_Box) ||
-            throw(
-                ArgumentError(
-                    "contour CSV lacks K_Raw/R_Box columns (pre-upgrade run) — " *
-                    "rerun the pipeline to enable threshold rescaling",
-                ),
-            )
-        r_math = [
-            K > K_UNDERFLOW ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf
-            for K in contour_stored.K_Raw
-        ]
+        r_math = boundary_radius.(contour_stored.K_Raw, Float64(rho)^2)
         r_cap = min.(r_math, contour_stored.R_Box)
-        if any(!isfinite, r_cap)
-            r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
-            r_cap[.!isfinite.(r_cap)] .= cfg.unbounded_cap_factor * r_cap_max
-        end
-        dir_cos =
-            hasproperty(contour_stored, :Dir_Cos) ? contour_stored.Dir_Cos :
-            cos.(contour_stored.Angle)
-        dir_sin =
-            hasproperty(contour_stored, :Dir_Sin) ? contour_stored.Dir_Sin :
-            sin.(contour_stored.Angle)
+        cap_unbounded_radii!(r_cap, cfg.unbounded_cap_factor)
+        dir_cos = contour_stored.Dir_Cos
+        dir_sin = contour_stored.Dir_Sin
         X = r_cap .* dir_cos
         Y = r_cap .* dir_sin
         x_math = r_math .* dir_cos
@@ -204,9 +189,7 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
             Dir_Cos = dir_cos, Dir_Sin = dir_sin,
             R_Capped = r_cap, R_Math = r_math, R_Box = contour_stored.R_Box,
             Prior_Limited = prior, Degenerate = degen,
-            K_Raw = contour_stored.K_Raw,
-            G_uu = hasproperty(contour_stored, :G_uu) ?
-                   contour_stored.G_uu : fill(NaN, n))
+            K_Raw = contour_stored.K_Raw, G_uu = contour_stored.G_uu)
     end
     figure = zone_figure(X, Y, prior;
         px = px, py = py, box = box,

@@ -27,7 +27,7 @@ makedocs(
         assets = String[],
     ),
     modules = [CurvatureDistinguishability],
-    checkdocs = :exports,
+    checkdocs = :public,
     warnonly = false,
     pages = [
         "Home" => "index.md",

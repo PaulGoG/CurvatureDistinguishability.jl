@@ -1,124 +1,160 @@
-# Deep Dive: Physics and Waveform Modeling
-**Context:** LISA Two-Source Distinguishability Simulation
+# Physics and Waveform Model
 
-This document provides a highly detailed, equation-level breakdown of the physical models and signal generation architecture used in the `CurvatureDistinguishability` pipeline. 
+Equation-level description of the model implemented in `Physics.jl` and
+`Detector.jl`. The model is a deliberately reduced frequency-domain
+inspiral: it keeps the effects that shape the signal-manifold geometry
+under study — the Newtonian chirp, the 1.5PN spin–orbit phasing, one
+sub-dominant harmonic, and the detector's orbital motion — and omits
+everything else. It is a testbed for the geometric law, not a substitute
+for a complete waveform approximant; §7 states its domain of validity.
 
-While full Numerical Relativity (NR) or complete Effective One-Body (EOB) waveforms are computationally prohibitive for millions of geometric manifold evaluations, our pipeline utilizes a customized, highly optimized **Frequency-Domain TaylorF2-analog** inspiral model. This model selectively incorporates the exact non-linear physical effects—such as spin-orbit coupling, higher harmonics, and orbital Doppler shifts—that are most critical for testing parameter degeneracies and the Extrinsic Curvature of the signal manifold.
+## 1. Parameters
 
----
+The waveform depends on ``\vec{\theta} = (A, \mathcal{M}, t_c, \phi_c, \chi_1, \chi_2)``:
+the strain amplitude, the chirp mass in geometrised seconds
+(``1\,\mathrm{s} \approx 2.03\times 10^{5}\,M_\odot``), the coalescence time,
+the coalescence phase, and the two dimensionless aligned spins
+``\chi_i \in [-1, 1]``. Internally every component is ``\mathcal{O}(1)``, the
+physical values being restored through the `[physics]` scales, so the
+Fisher matrix stays well conditioned. The amplitude is an independent
+parameter: the relation ``A \propto \mathcal{M}^{5/6}/D_L`` of a physical
+source is not imposed, so the tangent space carries no
+``\partial A/\partial\mathcal{M}`` contribution.
 
-## 1. The Core State Vector
-The waveform generator maps a 6-dimensional parameter vector ``\vec{\theta}`` into the frequency domain. To maintain a well-conditioned Fisher Information Matrix, the internal engine evaluates parameters scaled to ``\mathcal{O}(1)``.
+The model assumes equal masses. The symmetric mass ratio ``\eta = 1/4`` is
+enforced by the configuration: the spin–orbit coefficient below is the
+symmetric-spin part of the full 1.5PN coefficient, which is complete only
+at equal mass, and the exact ``\chi_a`` degeneracy discussed in
+[Scientific Context](science.md) rests on the same restriction.
 
-1. **Amplitude (``A``)**: Scales the overall signal strain (typically ``\sim 10^{-21}``).
-2. **Chirp Mass (``\mathcal{M}``)**: The primary mass parameter driving the frequency evolution.
-3. **Time of Coalescence (``t_c``)**: The merger time, acting as a linear phase shift across the frequency band.
-4. **Coalescence Phase (``\phi_c``)**: The absolute orbital phase at merger.
-5. **Primary Spin (``\chi_1``)**: Dimensionless aligned spin of the primary mass ``[-1, 1]``.
-6. **Secondary Spin (``\chi_2``)**: Dimensionless aligned spin of the secondary mass ``[-1, 1]``.
+## 2. Intrinsic phasing of the dominant harmonic
 
-For the internal calculations, we assume a symmetric mass ratio ``\eta = 0.25`` (equal mass system), which allows us to simplify the effective spin parameter to ``\chi_{\mathrm{eff}} = \frac{1}{2}(\chi_1 + \chi_2)``.
-
----
-
-## 2. Intrinsic Waveform: Phase Evolution & Spin-Orbit Coupling
-The base waveform is generated in the frequency domain using the Stationary Phase Approximation (SPA). 
-
-### The Dominant Quadrupole Mode (``l=2, m=2``)
-The amplitude of the dominant 22-mode scales purely with the Newtonian leading order:
+The ``(2,2)`` harmonic is
 ```math
-\tilde{h}_{22}(f) = A \cdot f^{-7/6} e^{i \Psi_{22}(f)}
+\tilde{h}_{22}(f) = A f^{-7/6} e^{i \Psi_{2}(f)}, \qquad
+\Psi_{2}(f) = 2\pi f t_c - \phi_c + \frac{3}{128} v^{-5}\left[1 + \sigma v^{3}\right],
+\qquad v = (\pi \mathcal{M} f)^{1/3},
 ```
-The phase ``\Psi_{22}(f)`` is where the non-linear physics occurs. It is expanded as a Post-Newtonian (PN) series. Our model includes the leading Newtonian term (``0``PN) and the **Spin-Orbit Coupling term (``1.5``PN)**. 
-
-Defining the orbital velocity parameter ``v = (\pi \mathcal{M} f)^{1/3}``, the phase is computed as:
+with the TaylorF2 sign conventions (``\tilde h(f) \propto e^{i\Psi}``): the
+stationary-phase time–frequency map follows from the phase,
+``\mathrm{d}\Psi_2/\mathrm{d}f = 2\pi\, t(f)`` with
+``t(f) = t_c - 5\mathcal{M}/(256 v^{8})``, and the detector model of §4
+evaluates the orbital motion on exactly this map. The Newtonian term is
+exact in the chirp-mass velocity ``v``. The 1.5PN spin–orbit term of
+TaylorF2 is ``4\beta v_M^{3}`` in the total-mass velocity
+``v_M = (\pi M f)^{1/3}``; with ``M = \mathcal{M}\eta^{-3/5}`` this is
+``\sigma v^{3}`` with
 ```math
-\Psi_{22}(f) = 2\pi f t_c - \phi_c - \frac{3}{128} v^{-5} \left[ 1 - 4\beta v^3 \right]
+\sigma = 4\beta\,\eta^{-3/5}, \qquad
+\beta = \frac{1}{4}\left(\frac{113}{3} - \frac{76}{3}\eta\right)\chi_{\mathrm{eff}},
+\qquad \chi_{\mathrm{eff}} = \tfrac{1}{2}(\chi_1 + \chi_2).
 ```
-Where the spin-orbit coupling coefficient ``\beta`` is defined as:
+``\beta`` is the symmetric-spin part of the Poisson–Will coefficient
+``\beta = \tfrac{1}{12}\sum_i [113 (m_i/M)^2 + 75\eta]\chi_i``; the
+antisymmetric part ``113\,\delta\,\chi_a/12`` (``\delta = (m_1-m_2)/M``)
+vanishes at equal mass. Aligned spins (``\chi_{\mathrm{eff}} > 0``) lengthen
+the inspiral, the orbital hang-up, and the term is what couples the spins
+to the chirp mass and the coalescence time. The 1PN term and the 1.5PN
+tail term of TaylorF2 are not modelled.
+
+## 3. The (3,3) harmonic
+
+A single-harmonic model leaves ``A``, ``\mathcal{M}`` and ``t_c`` strongly
+degenerate. A sub-dominant ``(3,3)`` harmonic is therefore superposed,
+with the stationary-phase phase of harmonic ``m``,
+``\Psi_m(f) = 2\pi f t_c - \tfrac{m}{2}\phi_c + \tfrac{m}{2}\,\psi_{\mathrm{PN}}(2f/m)``,
+where ``\psi_{\mathrm{PN}}`` is the post-Newtonian part of ``\Psi_2`` and
+``2f/m`` the ``(2,2)`` frequency at which harmonic ``m`` radiates at ``f``:
 ```math
-\beta = \frac{1}{4} \left( \frac{113}{3} - \frac{76}{3}\eta \right) \chi_{\mathrm{eff}}
+\Psi_{3}(f) = 2\pi f t_c - \tfrac{3}{2}\phi_c
+ + \frac{3}{128}\Big[\big(\tfrac{3}{2}\big)^{8/3} v^{-5} + \big(\tfrac{3}{2}\big)^{5/3}\sigma v^{-2}\Big].
 ```
-**Physical Significance:** If ``\chi_{\mathrm{eff}}`` is positive (spins aligned with orbital angular momentum), the "hang-up" effect occurs. The binary takes longer to merge, which slows down the rate of phase accumulation. This highly non-linear modification is critical for breaking the degeneracy between Chirp Mass and Time.
-
----
-
-## 3. Higher-Order Harmonics (``l=3, m=3``)
-A waveform containing only the 22-mode suffers from severe parameter degeneracies. To make the "Zone of Confusion" mapping realistic, we inject the first sub-dominant harmonic: the ``33``-mode.
-
-The frequency of the ``33``-mode evolves exactly ``1.5\times`` faster than the ``22``-mode. Therefore, at a given frequency bin ``f``, the phase of the ``33``-mode is exactly:
+The arrival-time term is common to every harmonic. The amplitude,
 ```math
-\Psi_{33}(f) = 1.5 \cdot \Psi_{22}(f)
+|\tilde{h}_{33}(f)| = a_{33}\, A\, f^{-7/6}\, v, \qquad a_{33} = \texttt{amp\_33\_factor},
 ```
-Its amplitude is suppressed relative to the dominant mode by a factor proportional to the orbital velocity ``v`` and a phenomenological scaling constant (e.g., ``10\%``):
+is phenomenological: the physical ``(3,3)`` amplitude is proportional to
+``\delta m/M`` and vanishes at the equal masses assumed above, so the term
+is a deliberate degeneracy-breaking perturbation of adjustable strength
+(``0.1`` in the shipped configurations), not a physical mode amplitude.
+The source-frame strain is ``\tilde h = \tilde h_{22} + \tilde h_{33}``.
+
+## 4. Detector motion
+
+The detector orbits the Sun at ``R = 1\,\mathrm{AU} = 499.005`` light-seconds
+with ``\Omega = 2\pi/\mathrm{yr}``. The orbital phase at which the signal at
+frequency ``f`` is received is ``\Phi_{\mathrm{orb}}(f) = \Omega\, t(f)`` with the
+map of §2, and the source azimuth in the rotating detector frame is
+``\varphi(f) = \Phi_{\mathrm{orb}}(f) - \phi_{\mathrm{sky}}``. The orbital Doppler
+phase is
 ```math
-|\tilde{h}_{33}(f)| = 0.1 \cdot A \cdot f^{-7/6} \cdot v
+\Delta\Phi_{\mathrm{D}}(f) = 2\pi f R \sin\theta_{\mathrm{sky}} \cos\varphi(f).
 ```
-The total source-frame strain is the linear superposition:
+
+## 5. Antenna response and TDI channels
+
+The antenna patterns are those of a 90° interferometer rotating once per
+year in the ecliptic plane, evaluated at the same detector-frame azimuth
+``\varphi(f)`` as the Doppler term:
 ```math
-\tilde{h}_{\mathrm{source}}(f) = \tilde{h}_{22}(f) + \tilde{h}_{33}(f)
+F_+ = \tfrac{1}{2}(1 + \cos^2\theta_{\mathrm{sky}}) \cos 2\varphi \cos 2\psi
+      - \cos\theta_{\mathrm{sky}} \sin 2\varphi \sin 2\psi, \qquad
+F_\times = \tfrac{1}{2}(1 + \cos^2\theta_{\mathrm{sky}}) \cos 2\varphi \sin 2\psi
+      + \cos\theta_{\mathrm{sky}} \sin 2\varphi \cos 2\psi,
 ```
-**Physical Significance:** The frequency asymmetry between these two modes means that a change in ``t_c`` or ``\mathcal{M}`` affects the two modes differently. A single-source template attempting to mimic two distinct sources cannot simultaneously match the phase evolution of both the 22 and 33 modes, forcing a massive increase in the Extrinsic Curvature ``K(u)``.
+with the polarisation angle ``\psi``. This is a reduced model of the
+constellation's cartwheel: the 60° inclination of the LISA plane and the
+resulting time dependence of the source's polar angle in the detector
+frame (Cutler 1998) are not modelled. The inclination factors are
+``A_+ = \tfrac{1}{2}(1 + \cos^2\iota)`` and ``A_\times = \cos\iota``.
 
----
-
-## 4. Detector Dynamics: Orbit and Doppler Modulation
-LISA is not a stationary detector; it is a cartwheeling constellation orbiting the Sun at 1 AU (``R_{\mathrm{orbit}} \approx 499`` light-seconds) with an orbital angular velocity ``\Omega_{\mathrm{orbit}} = 2\pi / 1 \text{ year}``.
-
-To project the source-frame strain into the detector, we must calculate where the detector is in its orbit *at the exact moment* a specific frequency ``f`` arrives. 
-
-### The Time-Frequency Relation ``t(f)``
-Using the SPA, the time at which the binary emits GWs at frequency ``f`` is the derivative of the phase. In our model, this is approximated as:
+In the long-wavelength limit the noise-orthogonal channels A and E behave
+as two 90° interferometers rotated by 45° with respect to each other and
+carry the same ``\sqrt{3}/2`` normalisation; T is the null channel:
 ```math
-t(f) = t_c - \frac{5 \mathcal{M}}{256 v^8}
+\tilde{h}_{A}(f) = \frac{\sqrt{3}}{2}\,\mathcal{T}(f)\left[ F_+ A_+ - i F_\times A_\times \right] e^{i \Delta\Phi_{\mathrm{D}}(f)} \tilde{h}(f), \qquad
+\tilde{h}_{E}(f) = \frac{\sqrt{3}}{2}\,\mathcal{T}(f)\left[ F_\times A_+ + i F_+ A_\times \right] e^{i \Delta\Phi_{\mathrm{D}}(f)} \tilde{h}(f), \qquad
+\tilde{h}_{T} = 0,
 ```
-### The Doppler Phase Shift
-The detector's motion toward or away from the source causes a time-dependent phase shift. Given the source's Ecliptic Colatitude (``\theta_{\mathrm{sky}}``) and Longitude (``\phi_{\mathrm{sky}}``), the orbital phase of the detector is ``\Phi_{\mathrm{orb}}(f) = \Omega_{\mathrm{orbit}} t(f)``. The Doppler shift applied to the waveform is:
-```math
-\Delta\Phi_{\mathrm{Doppler}}(f) = 2\pi f R_{\mathrm{orbit}} \sin(\theta_{\mathrm{sky}}) \cos(\Phi_{\mathrm{orb}}(f) - \phi_{\mathrm{sky}})
-```
----
+where ``\mathcal{T}(f) = [1 + 0.6 (f/f_\star)^2]^{-1/2}`` is the finite-arm
+transfer roll-off of [Robson2019](@cite) (their Eq. 13) with
+``f_\star = c/(2\pi L) = 19.09`` mHz for ``L = 2.5\times 10^{9}`` m; the arm
+length is shared with the noise model through `[noise].arm_length`.
 
-## 5. Antenna Patterns & TDI Projection
-As the detector orbits, it also cartwheels, changing its sensitivity to the "plus" (``+``) and "cross" (``\times``) polarizations of the wave. 
+## 6. Noise model
 
-The intrinsic polarizations are defined by the orbital inclination (``\iota``):
+Inner products are weighted by the one-sided PSD ``S_n(f)`` of
+[Robson2019](@cite): the Michelson-channel instrumental noise of their
+Eq. 12,
 ```math
-A_+ = \frac{1}{2}(1 + \cos^2\iota), \quad A_\times = \cos\iota
+P_n(f) = \frac{P_{\mathrm{OMS}}}{L^2} + 2\left(1 + \cos^2(f/f_\star)\right)\frac{P_{\mathrm{acc}}}{(2\pi f)^4 L^2},
 ```
-The low-frequency envelope of the LISA antenna patterns ``F_+`` and ``F_\times`` are highly oscillatory functions of the detector's orbital phase ``\Phi_{\mathrm{orb}}`` and the source's polarization angle ``\psi``:
-```math
-F_+(f) = \frac{1}{2}(1 + \cos^2\theta_{\mathrm{sky}}) \cos(2\Phi_{\mathrm{orb}}) \cos(2\psi) - \cos(\theta_{\mathrm{sky}}) \sin(2\Phi_{\mathrm{orb}}) \sin(2\psi)
-```
-*(And similarly for ``F_\times``)*.
-
-### Time Delay Interferometry (TDI) Channels
-Finally, the modulated strain is projected into the noise-orthogonal A, E, and T channels. In the low-frequency limit, A and E act as two independent ``90^\circ`` interferometers rotated by ``45^\circ``, and T is the null channel.
-
-```math
-\tilde{h}_A(f) = \frac{\sqrt{3}}{2} \left[ F_+(f) A_+ - i F_\times(f) A_\times \right] e^{i \Delta\Phi_{\mathrm{Doppler}}(f)} \tilde{h}_{\mathrm{source}}(f)
-```
-```math
-\tilde{h}_E(f) = \frac{1}{2} \left[ F_\times(f) A_+ + i F_+(f) A_\times \right] e^{i \Delta\Phi_{\mathrm{Doppler}}(f)} \tilde{h}_{\mathrm{source}}(f)
-```
-```math
-\tilde{h}_T(f) \approx 0
-```
----
-
-## 6. The Noise Profile (Robson et al. 2019)
-The inner products computing the Extrinsic Curvature ``K(u)`` are weighted by the one-sided PSD ``S_n(f)``, implemented exactly from [Robson2019](@cite):
-
-**Instrumental noise (Eq. 12)** — the Michelson-channel PSD (the sky-averaged ``10/3`` response factor of their Eq. 13 is *not* applied, because this pipeline models the antenna response explicitly in `Detector.jl`):
-```math
-P_n(f) = \frac{P_{\mathrm{OMS}}}{L^2} + 2\left(1 + \cos^2(f/f_*)\right)\frac{P_{\mathrm{acc}}}{(2\pi f)^4 L^2}
-```
-with ``P_{\mathrm{OMS}}`` (Eq. 10) the optical-metrology noise and ``P_{\mathrm{acc}}`` (Eq. 11) the test-mass acceleration noise.
-
-**Galactic confusion noise (Eq. 14)** — the unresolved white-dwarf foreground:
+with ``P_{\mathrm{OMS}}`` (Eq. 10) the optical-metrology noise and
+``P_{\mathrm{acc}}`` (Eq. 11) the test-mass acceleration noise, plus the
+galactic confusion fit of Eq. 14,
 ```math
 S_c(f) = A\, f^{-7/3}\, e^{-f^{\alpha} + \beta f \sin(\kappa f)} \left[ 1 + \tanh\!\big(\gamma (f_k - f)\big) \right], \qquad A = 9\times 10^{-45},
 ```
-with ``(\alpha, \beta, \kappa, \gamma, f_k)`` from Table 1, selected by the observation time (1 yr: ``\alpha=0.171``, ``\beta=292``, ``\kappa=1020``, ``\gamma=1680``, ``f_k=2.15`` mHz) and overridable via the `[noise]` config section.
+with ``(\alpha, \beta, \kappa, \gamma, f_k)`` from their Table 1, selected by
+the observation time (1 yr: ``\alpha=0.171``, ``\beta=292``, ``\kappa=1020``,
+``\gamma=1680``, ``f_k=2.15`` mHz) and overridable in `[noise]`. The
+sky-averaged response ``3/10`` of their Eq. 13 is not applied to the noise,
+because the response is modelled explicitly in §5, where its roll-off
+factor appears instead. The confusion fit is calibrated for observation
+times between 0.5 and 4 yr; shorter grids use the nearest column.
 
-By utilizing this framework, the pipeline ensures the "Zone of Confusion" mappings are directly applicable to genuine space-based gravitational wave astronomy.
+## 7. Domain of validity
+
+The model has no merger cutoff: every quantity is a smooth function of
+``\vec\theta`` over the whole configured band, which is what the
+differential-geometry engine requires. Physically, however, the inspiral
+description holds only below the innermost stable circular orbit,
+``f_{\mathrm{ISCO}} = (6^{3/2}\pi M)^{-1}``. For the production base points
+(``\mathcal{M} = 15`` s at ``\eta = 1/4``, i.e. ``M = 34.5`` s and
+``M \approx 7\times 10^{6}\,M_\odot``) this is ``0.63`` mHz, while the
+production band extends to ``50`` mHz, where ``v > 1``; the phasing above
+``f_{\mathrm{ISCO}}`` is therefore a smooth extrapolation rather than a
+physical inspiral, and the long-wavelength response is used up to
+``2.6 f_\star``. The band and the mass scale are campaign choices
+([Complex Run Parameters](parameters.md)); the geometric law itself makes
+no assumption about them.

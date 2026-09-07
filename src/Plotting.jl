@@ -11,6 +11,8 @@ using CairoMakie: Axis, DataAspect, Figure, Label, Legend,
     poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
     with_theme, xlims!, ylims!
 using LaTeXStrings: LaTeXStrings, @L_str, latexstring
+using DataFrames: AbstractDataFrame
+using ..Bounds: PHASE_INDEX, SPIN_INDICES
 using MathTeXEngine: texfont
 using Printf: @sprintf
 using UnicodePlots: UnicodePlots
@@ -80,7 +82,7 @@ $(TYPEDSIGNATURES)
 Save `fig` as both vector `.pdf` and raster `.png` (`px_per_unit = 4`),
 with `safesave`-style backup of any existing files.
 """
-function save_figure(fig, base_path::AbstractString)
+function save_figure(fig::Figure, base_path::AbstractString)
     pdf = backup_existing!(base_path * ".pdf")
     save(pdf, fig)
     png = backup_existing!(base_path * ".png")
@@ -121,7 +123,7 @@ fraction. Opt-in via `[monitoring].enabled`; stdout on TTY sessions only.
 function map_diagnostic_panel(angle::AbstractVector, r_cap::AbstractVector,
     prior_frac::Real)
     plt = UnicodePlots.lineplot(collect(angle), collect(r_cap);
-        xlabel = "φ [rad]", ylabel = "r_cap",
+        xlabel = "φ [rad]", ylabel = "capped radius",
         width = 64, height = 14)
     footer = @sprintf("prior-limited directions: %.1f%%", 100 * prior_frac)
     return sprint(io -> show(io, plt)) * "\n" * footer
@@ -493,7 +495,7 @@ evaluation separation in the annotation — the default `\\delta^*` for the
 validity-window panel, `\\delta_{\\mathrm{thr}}` for the threshold
 companion.
 """
-function residual_figure(spec, meta::ResidualFigureMeta;
+function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
     delta_symbol::String = "\\delta^*")
     with_theme(publication_theme()) do
         fig = Figure(size = (950, 950))
@@ -525,20 +527,20 @@ function residual_figure(spec, meta::ResidualFigureMeta;
             yticklabelspace = 70.0)
         band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
         band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
-        dA = lines!(ax1, spec.f, spec.sig_rms_A; color = col_data_A, linewidth = 3.6)
-        dE = lines!(ax1, spec.f, spec.sig_rms_E; color = col_data_E, linewidth = 3.6)
-        bA = lines!(ax1, spec.f, spec.bf_rms_A; color = col_bf_A,
+        dA = lines!(ax1, spec.f, spec.sig_mean_A; color = col_data_A, linewidth = 3.6)
+        dE = lines!(ax1, spec.f, spec.sig_mean_E; color = col_data_E, linewidth = 3.6)
+        bA = lines!(ax1, spec.f, spec.bf_mean_A; color = col_bf_A,
             linestyle = :dashdot, linewidth = 3.0)
-        bE = lines!(ax1, spec.f, spec.bf_rms_E; color = col_bf_E,
+        bE = lines!(ax1, spec.f, spec.bf_mean_E; color = col_bf_E,
             linestyle = :dashdot, linewidth = 3.0)
 
         # y-range of the residual panel: cover the lines AND the min/max
-        # shadings — but cap the extra depth at ~1.6 decades below the rms
+        # shadings — but cap the extra depth at ~1.6 decades below the mean
         # floor, so a near-cancellation spike in a single decimation window
         # cannot compress the curves into a negligible band (the band then clips only
         # inside the dip). The per-bin noise reference 1/Δf can sit many
         # decades above the curves and is never allowed to distort the range.
-        res_pos = filter(>(0), vcat(spec.res_rms_A, spec.res_rms_E))
+        res_pos = filter(>(0), vcat(spec.res_mean_A, spec.res_mean_E))
         band_pos = filter(>(0), vcat(spec.res_min_A, spec.res_min_E))
         band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
         ylo2 = max(band_lo / 2, minimum(res_pos) / 40)
@@ -577,8 +579,8 @@ function residual_figure(spec, meta::ResidualFigureMeta;
             color = (col_res_A, 0.16))
         band!(ax2, spec.f, max.(spec.res_min_E, 1e-300), spec.res_max_E;
             color = (col_res_E, 0.16))
-        rA = lines!(ax2, spec.f, spec.res_rms_A; color = col_res_A, linewidth = 3.2)
-        rE = lines!(ax2, spec.f, spec.res_rms_E; color = col_res_E, linewidth = 3.2)
+        rA = lines!(ax2, spec.f, spec.res_mean_A; color = col_res_A, linewidth = 3.2)
+        rE = lines!(ax2, spec.f, spec.res_mean_E; color = col_res_E, linewidth = 3.2)
 
         # one grouped legend on top of the figure (title position), spanning
         # both panels: channel A and channel E blocks with data/best fit/
@@ -614,7 +616,7 @@ Coordinates of the closed-boundary edges whose class (`edge_prior[i]`) equals
 `want`, grouped into contiguous runs separated by `NaN` so each run renders as
 one polyline (letting a dash pattern form over the whole run).
 """
-function _boundary_runs(x, y, edge_prior::AbstractVector{Bool}, want::Bool)
+function boundary_runs(x, y, edge_prior::AbstractVector{Bool}, want::Bool)
     n = length(x)
     xs = Float64[]
     ys = Float64[]
@@ -656,7 +658,7 @@ function zone_axis_ticks!(fig, ax, axis::Symbol, param::Int, lo_d::Real, hi_d::R
     ticks_property = axis === :x ? :xticks : :yticks
     format_property = axis === :x ? :xtickformat : :ytickformat
     lo, hi = lo_d - 0.08 * (hi_d - lo_d), hi_d + 0.08 * (hi_d - lo_d)
-    if param == 4
+    if param == PHASE_INDEX
         pi_tick_values = pi_ticks(lo, hi)
         pi_tick_values !== nothing && setproperty!(ax, ticks_property, pi_tick_values)
     elseif exponent != 0
@@ -711,7 +713,11 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
     prior_frac::Real, degenerate_frac::Real,
     x_math = nothing, y_math = nothing)
     px == py && throw(ArgumentError("map plane must use two distinct parameters"))
-    same_units = (px in (5, 6) && py in (5, 6))
+    (x_math === nothing) == (y_math === nothing) ||
+        throw(ArgumentError("x_math and y_math must be supplied together"))
+    x_math === nothing || length(x_math) == length(y_math) == length(x) ||
+        throw(DimensionMismatch("x_math/y_math must match the boundary polygon length"))
+    same_units = (px in SPIN_INDICES && py in SPIN_INDICES)
     with_theme(publication_theme()) do
         # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins
         fig = Figure(size = same_units ? (820, 830) : (960, 720))
@@ -766,12 +772,12 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
             xm = [isfinite(v) ? Float64(v) : NaN for v in x_math]
             ym = [isfinite(v) ? Float64(v) : NaN for v in y_math]
             edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
-            mx, my = _boundary_runs(xm, ym, edge_math, true)
+            mx, my = boundary_runs(xm, ym, edge_math, true)
             isempty(mx) || lines!(ax, mx, my; color = (:dodgerblue4, 0.75),
                 linewidth = 2.4, linestyle = :dash)
         end
-        cx, cy = _boundary_runs(x, y, edge_prior, false)
-        bx, by = _boundary_runs(x, y, edge_prior, true)
+        cx, cy = boundary_runs(x, y, edge_prior, false)
+        bx, by = boundary_runs(x, y, edge_prior, true)
         isempty(cx) || lines!(ax, cx, cy; color = :dodgerblue4, linewidth = 3.0)
         isempty(bx) || lines!(ax, bx, by; color = :firebrick, linewidth = 3.0)
 
@@ -799,7 +805,7 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
                 (loy, hiy, prior_y, 1e-6 * (yhi - ylo), py))
                 lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
                 hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
-                isph = idx == 4
+                isph = idx == PHASE_INDEX
                 if lo_hit && hi_hit && isapprox(lo_e, -hi_e; rtol = 1e-9)
                     push!(walls, string(devtex(idx), " = \\pm ", fmt_edge(abs(hi_e), isph)))
                 else

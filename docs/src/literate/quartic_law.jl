@@ -17,7 +17,7 @@ physics = (mass_scale = 10.0, time_scale = 100.0, amp_scale = 1e-21, eta = 0.25,
 wp = waveform_params(; physics...)
 df = 1e-5
 freqs = collect(1e-3:df:2e-2)
-Sn = analytic_noise_psd.(freqs)
+Sn = analytic_noise_psd.(freqs; noise = robson_confusion_params(1 / df))
 length(freqs)
 
 # The reference source and the classic chirp-mass/coalescence-time
@@ -57,12 +57,14 @@ D2_num ./ D2_theo
 # The ratios sit at unity across two decades of separation — the quartic
 # law, from nothing but the manifold's curvature. The comparison figure:
 
-fig = Figure(size = (700, 480))
-ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-    xlabel = "Parameter separation δ", ylabel = "D²")
-lines!(ax, deltas, D2_theo; color = :darkred, linewidth = 2,
-    label = "Prediction K(u) δ⁴ / 16")
-scatter!(ax, deltas, D2_num; color = :dodgerblue, markersize = 14,
-    strokecolor = :black, strokewidth = 1, label = "Direct optimization")
-fig[0, 1] = Legend(fig, ax; orientation = :horizontal, framevisible = false)
-fig
+fig = with_theme(publication_theme()) do
+    fig = Figure(size = (700, 480))
+    ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
+        xlabel = "Parameter separation δ", ylabel = "D²")
+    lines!(ax, deltas, D2_theo; color = :darkred, linewidth = 2,
+        label = "Prediction K(u) δ⁴ / 16")
+    scatter!(ax, deltas, D2_num; color = :dodgerblue, markersize = 14,
+        strokecolor = :black, strokewidth = 1, label = "Direct optimization")
+    fig[0, 1] = Legend(fig, ax; orientation = :horizontal, framevisible = false)
+    fig
+end

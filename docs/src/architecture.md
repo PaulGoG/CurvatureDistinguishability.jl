@@ -25,9 +25,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   constructor; an overlay's `base_config` is merged in first). Guardrails: descriptive hard errors for unusable input
   (bad ranges, duplicate names, base points outside the physical bounds),
   warnings for suspicious values, and warnings on **unknown keys** (typo
-  protection. Physical parameters live *only* in the
-  TOML; the source carries physical constants (arm length, AU, year) and
-  published-fit defaults.
+  protection). Physical parameters live *only* in the TOML; the source
+  carries physical constants (arm length, AU, year) and published-fit
+  defaults.
 - **`Physics.jl`** — the Robson et al. (2019) noise model: instrumental
   Eq. 12 plus the Eq. 14 galactic-confusion fit with Table-1 coefficients
   selected by observation time (all overridable in `[noise]`); and the scalar
@@ -35,7 +35,8 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   harmonic), which is the **single implementation** shared by the broadcast
   model, the CPU inference loop and the GPU kernel.
 - **`Detector.jl`** — scalar TDI modulation `tdi_modulation_bin` (orbital
-  Doppler + low-frequency antenna patterns) and a fused single-pass
+  Doppler, rotating-detector antenna patterns, the finite-arm transfer
+  roll-off and the common `√3/2` A/E normalisation) and a fused single-pass
   `project_to_tdi`. Channels A and E by default; the identically zero null
   channel T is opt-in (`[physics].include_t_channel`) and exists only for
   diagnostic comparisons — it adds dead compute.
@@ -57,6 +58,11 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   from a **single fused nested-dual evaluation**. Geometry always runs on
   CPU arrays: `ForwardDiff.jacobian` is incompatible with device arrays, and
   the map stage costs minutes, not days.
+- **`Fitting.jl`** — the fit statistics shared by the sweep stage and the
+  display-time regeneration: the quartic-law log-log slope with its
+  standard error, the `O(δ⁵)` ratio-correction fit, optimizer-floor
+  detection on the contiguous small-``\delta`` run and the production
+  clean-point rule.
 - **`Inference.jl`** — ``D^2`` minimization within the physical bounds.
   Optimizers: `IPNewton` (default; interior-point Newton using the exact
   ForwardDiff Hessian — fast convergence, low convergence floor),

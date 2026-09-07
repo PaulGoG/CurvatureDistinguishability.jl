@@ -9,7 +9,7 @@ module Residuals
 using DocStringExtensions: TYPEDSIGNATURES
 using DataFrames: DataFrame
 using Statistics: mean
-using ..Physics: WaveformParams, scaled_waveform_model
+using ..Physics: WaveformParams, scaled_waveform_model, second_source
 using ..Detector: project_to_tdi
 
 export residual_spectrum
@@ -23,18 +23,18 @@ two-source data — the base source `theta0` plus a second source displaced by
 `amp_ratio` — the best-fit single source `best_fit` and the unabsorbed
 residual, for channels A and E on the grid `freqs` with PSD `Sn` and bin
 width `df`. Decimation windows are log-uniform in frequency (`n_windows` at
-most, capped at the bin count): each holds the window rms and its min/max
-envelope, log-sparse low-frequency windows pass single bins through
-unaveraged, and empty windows are skipped. Returns the spectrum table
-(`f` and, per channel, `sig_*`, `bf_*`, `res_*` rms/min/max columns) and the
-residual `D²` integrals `(int_A, int_E)`.
+most, capped at the bin count): each holds the window mean of the density
+— so the plotted curve integrates to the same `D²` as the full grid — and
+its min/max envelope; log-sparse low-frequency windows pass single bins
+through unaveraged, and empty windows are skipped. Returns the spectrum
+table (`f` and, per channel, `sig_*`, `bf_*`, `res_*` mean/min/max columns)
+and the residual `D²` integrals `(int_A, int_E)`.
 """
 function residual_spectrum(theta0::AbstractVector, u_norm::AbstractVector,
     amp_ratio::Real, delta::Real, best_fit::AbstractVector,
     freqs::AbstractVector, Sn::AbstractVector, df::Real,
     wp::WaveformParams; n_windows::Integer)
-    p2 = theta0 .+ delta .* u_norm
-    p2[1] = amp_ratio * theta0[1]
+    p2 = second_source(theta0, u_norm, delta, amp_ratio)
     h1 = scaled_waveform_model(theta0, freqs, wp)
     h2 = scaled_waveform_model(p2, freqs, wp)
     ch1 = project_to_tdi(h1, freqs, theta0, wp)
@@ -59,14 +59,13 @@ function residual_spectrum(theta0::AbstractVector, u_norm::AbstractVector,
         i in 1:nwin if window_bounds[i+1] > window_bounds[i]
     ]
     agg(v, stat) = [stat(view(v, r)) for r in windows]
-    rms(v) = sqrt(mean(abs2, v))
 
     cols = Dict{Symbol,Vector{Float64}}(:f => agg(freqs, mean))
     for (tag, cA, cE) in (("sig", data[1], data[2]), ("bf", bf[1], bf[2]),
         ("res", data[1] .- bf[1], data[2] .- bf[2]))
         for (ch, arr) in (("A", cA), ("E", cE))
             d = [dens(arr[i], i) for i in 1:n]
-            cols[Symbol("$(tag)_rms_$ch")] = agg(d, rms)
+            cols[Symbol("$(tag)_mean_$ch")] = agg(d, mean)
             cols[Symbol("$(tag)_min_$ch")] = agg(d, minimum)
             cols[Symbol("$(tag)_max_$ch")] = agg(d, maximum)
         end

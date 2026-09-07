@@ -62,29 +62,40 @@ function collect_figures(runs, dest)
     for run_dir in runs
         label = basename(run_dir)
         cases = run_cases(run_dir)
+        # one failing case must not abort the collection (same guard as replot.jl)
         for case in cases.sweeps
-            figs = sweep_figures(run_dir, case; refit = true)
-            save(joinpath(dest, "$(label)_sweep_$(case)_scaling.png"), figs.scaling;
-                px_per_unit = 4)
-            n += 1
-            if figs.residual !== nothing
-                save(joinpath(dest, "$(label)_sweep_$(case)_residual.png"), figs.residual;
+            try
+                figs = sweep_figures(run_dir, case; refit = true)
+                save(joinpath(dest, "$(label)_sweep_$(case)_scaling.png"), figs.scaling;
                     px_per_unit = 4)
                 n += 1
+                if figs.residual !== nothing
+                    save(joinpath(dest, "$(label)_sweep_$(case)_residual.png"),
+                        figs.residual; px_per_unit = 4)
+                    n += 1
+                end
+                if figs.residual_threshold !== nothing
+                    save(joinpath(dest, "$(label)_sweep_$(case)_residual_threshold.png"),
+                        figs.residual_threshold; px_per_unit = 4)
+                    n += 1
+                end
+                println("  sweep: $label/$case")
+            catch err
+                @warn "Failed to render sweep '$label/$case'" exception =
+                    (err, catch_backtrace())
             end
-            if figs.residual_threshold !== nothing
-                save(joinpath(dest, "$(label)_sweep_$(case)_residual_threshold.png"),
-                    figs.residual_threshold; px_per_unit = 4)
-                n += 1
-            end
-            println("  sweep: $label/$case")
         end
         for case in cases.maps
-            rendered = zone_map_figure(run_dir, case)
-            save(joinpath(dest, "$(label)_map_$(case).png"), rendered.figure;
-                px_per_unit = 4)
-            n += 1
-            println("  map:   $label/$case")
+            try
+                rendered = zone_map_figure(run_dir, case)
+                save(joinpath(dest, "$(label)_map_$(case).png"), rendered.figure;
+                    px_per_unit = 4)
+                n += 1
+                println("  map:   $label/$case")
+            catch err
+                @warn "Failed to render map '$label/$case'" exception =
+                    (err, catch_backtrace())
+            end
         end
     end
     return n

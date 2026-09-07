@@ -35,6 +35,7 @@ CurvatureDistinguishability/
 │   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
 │   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
+│   ├── Fitting.jl          # shared fit statistics: slope, O(δ⁵) fit, floor rule
 │   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel
 │   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
 │   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata
