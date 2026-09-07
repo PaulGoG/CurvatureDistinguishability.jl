@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "CurvatureDistinguishability.jl"
+type: software
+authors:
+  - family-names: "Gogîță"
+    given-names: "Paul-Adrian"
+    email: "gogitapaul@yahoo.ro"
+version: "1.0.0-DEV"
+repository-code: "https://github.com/PaulGoG/CurvatureDistinguishability.jl"
+license: MIT
+abstract: >-
+  Computational proof of the quartic distinguishability law for
+  space-based gravitational-wave interferometry: the squared distance
+  between a two-source signal and the best-fit single-source template
+  scales as D² ≈ (1/16) K(u) δ⁴, governed by the extrinsic curvature K(u)
+  of the signal manifold. The package provides the waveform and detector
+  model, the differential-geometry engine, box-constrained inference on
+  CPU and GPU backends, validated configuration with provenance-stamped
+  runs, and publication plotting.
+keywords:
+  - gravitational waves
+  - LISA
+  - source confusion
+  - signal manifold
+  - extrinsic curvature
+  - Julia
