@@ -168,7 +168,7 @@ offending `[context]` path on a non-numeric value.
 """
 get_number(t, key, default, context) = begin
     v = get(t, key, default)
-    v isa Real || error("[$context].$key must be a number, got $(typeof(v))")
+    v isa Real || config_error("[$context].$key must be a number, got $(typeof(v))")
     Float64(v)
 end
 
@@ -179,7 +179,7 @@ offending `[context]` path on a non-integer value.
 get_integer(t, key, default, context) = begin
     v = get(t, key, default)
     (v isa Integer || (v isa Real && isinteger(v))) ||
-        error("[$context].$key must be an integer, got $(repr(v))")
+        config_error("[$context].$key must be an integer, got $(repr(v))")
     Int(v)
 end
 
@@ -189,7 +189,7 @@ offending `[context]` path on a non-boolean value.
 """
 get_boolean(t, key, default, context) = begin
     v = get(t, key, default)
-    v isa Bool || error("[$context].$key must be true or false, got $(repr(v))")
+    v isa Bool || config_error("[$context].$key must be true or false, got $(repr(v))")
     v
 end
 
@@ -199,17 +199,26 @@ Validate a 6-element finite numeric parameter vector, returning it as
 """
 function validate_theta6(v, what)
     (v isa AbstractVector && length(v) == N_PARAMS) ||
-        error("$what must be a $(N_PARAMS)-element numeric vector, got $(repr(v))")
+        config_error("$what must be a $(N_PARAMS)-element numeric vector, got $(repr(v))")
     all(x -> x isa Real && isfinite(x), v) ||
-        error("$what must contain only finite numbers, got $(repr(v))")
+        config_error("$what must contain only finite numbers, got $(repr(v))")
     return Float64.(v)
 end
 
 """
-Whether `name` is safe to use as a directory name (letters, digits,
-`._-` only).
+Whether `name` is safe to use as a directory name: letters, digits and
+`._-` only, with at least one letter or digit (so `.` and `..`, which would
+escape the case directory, are rejected).
 """
-fs_safe(name) = !isempty(name) && all(c -> isletter(c) || isdigit(c) || c in "._-", name)
+fs_safe(name) =
+    !isempty(name) && any(c -> isletter(c) || isdigit(c), name) &&
+    all(c -> isletter(c) || isdigit(c) || c in "._-", name)
+
+"""
+Raise an `ArgumentError` for an unusable configuration value; every
+validation failure of this module funnels through it.
+"""
+config_error(msg::AbstractString) = throw(ArgumentError(msg))
 
 # fraction of total system memory used as the RAM budget when [safety] does
 # not set max_ram_gb explicitly
@@ -224,11 +233,11 @@ ranges, name uniqueness, interior base points) with descriptive errors;
 warn on unknown keys and physically suspicious values.
 """
 function load_and_validate_config(config_path::AbstractString)
-    isfile(config_path) || error("Configuration file not found: $config_path")
+    isfile(config_path) || config_error("Configuration file not found: $config_path")
     config = try
         effective_config(config_path)
     catch err
-        error("Failed to load $config_path: $(sprint(showerror, err))")
+        config_error("Failed to load $config_path: $(sprint(showerror, err))")
     end
     return settings_from_config(config)
 end
@@ -269,7 +278,9 @@ function parse_pipeline(config::AbstractDict)
     opt_str = get(pipeline, "optimizer", "ipnewton")
     optimizer = Symbol(lowercase(String(opt_str)))
     optimizer in (:ipnewton, :lbfgs_box) ||
-        error("[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'")
+        config_error(
+            "[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'",
+        )
     rng_seed = get_integer(pipeline, "rng_seed", 42, "pipeline")
     return (; run_1d_sweeps, run_2d_mapping, optimizer, rng_seed)
 end
@@ -283,35 +294,39 @@ function parse_sweep_settings(config::AbstractDict)
     sweep_settings = get(pipeline, "sweep_settings", Dict{String,Any}())
     warn_unknown_keys(sweep_settings, "pipeline.sweep_settings")
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
-    n_deltas >= 2 || error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
+    n_deltas >= 2 ||
+        config_error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
     min_log_delta =
         get_number(sweep_settings, "min_log_delta", -4.5, "pipeline.sweep_settings")
     max_log_delta =
         get_number(sweep_settings, "max_log_delta", -0.5, "pipeline.sweep_settings")
     min_log_delta < max_log_delta ||
-        error(
+        config_error(
             "[pipeline.sweep_settings]: min_log_delta ($min_log_delta) must be < max_log_delta ($max_log_delta)",
         )
     sweep_rho_thresh =
         get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
-    sweep_rho_thresh > 0 || error("[pipeline.sweep_settings].rho_thresh must be > 0")
+    sweep_rho_thresh > 0 || config_error("[pipeline.sweep_settings].rho_thresh must be > 0")
     g_uu_degenerate =
         get_number(sweep_settings, "g_uu_degenerate", 1e-6, "pipeline.sweep_settings")
-    g_uu_degenerate > 0 || error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
+    g_uu_degenerate > 0 ||
+        config_error("[pipeline.sweep_settings].g_uu_degenerate must be > 0")
     n_starts = get_integer(sweep_settings, "n_starts", 1, "pipeline.sweep_settings")
-    n_starts >= 1 || error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
+    n_starts >= 1 ||
+        config_error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
     # Safe-by-default optimizer tolerances: fits at the numerical precision
     # floor cannot reach very tight gradient norms and would otherwise
     # exhaust the iteration cap; clean-region fits converge in 16–40 Newton
     # iterations, so 100 leaves ample margin.
     g_tol = get_number(sweep_settings, "g_tol", 1e-10, "pipeline.sweep_settings")
-    g_tol > 0 || error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
+    g_tol > 0 || config_error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
     g_tol < 1e-11 &&
         @warn "[pipeline.sweep_settings].g_tol = $g_tol is tighter than the numerical " *
               "precision floor of small-separation fits; expect iteration-cap stalls there."
     max_iterations =
         get_integer(sweep_settings, "max_iterations", 100, "pipeline.sweep_settings")
-    max_iterations >= 1 || error("[pipeline.sweep_settings].max_iterations must be >= 1")
+    max_iterations >= 1 ||
+        config_error("[pipeline.sweep_settings].max_iterations must be >= 1")
     max_iterations > 300 &&
         @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits " *
               "exhaust the full cap by construction — a large cap costs wall time " *
@@ -319,31 +334,31 @@ function parse_sweep_settings(config::AbstractDict)
     floor_detection_ratio = get_number(
         sweep_settings, "floor_detection_ratio", 2.0, "pipeline.sweep_settings")
     floor_detection_ratio > 1 ||
-        error(
+        config_error(
             "[pipeline.sweep_settings].floor_detection_ratio must be > 1, got $floor_detection_ratio",
         )
     secondary_minimum_gain = get_number(
         sweep_settings, "secondary_minimum_gain", 1.5, "pipeline.sweep_settings")
     secondary_minimum_gain > 1 ||
-        error(
+        config_error(
             "[pipeline.sweep_settings].secondary_minimum_gain must be > 1, got $secondary_minimum_gain",
         )
     multi_start_parallel_scale = get_number(
         sweep_settings, "multi_start_parallel_scale", 0.35, "pipeline.sweep_settings")
     multi_start_parallel_scale > 0 ||
-        error("[pipeline.sweep_settings].multi_start_parallel_scale must be > 0")
+        config_error("[pipeline.sweep_settings].multi_start_parallel_scale must be > 0")
     multi_start_transverse_scale = get_number(
         sweep_settings, "multi_start_transverse_scale", 1e-3, "pipeline.sweep_settings")
     multi_start_transverse_scale >= 0 ||
-        error("[pipeline.sweep_settings].multi_start_transverse_scale must be >= 0")
+        config_error("[pipeline.sweep_settings].multi_start_transverse_scale must be >= 0")
     correction_validity_fraction = get_number(
         sweep_settings, "correction_validity_fraction", 0.1, "pipeline.sweep_settings")
     correction_validity_fraction > 0 ||
-        error("[pipeline.sweep_settings].correction_validity_fraction must be > 0")
+        config_error("[pipeline.sweep_settings].correction_validity_fraction must be > 0")
     residual_spectrum_windows = get_integer(
         sweep_settings, "residual_spectrum_windows", 600, "pipeline.sweep_settings")
     residual_spectrum_windows >= 8 ||
-        error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
+        config_error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
     return (; n_deltas, min_log_delta, max_log_delta, sweep_rho_thresh, g_uu_degenerate,
         n_starts, g_tol, max_iterations, floor_detection_ratio, secondary_minimum_gain,
         multi_start_parallel_scale, multi_start_transverse_scale,
@@ -358,13 +373,13 @@ function parse_grid(config::AbstractDict)
     grid = get(config, "grid", Dict{String,Any}())
     warn_unknown_keys(grid, "grid")
     T_obs = get_number(grid, "T_obs", SECONDS_PER_YEAR, "grid")
-    T_obs > 0 || error("[grid].T_obs must be > 0, got $T_obs")
+    T_obs > 0 || config_error("[grid].T_obs must be > 0, got $T_obs")
     f_min = get_number(grid, "f_min", 1.0e-3, "grid")
     f_max = get_number(grid, "f_max", 0.01, "grid")
     (f_min > 0 && f_max > f_min) ||
-        error("[grid]: need 0 < f_min < f_max, got f_min = $f_min, f_max = $f_max")
+        config_error("[grid]: need 0 < f_min < f_max, got f_min = $f_min, f_max = $f_max")
     n_bins = floor(Int, (f_max - f_min) * T_obs) + 1
-    n_bins >= 8 || error(
+    n_bins >= 8 || config_error(
         "[grid]: only $n_bins frequency bins at df = 1/T_obs — " *
         "increase T_obs or the [f_min, f_max] band",
     )
@@ -398,10 +413,12 @@ function parse_physics(config::AbstractDict)
         ("time_scale", wp.time_scale, 0.0, Inf),
         ("amp_scale", wp.amp_scale, 0.0, Inf),
         ("amp_33_factor", wp.amp_33_factor, 0.0, Inf))
-        val > lo || error("[physics].$fname must be > $lo, got $val")
+        val > lo || config_error("[physics].$fname must be > $lo, got $val")
     end
     0.0 < wp.eta <= 0.25 ||
-        error("[physics].eta must be in (0, 0.25] (symmetric mass ratio), got $(wp.eta)")
+        config_error(
+            "[physics].eta must be in (0, 0.25] (symmetric mass ratio), got $(wp.eta)",
+        )
     0.0 <= wp.sky_theta <= π ||
         @warn "[physics].sky_theta = $(wp.sky_theta) is outside [0, π]; interpreting as-is."
     return (; wp)
@@ -428,9 +445,9 @@ function parse_noise(config::AbstractDict, T_obs::Real)
     for field in (:arm_length, :oms_amplitude, :oms_reddening_freq,
         :acc_amplitude, :acc_knee_low, :acc_knee_high)
         getfield(noise, field) > 0 ||
-            error("[noise].$field must be > 0, got $(getfield(noise, field))")
+            config_error("[noise].$field must be > 0, got $(getfield(noise, field))")
     end
-    noise.confusion_amp >= 0 || error("[noise].confusion_amp must be >= 0")
+    noise.confusion_amp >= 0 || config_error("[noise].confusion_amp must be >= 0")
     return (; noise)
 end
 
@@ -442,7 +459,7 @@ function parse_mapping(config::AbstractDict)
     mapping = get(config, "mapping", Dict{String,Any}())
     warn_unknown_keys(mapping, "mapping")
     map_n_angles = get_integer(mapping, "n_angles", 2000, "mapping")
-    map_n_angles >= 8 || error("[mapping].n_angles must be >= 8, got $map_n_angles")
+    map_n_angles >= 8 || config_error("[mapping].n_angles must be >= 8, got $map_n_angles")
     if isodd(map_n_angles)
         @warn "[mapping].n_angles = $map_n_angles is odd; rounding up to " *
               "$(map_n_angles + 1) (mirrored sampling needs an even count)."
@@ -450,19 +467,21 @@ function parse_mapping(config::AbstractDict)
     end
     neighbor_ratio_tol = get_number(mapping, "neighbor_ratio_tol", 1.25, "mapping")
     neighbor_ratio_tol > 1 ||
-        error("[mapping].neighbor_ratio_tol must be > 1, got $neighbor_ratio_tol")
+        config_error("[mapping].neighbor_ratio_tol must be > 1, got $neighbor_ratio_tol")
     max_refine_levels = get_integer(mapping, "max_refine_levels", 6, "mapping")
     0 <= max_refine_levels <= 16 ||
-        error("[mapping].max_refine_levels must be in 0:16, got $max_refine_levels")
+        config_error("[mapping].max_refine_levels must be in 0:16, got $max_refine_levels")
     corner_bisect_iters = get_integer(mapping, "corner_bisect_iters", 25, "mapping")
     0 <= corner_bisect_iters <= 60 ||
-        error(
+        config_error(
             "[mapping].corner_bisect_iters must be in 0:60 (0 disables corner " *
             "bisection), got $corner_bisect_iters",
         )
     unbounded_cap_factor = get_number(mapping, "unbounded_cap_factor", 5.0, "mapping")
     unbounded_cap_factor > 1 ||
-        error("[mapping].unbounded_cap_factor must be > 1, got $unbounded_cap_factor")
+        config_error(
+            "[mapping].unbounded_cap_factor must be > 1, got $unbounded_cap_factor",
+        )
     return (; map_n_angles, neighbor_ratio_tol, max_refine_levels, corner_bisect_iters,
         unbounded_cap_factor)
 end
@@ -478,21 +497,22 @@ function parse_hardware(config::AbstractDict)
     gpu_str = get(hardware, "gpu_backend", "auto")
     gpu_backend = Symbol(lowercase(String(gpu_str)))
     gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
-        error(
+        config_error(
             "[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'",
         )
     max_threads = get_integer(hardware, "max_threads", Threads.nthreads(), "hardware")
-    max_threads >= 1 || error("[hardware].max_threads must be >= 1, got $max_threads")
+    max_threads >= 1 ||
+        config_error("[hardware].max_threads must be >= 1, got $max_threads")
     hessian_chunk = get_integer(hardware, "hessian_chunk", 0, "hardware")
     0 <= hessian_chunk <= 6 ||
-        error(
+        config_error(
             "[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
             "got $hessian_chunk",
         )
     gc_between_stages = get_boolean(hardware, "gc_between_stages", true, "hardware")
     heap_size_hint_gb = get_number(hardware, "heap_size_hint_gb", 0.0, "hardware")
     heap_size_hint_gb >= 0 ||
-        error(
+        config_error(
             "[hardware].heap_size_hint_gb must be >= 0 (0 = no hint), got $heap_size_hint_gb",
         )
     return (; gpu_backend, max_threads, hessian_chunk, gc_between_stages)
@@ -506,18 +526,18 @@ function parse_safety(config::AbstractDict)
     warn_unknown_keys(safety, "safety")
     default_ram = DEFAULT_RAM_FRACTION * Sys.total_memory() / 2^30
     max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
-    max_ram_gb > 0 || error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
+    max_ram_gb > 0 || config_error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
     bytes_per_bin_per_task_gpu =
         get_integer(safety, "bytes_per_bin_per_task_gpu", 1000, "safety")
     bytes_per_bin_per_task_gpu > 0 ||
-        error(
+        config_error(
             "[safety].bytes_per_bin_per_task_gpu must be > 0, got $bytes_per_bin_per_task_gpu",
         )
     max_vram_gb = get_number(safety, "max_vram_gb", 8.0, "safety")
-    max_vram_gb > 0 || error("[safety].max_vram_gb must be > 0, got $max_vram_gb")
+    max_vram_gb > 0 || config_error("[safety].max_vram_gb must be > 0, got $max_vram_gb")
     os_vram_overhead_gb = get_number(safety, "os_vram_overhead_gb", 1.0, "safety")
     os_vram_overhead_gb >= 0 ||
-        error("[safety].os_vram_overhead_gb must be >= 0, got $os_vram_overhead_gb")
+        config_error("[safety].os_vram_overhead_gb must be >= 0, got $os_vram_overhead_gb")
     return (; max_ram_gb, bytes_per_bin_per_task_gpu, max_vram_gb, os_vram_overhead_gb)
 end
 
@@ -529,7 +549,7 @@ function parse_bounds(config::AbstractDict)
     bounds = try
         bounds_from_config(table)
     catch err
-        error("Invalid [parameter_bounds]: $(sprint(showerror, err))")
+        config_error("Invalid [parameter_bounds]: $(sprint(showerror, err))")
     end
     warn_unknown_keys(table, "parameter_bounds")
     return (; bounds)
@@ -550,20 +570,22 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
         warn_unknown_keys(s, "sweeps[]")
         name = String(get(s, "name", ""))
         fs_safe(name) ||
-            error("[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))")
-        name in seen && error("Duplicate sweep/map name '$name'")
+            config_error(
+                "[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))",
+            )
+        name in seen && config_error("Duplicate sweep/map name '$name'")
         push!(seen, name)
         theta0 =
             validate_theta6(get(s, "theta_0", nothing), "[[sweeps]] '$name'.theta_0")
         check_interior(theta0, bounds, "sweep '$name'")
         u = validate_theta6(get(s, "u_dir", nothing), "[[sweeps]] '$name'.u_dir")
         norm_u = sqrt(sum(abs2, u))
-        norm_u > 0 || error("[[sweeps]] '$name'.u_dir must be nonzero")
+        norm_u > 0 || config_error("[[sweeps]] '$name'.u_dir must be nonzero")
         amp_ratio = get_number(s, "amp_ratio", 1.0, "sweeps[]")
         amp_ratio > 0 ||
-            error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
+            config_error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
         if amp_ratio != 1.0 && u[1] != 0
-            error(
+            config_error(
                 "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
                 "separation is expressed via amp_ratio (the A_harm law), not via the " *
                 "sweep direction.",
@@ -573,30 +595,32 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
             @warn "Sweep '$name': u_dir has an amplitude component — the quartic law's " *
                   "equal-amplitude absorption argument assumes u_dir[1] = 0."
         rho = get_number(s, "rho_thresh", sweep_rho_thresh, "sweeps[]")
-        rho > 0 || error("[[sweeps]] '$name'.rho_thresh must be > 0")
+        rho > 0 || config_error("[[sweeps]] '$name'.rho_thresh must be > 0")
         SweepSpec(name, theta0, u, rho, amp_ratio)
     end
     maps = map(map_tables) do m
         warn_unknown_keys(m, "maps[]")
         name = String(get(m, "name", ""))
         fs_safe(name) ||
-            error("[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))")
-        name in seen && error("Duplicate sweep/map name '$name'")
+            config_error(
+                "[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))",
+            )
+        name in seen && config_error("Duplicate sweep/map name '$name'")
         push!(seen, name)
         px = get_integer(m, "param_x", 0, "maps[]")
         py = get_integer(m, "param_y", 0, "maps[]")
         (1 <= px <= N_PARAMS && 1 <= py <= N_PARAMS) ||
-            error(
+            config_error(
                 "[[maps]] '$name': param_x/param_y must be in 1:$(N_PARAMS), " *
                 "got ($px, $py)",
             )
-        px != py || error("[[maps]] '$name': param_x and param_y must differ")
+        px != py || config_error("[[maps]] '$name': param_x and param_y must differ")
         rho = get_number(m, "rho_thresh", sweep_rho_thresh, "maps[]")
-        rho > 0 || error("[[maps]] '$name'.rho_thresh must be > 0")
+        rho > 0 || config_error("[[maps]] '$name'.rho_thresh must be > 0")
         theta0 = validate_theta6(get(m, "theta_0", nothing), "[[maps]] '$name'.theta_0")
         check_interior(theta0, bounds, "map '$name'")
         na = get_integer(m, "n_angles", map_n_angles, "maps[]")
-        na >= 8 || error("[[maps]] '$name'.n_angles must be >= 8, got $na")
+        na >= 8 || config_error("[[maps]] '$name'.n_angles must be >= 8, got $na")
         if isodd(na)
             @warn "[[maps]] '$name'.n_angles = $na is odd; rounding up to $(na + 1) " *
                   "(mirrored sampling needs an even count)."
@@ -621,7 +645,7 @@ function parse_monitoring(config::AbstractDict)
     progress_log_fraction =
         get_number(monitoring_cfg, "progress_log_fraction", 0.25, "monitoring")
     0.0 <= progress_log_fraction <= 1.0 ||
-        error(
+        config_error(
             "[monitoring].progress_log_fraction must be in [0, 1] (0 disables " *
             "stage-progress log lines), got $progress_log_fraction",
         )
@@ -637,7 +661,7 @@ function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String
     for i in eachindex(theta0)
         b.periodic[i] && continue
         (b.lower[i] < theta0[i] < b.upper[i]) ||
-            error(
+            config_error(
                 "$what: theta_0[$i] = $(theta0[i]) is not strictly inside its physical " *
                 "bounds [$(b.lower[i]), $(b.upper[i])] — the local geometry expansion " *
                 "and zone capping require an interior base point.",

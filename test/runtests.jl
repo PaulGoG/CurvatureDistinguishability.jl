@@ -301,7 +301,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # base point on a bound must be rejected
         θ_edge = copy(THETA0)
         θ_edge[5] = 1.0
-        @test_throws ErrorException deviation_box(b, θ_edge, 5, 6)
+        @test_throws ArgumentError deviation_box(b, θ_edge, 5, 6)
 
         θ_out = copy(THETA0)
         θ_out[5] = 1.5
@@ -310,7 +310,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         cfgb = bounds_from_config(Dict("spin1" => [-0.5, 0.5]))
         @test cfgb.lower[5] == -0.5 && cfgb.upper[5] == 0.5
-        @test_throws ErrorException bounds_from_config(Dict("spin1" => [1.0, -1.0]))
+        @test_throws ArgumentError bounds_from_config(Dict("spin1" => [1.0, -1.0]))
     end
 
     @testset "Inference: kernel ≡ loop, optimizers, bounds" begin
@@ -377,7 +377,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # deep inside a kernel launch (get_best_backend() returns a GPU whenever
         # one is functional, so the mismatch is easy to hit from the REPL)
         struct FakeGPU <: KernelAbstractions.GPU end
-        @test_throws ErrorException loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
+        @test_throws ArgumentError loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
             FIX_WP, FakeGPU())
 
         # buffer-cache eviction API empties the cache and is safe to call
@@ -447,24 +447,42 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             # T_obs = 1e5 s → nearest Robson column is 6 months
             @test cfg.noise.confusion_knee_freq == 0.00258
 
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[pipeline]\noptimizer = \"sgd\"\n"))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nn_deltas = 1\n"))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[parameter_bounds]\nspin1 = [2.0, 1.0]\n"))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
                     "[[sweeps]]\nname = \"bad/name\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0,1,0,0,0,0]\n",
                 ))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
                     "[[maps]]\nname = \"m\"\nparam_x = 2\nparam_y = 2\ntheta_0 = [1,1,1,0,0,0]\n",
                 ))
+            # case names that would escape the case directory are rejected
+            for bad in (".", "..", "...")
+                @test_throws ArgumentError load_and_validate_config(
+                    write_cfg(
+                        dir,
+                        "[[maps]]\nname = \"$bad\"\nparam_x = 2\nparam_y = 3\ntheta_0 = [1,1,1,0,0,0]\n",
+                    ))
+            end
+            @test CD.Config.fs_safe("a.b-c_1") && !CD.Config.fs_safe("a/b")
+            # remaining validation branches: symmetric mass ratio, grid size,
+            # progress-log cadence
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[physics]\neta = 0.3\n"))
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[monitoring]\nprogress_log_fraction = 2.0\n"))
+            tiny = joinpath(dir, "tiny.toml")
+            write(tiny, "[grid]\nT_obs = 100.0\nf_min = 1.0e-3\nf_max = 2.0e-3\n")
+            @test_throws ArgumentError load_and_validate_config(tiny)
             # base point outside physical bounds
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
                     "[[maps]]\nname = \"m\"\nparam_x = 5\nparam_y = 6\ntheta_0 = [1,1,1,0,1.5,0]\n",
@@ -480,21 +498,21 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             cfg_nb = load_and_validate_config(
                 write_cfg(dir, "[mapping]\ncorner_bisect_iters = 0\n"))
             @test cfg_nb.corner_bisect_iters == 0 # explicit opt-out allowed
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[mapping]\ncorner_bisect_iters = -1\n"))
 
             # amp_ratio and multi-start guardrails
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
                     "[[sweeps]]\nname = \"s\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0,1,0,0,0,0]\namp_ratio = -1.0\n",
                 ))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
                     "[[sweeps]]\nname = \"s\"\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0.5,1,0,0,0,0]\namp_ratio = 0.5\n",
                 ))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nn_starts = 0\n"))
             cfg_ms = load_and_validate_config(
                 write_cfg(
@@ -504,9 +522,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test cfg_ms.n_starts == 3 && cfg_ms.rng_seed == 7
             @test cfg_ms.g_tol == 1e-9 && cfg_ms.max_iterations == 300
             @test cfg_ms.hessian_chunk == 3
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[hardware]\nhessian_chunk = 9\n"))
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
 
             # safe-by-default optimizer tolerances; monitoring opt-in (off)
@@ -550,7 +568,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             )
             @test cfg_tun.floor_detection_ratio == 3.0
             @test cfg_tun.unbounded_cap_factor == 8.0
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[pipeline.sweep_settings]\nfloor_detection_ratio = 1.0\n"))
 
             cfg_quick = load_and_validate_config(
@@ -579,7 +597,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test cfg_n.noise.arm_length == 5.0e9
             @test cfg_n.noise.acc_amplitude == 2.4e-15
             @test cfg_n.noise.oms_amplitude == 1.5e-11
-            @test_throws ErrorException load_and_validate_config(
+            @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[noise]\narm_length = 0.0\n"))
         end
     end
@@ -599,6 +617,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             # a fresh path is returned untouched, creating nothing
             @test backup_existing!(joinpath(dir, "new.csv")) == joinpath(dir, "new.csv")
             @test !isfile(joinpath(dir, "new.csv"))
+            # rerun directories are suffixed, never reused
+            first_dir = CD.Provenance.unique_run_dir(dir, "run_abc")
+            second_dir = CD.Provenance.unique_run_dir(dir, "run_abc")
+            third_dir = CD.Provenance.unique_run_dir(dir, "run_abc")
+            @test basename(first_dir) == "run_abc"
+            @test basename(second_dir) == "run_abc_r2" && isdir(second_dir)
+            @test basename(third_dir) == "run_abc_r3"
         end
     end
 
@@ -718,20 +743,20 @@ enabled = true
             snap = CD.Provenance.snapshot_config(overlay, run_dir)
             @test !haskey(TOML.parsefile(snap), "base_config")
             @test run_id_from_config(snap) == run_id_from_config(overlay)
-            @test_throws ErrorException CD.Provenance.snapshot_config(overlay, run_dir)
+            @test_throws ArgumentError CD.Provenance.snapshot_config(overlay, run_dir)
             run_dir2 = mktempdir(dir)
             snap2 = CD.Provenance.snapshot_config(mono, run_dir2)
             @test read(snap2, String) == read(mono, String)
             # one overlay level only; a missing base fails loudly
             nested = joinpath(dir, "nested.toml")
             write(nested, "base_config = \"overlay.toml\"\n")
-            @test_throws ErrorException effective_config(nested)
-            @test_throws ErrorException load_and_validate_config(nested)
+            @test_throws ArgumentError effective_config(nested)
+            @test_throws ArgumentError load_and_validate_config(nested)
             absent = joinpath(dir, "absent.toml")
             write(absent, "base_config = \"no_such_file.toml\"\n")
-            @test_throws ErrorException effective_config(absent)
+            @test_throws ArgumentError effective_config(absent)
             write(absent, "base_config = 3\n")
-            @test_throws ErrorException effective_config(absent)
+            @test_throws ArgumentError effective_config(absent)
         end
         # the shipped GPU variants are thin [hardware] overlays on their bases
         configs = joinpath(dirname(@__DIR__), "configs")
@@ -776,6 +801,68 @@ enabled = true
         mp = CD.Orchestrator.map_diagnostic_panel(collect(range(0, 2π, length = 16)),
             fill(1.0, 16), 0.25)
         @test occursin("prior-limited directions: 25.0%", mp)
+    end
+
+    @testset "Fitting: slope and clean-point rule" begin
+        slope, slope_err = CD.Fitting.loglog_slope([1.0, 10.0, 100.0], [1.0, 1e4, 1e8])
+        @test slope ≈ 4.0 atol = 1e-12
+        @test slope_err ≈ 0.0 atol = 1e-9
+        @test isnan(CD.Fitting.loglog_slope([1.0, 10.0], [1.0, 1e4])[2]) # no error with 2 points
+        @test CD.Fitting.above_floor_mask([1.0, 2.0, 3.0], 2.0) == [false, false, true]
+        @test CD.Fitting.above_floor_mask([0.0, 1.0, -1.0], NaN) == [false, true, false]
+    end
+
+    @testset "Orchestrator: resource planning, seeding, mirroring" begin
+        mktempdir() do dir
+            path = joinpath(dir, "c.toml")
+            grid = "[grid]\nT_obs = 1.0e5\nf_min = 1.0e-3\nf_max = 2.0e-3\n"
+            write(path, grid * "[safety]\nmax_ram_gb = 0.001\n")
+            cfg = load_and_validate_config(path)
+            @test_throws CD.Orchestrator.ResourceBudgetError CD.Orchestrator.plan_resources(
+                cfg, 10^6, 2, CPU())
+            # a budget holding exactly two tasks of a million-bin grid
+            # downscales the concurrency (needs ≥ 3 threads to be observable)
+            if Threads.nthreads() >= 3
+                write(
+                    path,
+                    grid * "[safety]\nmax_ram_gb = 1.3\n[hardware]\nmax_threads = 8\n",
+                )
+                cfg2 = load_and_validate_config(path)
+                sweep_tasks, map_tasks, est =
+                    @test_logs (:warn, r"Concurrency downscaled") CD.Orchestrator.plan_resources(
+                        cfg2, 10^6, 2, CPU())
+                @test sweep_tasks == 2 && map_tasks == 2 && est <= 1.3
+            end
+        end
+
+        # multi-start streams: deterministic per work item, distinct across
+        # starts, and pinned so a change of derivation cannot silently alter
+        # the perturbations recorded under one rng_seed
+        stream(k) = CD.Orchestrator.multi_start_stream(42, "sweep", 3, k)
+        @test randn(stream(2), 3) == randn(stream(2), 3)
+        @test randn(stream(2)) != randn(stream(3))
+        @test randn(stream(2)) ≈ -1.5863254334055301 rtol = 1e-15
+
+        # mirroring: K and g are even, r_box is re-evaluated on the negated
+        # direction (the box is asymmetric), degenerate and capped flags follow
+        entries = [(phi = 0.0, K = 16.0, g = 1.0), (phi = π / 2, K = 1e-320, g = 1e-9)]
+        box = (-1.5, 2.0, -0.5, 0.5)
+        r_math_of(K) = K > CD.Geometry.K_UNDERFLOW ? (16.0 / K)^(1 / 4) : Inf
+        polar = CD.Orchestrator.mirror_to_full_circle(entries, box, r_math_of, 1e-6)
+        @test polar.angle ≈ [0.0, π / 2, π, 3π / 2]
+        @test polar.K_raw == [16.0, 1e-320, 16.0, 1e-320]
+        @test polar.r_math[1] == polar.r_math[3] == 1.0 && isinf(polar.r_math[2])
+        @test polar.r_box ≈ [2.0, 0.5, 1.5, 0.5]
+        @test polar.r_cap ≈ [1.0, 0.5, 1.0, 0.5]
+        @test polar.prior_limited == [false, true, false, true]
+        @test polar.degenerate == [false, true, false, true]
+
+        # boundary runs: contiguous same-class edges join into NaN-separated
+        # polylines; the wrap-around edge starts a new run
+        xs, ys = CD.Plotting._boundary_runs([0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 1.0, 1.0],
+            [true, true, false, true], true)
+        @test isequal(xs, [0.0, 1.0, 2.0, NaN, 3.0, 0.0])
+        @test isequal(ys, [0.0, 0.0, 1.0, NaN, 1.0, 0.0])
     end
 
     @testset "Ratio-correction fit (O(δ⁵) quantification)" begin

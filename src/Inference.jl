@@ -311,16 +311,20 @@ function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::Abstr
         return p -> cpu_loss(p, freqs, Sn_vals, data_stream, df, wp)
     end
     length(data_stream) == 2 ||
-        error(
-            "GPU path supports the 2-channel (A, E) configuration only; " *
-            "set include_t_channel = false (the T channel is identically zero).",
+        throw(
+            ArgumentError(
+                "GPU path supports the 2-channel (A, E) configuration only; " *
+                "set include_t_channel = false (the T channel is identically zero).",
+            ),
         )
     if freqs isa Array || Sn_vals isa Array || any(a -> a isa Array, data_stream)
-        error(
-            "Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
-            "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
-            "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
-            "backend explicitly when your arrays live on the host.)",
+        throw(
+            ArgumentError(
+                "Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
+                "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
+                "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
+                "backend explicitly when your arrays live on the host.)",
+            ),
         )
     end
     return p ->
@@ -373,14 +377,14 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     opts = Optim.Options(g_tol = g_tol, iterations = iterations, show_trace = false)
 
     opt_res = if optimizer === :ipnewton
-        bounds === nothing && error("optimizer = :ipnewton requires bounds")
+        bounds === nothing && throw(ArgumentError("optimizer = :ipnewton requires bounds"))
         x0 = clamp_interior(theta_guess, bounds)
         obj = TwiceDifferentiable(loss, g!, h!, x0)
         cons =
             TwiceDifferentiableConstraints(collect(bounds.lower), collect(bounds.upper))
         optimize(obj, cons, x0, IPNewton(), opts)
     elseif optimizer === :lbfgs_box
-        bounds === nothing && error("optimizer = :lbfgs_box requires bounds")
+        bounds === nothing && throw(ArgumentError("optimizer = :lbfgs_box requires bounds"))
         x0 = clamp_interior(theta_guess, bounds)
         obj = OnceDifferentiable(loss, g!, x0)
         optimize(
@@ -392,7 +396,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
             opts,
         )
     else
-        error("Unknown optimizer :$optimizer (expected :ipnewton or :lbfgs_box)")
+        throw(ArgumentError("Unknown optimizer :$optimizer (expected :ipnewton or :lbfgs_box)"))
     end
 
     return Optim.minimum(opt_res), Optim.minimizer(opt_res), opt_res

@@ -12,6 +12,7 @@ using TOML: TOML
 using CSV: CSV
 using DataFrames: DataFrame
 using Random: Xoshiro
+using SHA: sha256
 using ProgressMeter: Progress, ProgressUnknown, finish!, next!
 using Logging: Logging, global_logger, with_logger
 using LoggingExtras: FormatLogger, MinLevelLogger, TeeLogger
@@ -34,6 +35,19 @@ using ..Fitting:
     ratio_correction_fit
 
 export run_pipeline
+public ResourceBudgetError
+
+"""
+    ResourceBudgetError(msg)
+
+Raised by [`plan_resources`](@ref) when the `[safety]` memory budget cannot
+accommodate even a single task of the configured grid; the message names
+the budget to raise or the grid to reduce.
+"""
+struct ResourceBudgetError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::ResourceBudgetError) = print(io, "ResourceBudgetError: ", e.msg)
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -110,10 +124,12 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
     budget = cfg.max_ram_gb * 2^30
 
     if fixed + per_task > budget
-        error(
-            "Estimated memory for a single task ($(round(fixed / 2^30, digits = 2)) GB fixed + " *
-            "$(round(per_task / 2^30, digits = 2)) GB/task) exceeds [safety].max_ram_gb = " *
-            "$(cfg.max_ram_gb) GB. Reduce the frequency grid ([grid]) or raise the budget explicitly.",
+        throw(
+            ResourceBudgetError(
+                "Estimated memory for a single task ($(round(fixed / 2^30, digits = 2)) GB fixed + " *
+                "$(round(per_task / 2^30, digits = 2)) GB/task) exceeds [safety].max_ram_gb = " *
+                "$(cfg.max_ram_gb) GB. Reduce the frequency grid ([grid]) or raise the budget explicitly.",
+            ),
         )
     end
 
@@ -142,12 +158,14 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
         vram_budget = max(0.0, cfg.max_vram_gb - cfg.os_vram_overhead_gb) * 2^30
         need = n_bins * cfg.bytes_per_bin_per_task_gpu
         need <= vram_budget ||
-            error(
-                "VRAM budget ($(round(vram_budget / 2^30, digits = 2)) GB usable) is below " *
-                "the footprint of one GPU task " *
-                "($(round(need / 2^30, digits = 2)) GB at " *
-                "$(cfg.bytes_per_bin_per_task_gpu) bytes/bin). Reduce the grid or raise " *
-                "[safety].max_vram_gb.",
+            throw(
+                ResourceBudgetError(
+                    "VRAM budget ($(round(vram_budget / 2^30, digits = 2)) GB usable) is below " *
+                    "the footprint of one GPU task " *
+                    "($(round(need / 2^30, digits = 2)) GB at " *
+                    "$(cfg.bytes_per_bin_per_task_gpu) bytes/bin). Reduce the grid or raise " *
+                    "[safety].max_vram_gb.",
+                ),
             )
     end
 
@@ -399,8 +417,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
         dist, best, res = solve(guess)
         dist_canonical = dist
         for k in 2:cfg.n_starts
-            # deterministic per-task stream: independent of thread scheduling
-            rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
+            rng = multi_start_stream(cfg.rng_seed, name, i, k)
             pert =
                 guess .+ (cfg.multi_start_parallel_scale * d * randn(rng)) .* u_norm .+
                 cfg.multi_start_transverse_scale .* randn(rng, N_PARAMS)
@@ -423,6 +440,21 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
     finish!(prog)
     return (; D2_num, best_fits, converged, iteration_counts, gradient_norms, at_bound,
         multi_start_gain)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Random stream of multi-start `k` at separation index `i` of the sweep
+`name`, seeded from the SHA-256 of the master seed and the work-item
+coordinates: every task draws an independent stream that depends on
+neither thread scheduling nor the Julia release (`Base.hash` of strings
+and tuples is not stable across releases and would silently change the
+perturbations recorded under one `rng_seed`).
+"""
+function multi_start_stream(seed::Integer, name::AbstractString, i::Integer, k::Integer)
+    digest = sha256(string(seed, '|', name, '|', i, '|', k))
+    return Xoshiro(first(reinterpret(UInt64, digest)))
 end
 
 """
@@ -1023,9 +1055,11 @@ function _run_pipeline(cfg::PipelineSettings, project_root::String, out_base::St
     cfg.gpu_backend === :none &&
         @info "[hardware].gpu_backend = \"none\": GPU detection bypassed, running on the CPU backend."
     if !(backend isa KernelAbstractions.CPU) && n_channels(cfg.wp) == 3
-        error(
-            "GPU backends support the 2-channel (A, E) configuration only; " *
-            "set [physics].include_t_channel = false (T is identically zero).",
+        throw(
+            ArgumentError(
+                "GPU backends support the 2-channel (A, E) configuration only; " *
+                "set [physics].include_t_channel = false (T is identically zero).",
+            ),
         )
     end
 

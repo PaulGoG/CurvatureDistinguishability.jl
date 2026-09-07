@@ -344,6 +344,11 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
         pos = d2_num .> 0
         ylo = min(minimum(d2_num[pos]), minimum(d2_theo)) / 3
         yhi = max(maximum(d2_num[pos]), maximum(d2_theo)) * 3
+        # the threshold can sit close to the frame top (near-degenerate
+        # sweeps end just past D² = ρ²): guarantee headroom for its label
+        # before the ticks are chosen, so every decade of the frame is labelled
+        threshold_visible = ylo < rho_sq < yhi
+        threshold_visible && (yhi = max(yhi, rho_sq * 30))
         x_ticks = decade_ticks(minimum(deltas), maximum(deltas))
         y_ticks = decade_ticks(ylo, yhi)
 
@@ -385,11 +390,7 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
                 text = "Optimizer floor", align = (:right, :bottom),
                 fontsize = 17, color = :grey35)
         end
-        if ylo < rho_sq < yhi
-            # the threshold can sit close to the frame top (near-degenerate
-            # sweeps end just past D² = ρ²): guarantee headroom for the label
-            yhi = max(yhi, rho_sq * 30)
-            ylims!(ax1, ylo, yhi)
+        if threshold_visible
             hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
             # left side: the δ⁴ line is many decades below the threshold
             # there, so the label cannot collide with data or fit
@@ -709,7 +710,7 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
     px::Int, py::Int, box::NTuple{4,Float64},
     prior_frac::Real, degenerate_frac::Real,
     x_math = nothing, y_math = nothing)
-    px == py && error("map plane must use two distinct parameters")
+    px == py && throw(ArgumentError("map plane must use two distinct parameters"))
     same_units = (px in (5, 6) && py in (5, 6))
     with_theme(publication_theme()) do
         # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins

@@ -43,16 +43,24 @@ function effective_config(config_path::AbstractString)
     config = TOML.parsefile(config_path)
     haskey(config, BASE_CONFIG_KEY) || return config
     base_rel = pop!(config, BASE_CONFIG_KEY)
-    base_rel isa AbstractString || error(
-        "$BASE_CONFIG_KEY in $config_path must be a file path, got $(repr(base_rel))",
+    base_rel isa AbstractString || throw(
+        ArgumentError(
+            "$BASE_CONFIG_KEY in $config_path must be a file path, got $(repr(base_rel))",
+        ),
     )
     base_path = normpath(joinpath(dirname(abspath(config_path)), base_rel))
     isfile(base_path) ||
-        error("$BASE_CONFIG_KEY of $config_path names a missing file: $base_path")
+        throw(
+            ArgumentError(
+                "$BASE_CONFIG_KEY of $config_path names a missing file: $base_path",
+            ),
+        )
     base = TOML.parsefile(base_path)
-    haskey(base, BASE_CONFIG_KEY) && error(
-        "base configuration $base_path declares $BASE_CONFIG_KEY itself; " *
-        "only one overlay level is supported",
+    haskey(base, BASE_CONFIG_KEY) && throw(
+        ArgumentError(
+            "base configuration $base_path declares $BASE_CONFIG_KEY itself; " *
+            "only one overlay level is supported",
+        ),
     )
     return merge_config(base, config)
 end
@@ -136,7 +144,7 @@ to the run's identifier. Never overwrites an existing snapshot.
 """
 function snapshot_config(config_path::AbstractString, run_dir::AbstractString)
     dest = joinpath(run_dir, "config.toml")
-    isfile(dest) && error("configuration snapshot already exists: $dest")
+    isfile(dest) && throw(ArgumentError("configuration snapshot already exists: $dest"))
     if haskey(TOML.parsefile(config_path), BASE_CONFIG_KEY)
         open(dest, "w") do io
             TOML.print(io, effective_config(config_path); sorted = true)

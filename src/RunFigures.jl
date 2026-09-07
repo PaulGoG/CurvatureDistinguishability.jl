@@ -49,7 +49,9 @@ the snapshot is absent (pre-snapshot runs cannot be regenerated faithfully).
 function run_config(run_dir::AbstractString)
     snapshot = joinpath(run_dir, "config.toml")
     isfile(snapshot) ||
-        error("No config snapshot in $run_dir — cannot recover run metadata.")
+        throw(
+            ArgumentError("No config snapshot in $run_dir — cannot recover run metadata."),
+        )
     return load_and_validate_config(snapshot)
 end
 
@@ -146,7 +148,9 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     cfg = run_config(run_dir)
     matches = filter(m -> m.name == case, cfg.maps)
     isempty(matches) &&
-        error("Map '$case' is not present in the config snapshot of $run_dir.")
+        throw(
+            ArgumentError("Map '$case' is not present in the config snapshot of $run_dir."),
+        )
     map_cfg = only(matches)
     px, py = map_cfg.param_x, map_cfg.param_y
     theta0 = map_cfg.theta_0
@@ -169,9 +173,11 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     else
         suffix = rho_tag(rho)
         hasproperty(contour_stored, :K_Raw) && hasproperty(contour_stored, :R_Box) ||
-            error(
-                "contour CSV lacks K_Raw/R_Box columns (pre-upgrade run) — " *
-                "rerun the pipeline to enable threshold rescaling",
+            throw(
+                ArgumentError(
+                    "contour CSV lacks K_Raw/R_Box columns (pre-upgrade run) — " *
+                    "rerun the pipeline to enable threshold rescaling",
+                ),
             )
         r_math = [
             K > K_UNDERFLOW ? (16.0 * Float64(rho)^2 / K)^(1 / 4) : Inf

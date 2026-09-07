@@ -60,10 +60,13 @@ function bounds_from_config(cfg::AbstractDict)
         if haskey(cfg, key)
             pair = cfg[key]
             (pair isa AbstractVector && length(pair) == 2) ||
-                error("[parameter_bounds].$key must be a [lower, upper] pair")
+                throw(
+                    ArgumentError("[parameter_bounds].$key must be a [lower, upper] pair"),
+                )
             lower[i] = Float64(pair[1])
             upper[i] = Float64(pair[2])
-            lower[i] < upper[i] || error("[parameter_bounds].$key: lower must be < upper")
+            lower[i] < upper[i] ||
+                throw(ArgumentError("[parameter_bounds].$key: lower must be < upper"))
         end
     end
     return ParameterBounds(Tuple(lower), Tuple(upper), b.periodic, b.period)
@@ -86,10 +89,12 @@ function deviation_box(b::ParameterBounds, theta0::AbstractVector, px::Integer, 
             lo = b.lower[idx] - theta0[idx]
             hi = b.upper[idx] - theta0[idx]
             (lo < 0.0 && hi > 0.0) ||
-                error(
-                    "Base point component $idx (= $(theta0[idx])) is not strictly inside " *
-                    "its physical bounds [$(b.lower[idx]), $(b.upper[idx])]; " *
-                    "the confusion-zone capping requires an interior base point.",
+                throw(
+                    ArgumentError(
+                        "Base point component $idx (= $(theta0[idx])) is not strictly inside " *
+                        "its physical bounds [$(b.lower[idx]), $(b.upper[idx])]; " *
+                        "the confusion-zone capping requires an interior base point.",
+                    ),
                 )
             (lo, hi)
         end
