@@ -639,6 +639,58 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Per-axis tick policy of the zone map for `axis` (`:x` or `:y`) of `ax`,
+showing the deviation of parameter `param` over the data range
+`[lo_d, hi_d]` whose common power of ten is `exponent`. Phase axes:
+rational-π ticks over a padded range. Small-value axes: integer-mantissa
+ticks of one common power of 10 — the power annotated once at the end of
+the axis (right of the frame's bottom corner for x, above the frame for
+y), never per tick and never inside the axis label — with mantissa steps
+preferring multiples of 5 and the limits snapped outward so the frame ends
+exactly on labelled ticks. Fallback when no clean grid exists: per-tick
+common-exponent scientific notation. Returns the final `(lo, hi)` limits.
+"""
+function zone_axis_ticks!(fig, ax, axis::Symbol, param::Int, lo_d::Real, hi_d::Real,
+    exponent::Int)
+    ticks_property = axis === :x ? :xticks : :yticks
+    format_property = axis === :x ? :xtickformat : :ytickformat
+    lo, hi = lo_d - 0.08 * (hi_d - lo_d), hi_d + 0.08 * (hi_d - lo_d)
+    if param == 4
+        pi_tick_values = pi_ticks(lo, hi)
+        pi_tick_values !== nothing && setproperty!(ax, ticks_property, pi_tick_values)
+    elseif exponent != 0
+        offset_result = offset_ticks(lo_d, hi_d)
+        if offset_result === nothing
+            setproperty!(ax, ticks_property, LinearTicks(6))
+            setproperty!(ax, format_property, sci_tick_labels)
+        else
+            vals, labels, axis_power, lo_s, hi_s = offset_result
+            setproperty!(ax, ticks_property, (vals, labels))
+            lo, hi = lo_s, hi_s
+            if axis_power != 0
+                power_label = latexstring("\\times 10^{", axis_power, "}")
+                if axis === :x
+                    # just right of the frame's bottom corner, clear of the
+                    # last tick label
+                    Label(fig[1, 2], power_label;
+                        fontsize = 20, halign = :left, valign = :bottom,
+                        padding = (2, 0, 0, 0), tellheight = false)
+                else
+                    Label(fig[0, 1], power_label;
+                        fontsize = 20, halign = :left, valign = :bottom,
+                        padding = (0, 0, 2, 0), tellwidth = false)
+                end
+            end
+        end
+    else
+        setproperty!(ax, ticks_property, LinearTicks(6))
+    end
+    return lo, hi
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Zone-of-confusion map from the capped boundary polygon. The filled zone is
 the exact intersection of the mathematical zone with the physical prior box,
 and its boundary is drawn SOLID throughout — blue where curvature-limited,
@@ -693,58 +745,8 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
         ax = Axis(fig[1, 1]; xlabel = deviation_label(px), ylabel = deviation_label(py))
         same_units && (ax.aspect = DataAspect())
 
-        # Per-axis ticks and final limits. Phase axes: rational-π ticks over a
-        # padded range. Small-value axes: integer-mantissa ticks of one common
-        # power of 10 — the power annotated once at the end of the axis, never
-        # per tick and never inside the axis label — with mantissa steps
-        # preferring multiples of 5 and the limits snapped outward so the
-        # frame ends exactly on labelled ticks. Fallback when no clean grid
-        # exists: per-tick common-exponent scientific notation.
-        xlo, xhi = xlo_d - 0.08 * (xhi_d - xlo_d), xhi_d + 0.08 * (xhi_d - xlo_d)
-        ylo, yhi = ylo_d - 0.08 * (yhi_d - ylo_d), yhi_d + 0.08 * (yhi_d - ylo_d)
-        if px == 4
-            pi_tick_values = pi_ticks(xlo, xhi)
-            pi_tick_values !== nothing && (ax.xticks = pi_tick_values)
-        elseif x_exponent != 0
-            offset_result = offset_ticks(xlo_d, xhi_d)
-            if offset_result === nothing
-                ax.xticks = LinearTicks(6)
-                ax.xtickformat = sci_tick_labels
-            else
-                vals, labels, axis_power, lo_s, hi_s = offset_result
-                ax.xticks = (vals, labels)
-                xlo, xhi = lo_s, hi_s
-                # common power of 10 at the end of the x axis: just right of
-                # the frame's bottom corner, clear of the last tick label
-                axis_power != 0 &&
-                    Label(fig[1, 2], latexstring("\\times 10^{", axis_power, "}");
-                        fontsize = 20, halign = :left, valign = :bottom,
-                        padding = (2, 0, 0, 0), tellheight = false)
-            end
-        else
-            ax.xticks = LinearTicks(6)
-        end
-        if py == 4
-            pi_tick_values = pi_ticks(ylo, yhi)
-            pi_tick_values !== nothing && (ax.yticks = pi_tick_values)
-        elseif y_exponent != 0
-            offset_result = offset_ticks(ylo_d, yhi_d)
-            if offset_result === nothing
-                ax.yticks = LinearTicks(6)
-                ax.ytickformat = sci_tick_labels
-            else
-                vals, labels, axis_power, lo_s, hi_s = offset_result
-                ax.yticks = (vals, labels)
-                ylo, yhi = lo_s, hi_s
-                # common power of 10 at the end of the y axis: above the frame
-                axis_power != 0 &&
-                    Label(fig[0, 1], latexstring("\\times 10^{", axis_power, "}");
-                        fontsize = 20, halign = :left, valign = :bottom,
-                        padding = (0, 0, 2, 0), tellwidth = false)
-            end
-        else
-            ax.yticks = LinearTicks(6)
-        end
+        xlo, xhi = zone_axis_ticks!(fig, ax, :x, px, xlo_d, xhi_d, x_exponent)
+        ylo, yhi = zone_axis_ticks!(fig, ax, :y, py, ylo_d, yhi_d, y_exponent)
 
         poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
 

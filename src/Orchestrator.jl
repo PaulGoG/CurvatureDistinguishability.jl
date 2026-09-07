@@ -226,9 +226,11 @@ end
 $(TYPEDSIGNATURES)
 
 Execute one 1D separation sweep: directional geometry (K(u), g(u,u)),
-per-δ box-constrained optimization with optional multi-start, floor
-detection and slope/correction fits, and persistence of the results table,
-residual spectrum, metadata and figures into the run directory.
+per-δ box-constrained optimization with optional multi-start
+([`optimize_separations`](@ref)), floor detection and slope/correction
+fits ([`fit_sweep_law`](@ref)), and persistence of the results table,
+residual spectrum, metadata and figures into the run directory
+([`persist_sweep_results`](@ref)).
 """
 function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
@@ -292,210 +294,38 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         end
 
         n = cfg.n_deltas
-        D2_num = zeros(n)
-        best_fits = zeros(n, N_PARAMS)
-        converged = falses(n)
-        iteration_counts = zeros(Int, n)
-        gradient_norms = zeros(n)
-        at_bound = falses(n)
-        multi_start_gain = ones(n)
-
         logline(
             log_io,
             "  [2/3] optimization sweep ($(n) separations, " *
             "$(ctx.sweep_tasks) concurrent, optimizer = $(cfg.optimizer)" *
             (cfg.n_starts > 1 ? ", $(cfg.n_starts) starts" : "") * ")",
         )
-        prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
-        note_progress = stage_progress_hook(
-            "Sweep '$name' ($idx/$total)", n, cfg.progress_log_fraction)
-        parallel_foreach(n, ctx.sweep_tasks) do i
-            d = deltas[i]
-            p2 = theta0 .+ d .* u_norm
-            p2[1] = amp_ratio * theta0[1]
-            h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
-            h2 = scaled_waveform_model(p2, ctx.freqs, wp)
-            ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
-            ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
-            data = map((a, b) -> a .+ b, ch1, ch2)
-            if !(ctx.backend isa KernelAbstractions.CPU)
-                data = map(a -> to_backend(a, ctx.backend), data)
-            end
-            # degenerate effective source: amplitude (1+q)A at the weighted
-            # midpoint, with q = A₂/A₁ the amplitude ratio
-            guess = theta0 .+ (amp_ratio / (1 + amp_ratio) * d) .* u_norm
-            guess[1] = (1 + amp_ratio) * theta0[1]
+        fits = optimize_separations(sweep, deltas, u_norm, "Sweep '$name' ($idx/$total)",
+            ctx)
+        law = fit_sweep_law(deltas, fits.D2_num, K_norm, amp_prefactor, cfg, log_io)
 
-            freqs_active =
-                ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
-            Sn_active = ctx.backend isa KernelAbstractions.CPU ? ctx.Sn : ctx.Sn_dev
-            solve(x0) =
-                calculate_numerical_distance(data, x0, freqs_active, Sn_active, ctx.df;
-                    g_tol = cfg.g_tol,
-                    iterations = cfg.max_iterations,
-                    backend = ctx.backend,
-                    optimizer = cfg.optimizer,
-                    bounds = cfg.bounds,
-                    hessian_chunk = cfg.hessian_chunk,
-                    wp = wp)
-            dist, best, res = solve(guess)
-            dist_canonical = dist
-            for k in 2:cfg.n_starts
-                # deterministic per-task stream: independent of thread scheduling
-                rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
-                pert =
-                    guess .+ (cfg.multi_start_parallel_scale * d * randn(rng)) .* u_norm .+
-                    cfg.multi_start_transverse_scale .* randn(rng, N_PARAMS)
-                dist_k, best_k, res_k = solve(clamp_interior(pert, cfg.bounds))
-                if dist_k < dist
-                    dist, best, res = dist_k, best_k, res_k
-                end
-            end
-            diagnostics = optimization_diagnostics(res, best, cfg.bounds)
-            D2_num[i] = dist
-            multi_start_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
-            best_fits[i, :] .= best
-            converged[i] = diagnostics.converged
-            iteration_counts[i] = diagnostics.iterations
-            gradient_norms[i] = diagnostics.g_norm
-            at_bound[i] = diagnostics.at_bound
-            next!(prog)
-            note_progress()
-        end
-        finish!(prog)
-
-        D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
-        ratio = D2_num ./ D2_theo
-        # the slope and ratio fits use only points strictly above the
-        # bootstrapped optimizer floor (see optimizer_floor/above_floor_mask)
-        floor_level = optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio)
-        clean = above_floor_mask(D2_num, floor_level)
-        slope, slope_err =
-            count(clean) >= MIN_FIT_POINTS ?
-            loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
-        logline(
-            log_io,
-            @sprintf(
-                "        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
-                count(clean), n, slope, slope_err)
-        )
-        c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
-        delta_valid =
-            (isfinite(c1) && abs(c1) > 1e-12) ?
-            cfg.correction_validity_fraction / abs(c1) : Inf
-        isfinite(c1) &&
-            logline(
-                log_io,
-                @sprintf(
-                    "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
-                    c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
-            )
-        if cfg.n_starts > 1 && maximum(multi_start_gain) > cfg.secondary_minimum_gain
+        if cfg.n_starts > 1 && maximum(fits.multi_start_gain) > cfg.secondary_minimum_gain
             @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
-                  "start for $(count(>(cfg.secondary_minimum_gain), multi_start_gain))/$n separations (max gain " *
-                  "$(round(maximum(multi_start_gain), digits = 2))) — evidence of secondary minima."
+                  "start for $(count(>(cfg.secondary_minimum_gain), fits.multi_start_gain))/$n separations (max gain " *
+                  "$(round(maximum(fits.multi_start_gain), digits = 2))) — evidence of secondary minima."
         end
-        any(at_bound) &&
+        any(fits.at_bound) &&
             @warn "Sweep '$name': the best fit sits on a physical bound for " *
-                  "$(count(at_bound))/$n separations (see AtBound column)."
-        all(converged) || @warn "Sweep '$name': optimizer did not converge for " *
-              "$(count(!, converged))/$n separations (see Converged column)."
+                  "$(count(fits.at_bound))/$n separations (see AtBound column)."
+        all(fits.converged) || @warn "Sweep '$name': optimizer did not converge for " *
+              "$(count(!, fits.converged))/$n separations (see Converged column)."
 
         if cfg.monitoring_enabled && progress_enabled()
             println(
                 stdout,
-                sweep_diagnostic_panel(deltas, D2_num, D2_theo, clean,
-                    slope, slope_err),
+                sweep_diagnostic_panel(deltas, fits.D2_num, law.D2_theo, law.clean,
+                    law.slope, law.slope_err),
             )
         end
 
         logline(log_io, "  [3/3] persisting results and figures")
-        df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
-            D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
-            BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
-            BestFit_CoalescenceTime = best_fits[:, 3],
-            BestFit_CoalescencePhase = best_fits[:, 4],
-            BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],
-            Converged = collect(converged), Iterations = iteration_counts,
-            GradNorm = gradient_norms, AtBound = collect(at_bound),
-            Starts = fill(cfg.n_starts, n), MultiStartGain = multi_start_gain)
-        CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
-
-        # Residual-spectrum evaluation points. Primary δ*: the largest clean
-        # separation still inside the fitted validity window of the
-        # leading-order law (δ ≤ delta_valid), so the plotted residual is the
-        # normal projection the quartic law integrates. Rule-of-thumb
-        # companion: the separation nearest the discernibility threshold on
-        # the swept range (the old rule). The companion is emitted only when
-        # the two points differ — for on-law directions the threshold point
-        # is itself inside the validity window and one panel suffices.
-        pos = findall(>(0), D2_num)
-        idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
-        in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
-        valid_pos = findall(clean .& in_validity .& (D2_num .> 0))
-        idx_star = isempty(valid_pos) ? idx_thr : last(valid_pos)
-        d_star = deltas[idx_star]
-        spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
-            best_fits[idx_star, :], ctx.freqs, ctx.Sn, ctx.df, wp;
-            n_windows = cfg.residual_spectrum_windows)
-        CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
-        spec_thr = nothing
-        thr_meta = Dict{String,Any}()
-        if idx_thr != idx_star
-            spec_thr, meta_thr = residual_spectrum(theta0, u_norm, amp_ratio,
-                deltas[idx_thr], best_fits[idx_thr, :], ctx.freqs, ctx.Sn, ctx.df,
-                wp; n_windows = cfg.residual_spectrum_windows)
-            CSV.write(
-                backup_existing!(joinpath(out_dir, "residual_spectrum_threshold.csv")),
-                spec_thr)
-            thr_meta = Dict{String,Any}("delta_thr" => deltas[idx_thr],
-                "d2_num_thr" => D2_num[idx_thr], "d2_theo_thr" => D2_theo[idx_thr],
-                "residual_thr_d2_integral_A" => meta_thr.int_A,
-                "residual_thr_d2_integral_E" => meta_thr.int_E)
-        end
-        open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
-            TOML.print(
-                io,
-                Dict(
-                    "name" => name, "delta_star" => d_star,
-                    "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
-                    "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
-                    "df" => ctx.df, "f_min" => cfg.f_min, "f_max" => cfg.f_max,
-                    "delta_min" => delta_min, "amp_ratio" => amp_ratio,
-                    "slope" => slope, "slope_err" => slope_err,
-                    "c1" => c1, "c1_err" => c1_err, "c2" => c2,
-                    "delta_valid" => delta_valid,
-                    "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
-                    "residual_d2_integral_A" => meta.int_A,
-                    "residual_d2_integral_E" => meta.int_E,
-                    thr_meta...),
-            )
-        end
-
-        try
-            fig = scaling_figure(collect(deltas), D2_num, D2_theo;
-                rho_sq = rho_sq, delta_min = delta_min, slope = slope,
-                slope_err = slope_err, clean = collect(clean),
-                floor_level = floor_level, c1 = c1, c2 = c2)
-            save_figure(fig, joinpath(out_dir, "scaling_plot"))
-            rfig = residual_figure(
-                spec,
-                ResidualFigureMeta(d_star, ctx.df, D2_num[idx_star], D2_theo[idx_star]),
-            )
-            save_figure(rfig, joinpath(out_dir, "residual_plot"))
-            if spec_thr !== nothing
-                rfig_thr = residual_figure(
-                    spec_thr,
-                    ResidualFigureMeta(deltas[idx_thr], ctx.df,
-                        D2_num[idx_thr], D2_theo[idx_thr]);
-                    delta_symbol = "\\delta_{\\mathrm{thr}}",
-                )
-                save_figure(rfig_thr, joinpath(out_dir, "residual_plot_threshold"))
-            end
-        catch err
-            @warn "Sweep '$name': figure generation failed; numerical results are saved." exception =
-                (err, catch_backtrace())
-        end
+        persist_sweep_results(out_dir, sweep, deltas, u_norm,
+            (; K_norm, g_uu, delta_min), fits, law, ctx)
 
         elapsed = format_time(time() - t0)
         logline(log_io, "  [done] sweep '$name' completed in $elapsed")
@@ -508,6 +338,250 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
     return nothing
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Per-separation box-constrained fits of a sweep: for every δ in `deltas`
+the two-source data (second source at `θ₀ + δ u_norm` with the sweep's
+amplitude ratio) is fitted from the degenerate-source guess and, with
+`n_starts > 1`, from seeded perturbations of it, keeping the lowest
+distance. Runs `ctx.sweep_tasks` fits concurrently; `label` names the
+stage in the run-log progress lines. Returns the per-δ distances, best-fit
+parameters and optimizer diagnostics as a NamedTuple.
+"""
+function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
+    u_norm::AbstractVector, label::String, ctx::RunContext)
+    cfg = ctx.cfg
+    wp = cfg.wp
+    name = sweep.name
+    theta0 = sweep.theta_0
+    amp_ratio = sweep.amp_ratio
+    n = length(deltas)
+    D2_num = zeros(n)
+    best_fits = zeros(n, N_PARAMS)
+    converged = falses(n)
+    iteration_counts = zeros(Int, n)
+    gradient_norms = zeros(n)
+    at_bound = falses(n)
+    multi_start_gain = ones(n)
+
+    prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
+    note_progress = stage_progress_hook(label, n, cfg.progress_log_fraction)
+    parallel_foreach(n, ctx.sweep_tasks) do i
+        d = deltas[i]
+        p2 = theta0 .+ d .* u_norm
+        p2[1] = amp_ratio * theta0[1]
+        h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
+        h2 = scaled_waveform_model(p2, ctx.freqs, wp)
+        ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
+        ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
+        data = map((a, b) -> a .+ b, ch1, ch2)
+        if !(ctx.backend isa KernelAbstractions.CPU)
+            data = map(a -> to_backend(a, ctx.backend), data)
+        end
+        # degenerate effective source: amplitude (1+q)A at the weighted
+        # midpoint, with q = A₂/A₁ the amplitude ratio
+        guess = theta0 .+ (amp_ratio / (1 + amp_ratio) * d) .* u_norm
+        guess[1] = (1 + amp_ratio) * theta0[1]
+
+        freqs_active =
+            ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
+        Sn_active = ctx.backend isa KernelAbstractions.CPU ? ctx.Sn : ctx.Sn_dev
+        solve(x0) =
+            calculate_numerical_distance(data, x0, freqs_active, Sn_active, ctx.df;
+                g_tol = cfg.g_tol,
+                iterations = cfg.max_iterations,
+                backend = ctx.backend,
+                optimizer = cfg.optimizer,
+                bounds = cfg.bounds,
+                hessian_chunk = cfg.hessian_chunk,
+                wp = wp)
+        dist, best, res = solve(guess)
+        dist_canonical = dist
+        for k in 2:cfg.n_starts
+            # deterministic per-task stream: independent of thread scheduling
+            rng = Xoshiro(hash((cfg.rng_seed, name, i, k)))
+            pert =
+                guess .+ (cfg.multi_start_parallel_scale * d * randn(rng)) .* u_norm .+
+                cfg.multi_start_transverse_scale .* randn(rng, N_PARAMS)
+            dist_k, best_k, res_k = solve(clamp_interior(pert, cfg.bounds))
+            if dist_k < dist
+                dist, best, res = dist_k, best_k, res_k
+            end
+        end
+        diagnostics = optimization_diagnostics(res, best, cfg.bounds)
+        D2_num[i] = dist
+        multi_start_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
+        best_fits[i, :] .= best
+        converged[i] = diagnostics.converged
+        iteration_counts[i] = diagnostics.iterations
+        gradient_norms[i] = diagnostics.g_norm
+        at_bound[i] = diagnostics.at_bound
+        next!(prog)
+        note_progress()
+    end
+    finish!(prog)
+    return (; D2_num, best_fits, converged, iteration_counts, gradient_norms, at_bound,
+        multi_start_gain)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Compare the fitted distances with the quartic law: the theoretical `D²`
+(with the amplitude-ratio prefactor), the numerical/theoretical ratio, the
+bootstrapped optimizer floor with its clean-point mask, the log-log slope
+over the clean window and the `O(δ⁵)` ratio-correction fit with its
+validity radius. The fit summary is logged to `log_io`.
+"""
+function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::Real,
+    amp_prefactor::Real, cfg::PipelineSettings, log_io::IO)
+    n = length(deltas)
+    D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
+    ratio = D2_num ./ D2_theo
+    # the slope and ratio fits use only points strictly above the
+    # bootstrapped optimizer floor (see optimizer_floor/above_floor_mask)
+    floor_level = optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio)
+    clean = above_floor_mask(D2_num, floor_level)
+    slope, slope_err =
+        count(clean) >= MIN_FIT_POINTS ?
+        loglog_slope(deltas[clean], D2_num[clean]) : (NaN, NaN)
+    logline(
+        log_io,
+        @sprintf(
+            "        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
+            count(clean), n, slope, slope_err)
+    )
+    c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
+    delta_valid =
+        (isfinite(c1) && abs(c1) > 1e-12) ?
+        cfg.correction_validity_fraction / abs(c1) : Inf
+    isfinite(c1) &&
+        logline(
+            log_io,
+            @sprintf(
+                "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
+                c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
+        )
+    return (; D2_theo, ratio, floor_level, clean, slope, slope_err, c1, c1_err, c2,
+        delta_valid)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Persist a completed sweep into `out_dir`: the per-δ results table, the
+residual spectrum at the primary evaluation point δ* — the largest clean
+separation inside the fitted validity window — and, when it differs, the
+threshold companion, the `sweep_meta.toml` record, and the scaling and
+residual figures (a figure failure is logged and never loses the numerical
+results). `geometry` carries `K_norm`, `g_uu` and `delta_min`; `fits` and
+`law` are the outputs of [`optimize_separations`](@ref) and
+[`fit_sweep_law`](@ref).
+"""
+function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
+    deltas::AbstractVector, u_norm::AbstractVector, geometry, fits, law,
+    ctx::RunContext)
+    cfg = ctx.cfg
+    wp = cfg.wp
+    name = sweep.name
+    theta0 = sweep.theta_0
+    amp_ratio = sweep.amp_ratio
+    rho_sq = sweep.rho_thresh^2
+    n = length(deltas)
+    (; K_norm, g_uu, delta_min) = geometry
+    (; D2_num, best_fits) = fits
+    (; D2_theo, clean, floor_level, slope, slope_err, c1, c1_err, c2, delta_valid) = law
+
+    df_res = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
+        D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
+        BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
+        BestFit_CoalescenceTime = best_fits[:, 3],
+        BestFit_CoalescencePhase = best_fits[:, 4],
+        BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],
+        Converged = collect(fits.converged), Iterations = fits.iteration_counts,
+        GradNorm = fits.gradient_norms, AtBound = collect(fits.at_bound),
+        Starts = fill(cfg.n_starts, n), MultiStartGain = fits.multi_start_gain)
+    CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), df_res)
+
+    # Residual-spectrum evaluation points. Primary δ*: the largest clean
+    # separation still inside the fitted validity window of the
+    # leading-order law (δ ≤ delta_valid), so the plotted residual is the
+    # normal projection the quartic law integrates. Rule-of-thumb
+    # companion: the separation nearest the discernibility threshold on
+    # the swept range (the old rule). The companion is emitted only when
+    # the two points differ — for on-law directions the threshold point
+    # is itself inside the validity window and one panel suffices.
+    pos = findall(>(0), D2_num)
+    idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
+    in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
+    valid_pos = findall(clean .& in_validity .& (D2_num .> 0))
+    idx_star = isempty(valid_pos) ? idx_thr : last(valid_pos)
+    d_star = deltas[idx_star]
+    spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
+        best_fits[idx_star, :], ctx.freqs, ctx.Sn, ctx.df, wp;
+        n_windows = cfg.residual_spectrum_windows)
+    CSV.write(backup_existing!(joinpath(out_dir, "residual_spectrum.csv")), spec)
+    spec_thr = nothing
+    thr_meta = Dict{String,Any}()
+    if idx_thr != idx_star
+        spec_thr, meta_thr = residual_spectrum(theta0, u_norm, amp_ratio,
+            deltas[idx_thr], best_fits[idx_thr, :], ctx.freqs, ctx.Sn, ctx.df,
+            wp; n_windows = cfg.residual_spectrum_windows)
+        CSV.write(
+            backup_existing!(joinpath(out_dir, "residual_spectrum_threshold.csv")),
+            spec_thr)
+        thr_meta = Dict{String,Any}("delta_thr" => deltas[idx_thr],
+            "d2_num_thr" => D2_num[idx_thr], "d2_theo_thr" => D2_theo[idx_thr],
+            "residual_thr_d2_integral_A" => meta_thr.int_A,
+            "residual_thr_d2_integral_E" => meta_thr.int_E)
+    end
+    open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
+        TOML.print(
+            io,
+            Dict(
+                "name" => name, "delta_star" => d_star,
+                "d2_num_star" => D2_num[idx_star], "d2_theo_star" => D2_theo[idx_star],
+                "K_u_norm" => K_norm, "g_uu_raw" => g_uu, "rho_sq" => rho_sq,
+                "df" => ctx.df, "f_min" => cfg.f_min, "f_max" => cfg.f_max,
+                "delta_min" => delta_min, "amp_ratio" => amp_ratio,
+                "slope" => slope, "slope_err" => slope_err,
+                "c1" => c1, "c1_err" => c1_err, "c2" => c2,
+                "delta_valid" => delta_valid,
+                "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
+                "residual_d2_integral_A" => meta.int_A,
+                "residual_d2_integral_E" => meta.int_E,
+                thr_meta...),
+        )
+    end
+
+    try
+        fig = scaling_figure(collect(deltas), D2_num, D2_theo;
+            rho_sq = rho_sq, delta_min = delta_min, slope = slope,
+            slope_err = slope_err, clean = collect(clean),
+            floor_level = floor_level, c1 = c1, c2 = c2)
+        save_figure(fig, joinpath(out_dir, "scaling_plot"))
+        rfig = residual_figure(
+            spec,
+            ResidualFigureMeta(d_star, ctx.df, D2_num[idx_star], D2_theo[idx_star]),
+        )
+        save_figure(rfig, joinpath(out_dir, "residual_plot"))
+        if spec_thr !== nothing
+            rfig_thr = residual_figure(
+                spec_thr,
+                ResidualFigureMeta(deltas[idx_thr], ctx.df,
+                    D2_num[idx_thr], D2_theo[idx_thr]);
+                delta_symbol = "\\delta_{\\mathrm{thr}}",
+            )
+            save_figure(rfig_thr, joinpath(out_dir, "residual_plot_threshold"))
+        end
+    catch err
+        @warn "Sweep '$name': figure generation failed; numerical results are saved." exception =
+            (err, catch_backtrace())
+    end
+    return nothing
+end
+
 # -----------------------------------------------------------------------------
 # Module 2: 2D confusion mapping (mirrored polar sampling, prior capping)
 # -----------------------------------------------------------------------------
@@ -516,9 +590,12 @@ end
 $(TYPEDSIGNATURES)
 
 Execute one 2D confusion map: tangent basis at the base point, mirrored
-angular sweep with adaptive refinement, exact prior-wall and box-corner
-vertices, prior capping, and persistence of the contour table and zone
-figure into the run directory.
+angular sweep with adaptive refinement ([`refine_directions!`](@ref)),
+exact prior-wall and box-corner vertices
+([`insert_crossover_vertices!`](@ref), [`insert_box_corner_vertices!`](@ref)),
+mirroring with prior capping ([`mirror_to_full_circle`](@ref)), and
+persistence of the contour table and zone figure into the run directory
+([`persist_map_results`](@ref)).
 """
 function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
     cfg = ctx.cfg
@@ -554,8 +631,11 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         note_progress = stage_progress_hook(
             "Map '$name' ($idx/$total): angular sweep", n_base_directions,
             cfg.progress_log_fraction)
+        prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
 
-        function eval_angles(phis::Vector{Float64}, prog)
+        # batched (K, g) evaluation of half-circle directions; every helper
+        # below samples the plane through this closure only
+        function eval_angles(phis::Vector{Float64})
             out = Vector{NTuple{2,Float64}}(undef, length(phis))
             parallel_foreach(length(phis), ctx.map_tasks) do i
                 dir = zeros(N_PARAMS)
@@ -576,9 +656,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             "on [0, π), adaptive refinement tol $(cfg.neighbor_ratio_tol), " *
             "$(cfg.max_refine_levels) levels; $(ctx.map_tasks) concurrent)",
         )
-        prog = ProgressUnknown(desc = "  mapping: ", enabled = progress_enabled())
         phis = [(k - 1) * π / n_base_directions for k in 1:n_base_directions]
-        curvature_norm_pairs = eval_angles(phis, prog)
+        curvature_norm_pairs = eval_angles(phis)
         entries = [
             (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:n_base_directions
         ]
@@ -587,181 +666,36 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         r_box_of(phi) = ray_box_crossing(cos(phi), sin(phi), box...)
         r_cap_of(e) = min(r_math_of(e.K), r_box_of(e.phi))
 
-        added = 0
-        for _ in 1:cfg.max_refine_levels
-            sort!(entries, by = e -> e.phi)
-            rcaps = [r_cap_of(e) for e in entries]
-            mids = Float64[]
-            for i in 1:length(entries)
-                j = mod1(i + 1, length(entries))
-                gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
-                r1, r2 = rcaps[i], rcaps[j]
-                (isfinite(r1) && isfinite(r2)) || continue
-                ratio = max(r1, r2) / max(min(r1, r2), K_UNDERFLOW)
-                ratio > cfg.neighbor_ratio_tol && push!(mids, entries[i].phi + gap / 2)
-            end
-            isempty(mids) && break
-            curvature_new = eval_angles(mids, prog)
-            append!(
-                entries,
-                [
-                    (phi = mids[i], K = curvature_new[i][1], g = curvature_new[i][2])
-                    for i in 1:length(mids)
-                ],
-            )
-            added += length(mids)
-        end
-        sort!(entries, by = e -> e.phi)
+        added = refine_directions!(entries, eval_angles, r_cap_of, cfg)
         logline(
             log_io,
             "        refinement added $added directions " *
             "($(length(entries)) on the half-circle)",
         )
 
-        # Exact corner vertices at capping crossovers. The boundary polygon
-        # chords over the direction where the mathematical contour pierces a
-        # prior wall (r_math = r_box), chamfering the zone's corners — and the
-        # neighbor-ratio refinement cannot see it, because the capped radius
-        # saturates at r_box on the wall side. Scan the full circle (the box
-        # need not be mirror-symmetric), bracket every capped/uncapped
-        # transition between consecutive directions, and bisect each bracket
-        # on the capping predicate (robust to r_math = Inf on degenerate
-        # directions, where a sign-based bisection would hit Inf - Inf). All
-        # active brackets are evaluated as one batch per iteration.
         if cfg.corner_bisect_iters > 0
             capped_at = (alpha, K) -> begin
                 rb = r_box_of(alpha) # cos/sin of the full-circle angle
                 isfinite(rb) && r_math_of(K) >= rb
             end
-            n_entries = length(entries)
-            alphas = vcat([e.phi for e in entries], [e.phi + π for e in entries])
-            K_full_circle = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
-            caps = [capped_at(alphas[k], K_full_circle[k]) for k in 1:(2n_entries)]
-            lo = Float64[]
-            hi = Float64[]
-            lo_capped = Bool[]
-            for k in 1:(2n_entries)
-                j = mod1(k + 1, 2n_entries)
-                caps[k] == caps[j] && continue
-                push!(lo, alphas[k])
-                push!(hi, alphas[j] + (j == 1 ? 2π : 0.0))
-                push!(lo_capped, caps[k])
-            end
-            if !isempty(lo)
-                for _ in 1:cfg.corner_bisect_iters
-                    mids = (lo .+ hi) ./ 2
-                    curvature_mid = eval_angles(mod.(mids, π), prog) # K is even
-                    for b in eachindex(mids)
-                        if capped_at(mids[b], curvature_mid[b][1]) == lo_capped[b]
-                            lo[b] = mids[b]
-                        else
-                            hi[b] = mids[b]
-                        end
-                    end
-                end
-                # fold onto the half-circle (the mirror adds the antipode);
-                # dedupe — a mirror-symmetric box yields the same φ twice
-                phis_new = Float64[]
-                for b in eachindex(lo)
-                    phi_vertex = mod((lo[b] + hi[b]) / 2, Float64(π))
-                    any(p -> abs(p - phi_vertex) < ANGLE_DEDUPE_TOL, phis_new) && continue
-                    any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
-                        continue
-                    push!(phis_new, phi_vertex)
-                end
-                if !isempty(phis_new)
-                    curvature_new = eval_angles(phis_new, prog)
-                    append!(
-                        entries,
-                        [
-                            (
-                                phi = phis_new[i],
-                                K = curvature_new[i][1],
-                                g = curvature_new[i][2],
-                            )
-                            for i in eachindex(phis_new)
-                        ],
-                    )
-                    sort!(entries, by = e -> e.phi)
-                end
-                logline(
-                    log_io,
-                    @sprintf(
-                        "        corner bisection: %d crossover(s) located, %d exact corner vertex(es) inserted (%d iterations)",
-                        length(lo), length(phis_new), cfg.corner_bisect_iters)
-                )
-            end
-
-            # Box-corner vertices: where two walls are simultaneously active,
-            # consecutive samples sit on different walls and their chord cuts
-            # the box corner. The corner direction is known analytically; if
-            # the ray through a finite box corner is capped there, the true
-            # boundary passes through that exact corner — insert it (one K
-            # evaluation per finite corner, at most four).
-            corner_alphas = [
-                atan(cy, cx) for cx in (box[1], box[2]), cy in (box[3], box[4])
-                if isfinite(cx) && isfinite(cy)
-            ]
-            if !isempty(corner_alphas)
-                curvature_corner = eval_angles(mod.(corner_alphas, π), prog)
-                corner_new = Tuple{Float64,Float64,Float64}[]
-                for k in eachindex(corner_alphas)
-                    capped_at(corner_alphas[k], curvature_corner[k][1]) || continue
-                    phi_vertex = mod(corner_alphas[k], Float64(π))
-                    any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
-                        continue
-                    any(t -> abs(t[1] - phi_vertex) < ANGLE_DEDUPE_TOL, corner_new) &&
-                        continue
-                    push!(
-                        corner_new,
-                        (phi_vertex, curvature_corner[k][1], curvature_corner[k][2]),
-                    )
-                end
-                if !isempty(corner_new)
-                    append!(entries, [(phi = t[1], K = t[2], g = t[3]) for t in corner_new])
-                    sort!(entries, by = e -> e.phi)
-                    logline(
-                        log_io,
-                        @sprintf(
-                            "        box-corner vertices: %d inserted",
-                            length(corner_new)
-                        )
-                    )
-                end
-            end
+            n_brackets, n_vertices = insert_crossover_vertices!(entries, eval_angles,
+                capped_at, cfg.corner_bisect_iters)
+            n_brackets > 0 && logline(
+                log_io,
+                @sprintf(
+                    "        corner bisection: %d crossover(s) located, %d exact corner vertex(es) inserted (%d iterations)",
+                    n_brackets, n_vertices, cfg.corner_bisect_iters)
+            )
+            n_corners = insert_box_corner_vertices!(entries, eval_angles, capped_at, box)
+            n_corners > 0 && logline(
+                log_io,
+                @sprintf("        box-corner vertices: %d inserted", n_corners)
+            )
         end
         finish!(prog)
 
-        # Mirror to the full circle: K and g are exactly even in the direction,
-        # so r_math is mirrored bitwise; r_box is re-evaluated with the exactly
-        # negated direction components (the prior box need not be symmetric).
-        half = length(entries)
-        angle = Vector{Float64}(undef, 2half)
-        K_raw = similar(angle)
-        g_uu_values = similar(angle)
-        r_math = similar(angle)
-        r_box_values = similar(angle)
-        r_cap = similar(angle)
-        dir_cos = similar(angle)
-        dir_sin = similar(angle)
-        prior_lim = falses(2half)
-        degen = falses(2half)
-        for (i, e) in enumerate(entries), half_idx in (0, 1)
-            k = i + half_idx * half
-            c, s = cos(e.phi), sin(e.phi)
-            half_idx == 1 && ((c, s) = (-c, -s))
-            angle[k] = e.phi + half_idx * π
-            dir_cos[k] = c
-            dir_sin[k] = s
-            K_raw[k] = e.K
-            g_uu_values[k] = e.g
-            r_math[k] = r_math_of(e.K)
-            r_box_values[k] = ray_box_crossing(c, s, box...)
-            r_cap[k] = min(r_math[k], r_box_values[k])
-            prior_lim[k] = isfinite(r_box_values[k]) && r_math[k] >= r_box_values[k]
-            degen[k] = e.g < cfg.g_uu_degenerate
-        end
-
+        polar = mirror_to_full_circle(entries, box, r_math_of, cfg.g_uu_degenerate)
+        r_cap = polar.r_cap
         if any(!isfinite, r_cap)
             r_cap_max = maximum(filter(isfinite, r_cap); init = 1.0)
             polygon_cap = cfg.unbounded_cap_factor * r_cap_max
@@ -771,10 +705,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             r_cap[.!isfinite.(r_cap)] .= polygon_cap
         end
 
-        X = r_cap .* dir_cos
-        Y = r_cap .* dir_sin
-        prior_frac = count(prior_lim) / length(prior_lim)
-        degen_frac = count(degen) / length(degen)
+        prior_frac = count(polar.prior_limited) / length(polar.prior_limited)
+        degen_frac = count(polar.degenerate) / length(polar.degenerate)
         logline(
             log_io,
             @sprintf("        prior-limited directions : %.1f%%", 100prior_frac)
@@ -795,26 +727,10 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         end
 
         if cfg.monitoring_enabled && progress_enabled()
-            println(stdout, map_diagnostic_panel(angle, r_cap, prior_frac))
+            println(stdout, map_diagnostic_panel(polar.angle, r_cap, prior_frac))
         end
 
-        df_map = DataFrame(Angle = angle, X_Bound = X, Y_Bound = Y,
-            Dir_Cos = dir_cos, Dir_Sin = dir_sin,
-            R_Capped = r_cap, R_Math = r_math, R_Box = r_box_values,
-            Prior_Limited = collect(prior_lim), Degenerate = collect(degen),
-            K_Raw = K_raw, G_uu = g_uu_values)
-        CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
-
-        try
-            fig = zone_figure(X, Y, collect(prior_lim);
-                px = px, py = py, box = box,
-                prior_frac = prior_frac, degenerate_frac = degen_frac,
-                x_math = r_math .* dir_cos, y_math = r_math .* dir_sin)
-            save_figure(fig, joinpath(out_dir, "confusion_zone"))
-        catch err
-            @warn "Map '$name': figure generation failed; numerical results are saved." exception =
-                (err, catch_backtrace())
-        end
+        persist_map_results(out_dir, map_spec, box, polar, prior_frac, degen_frac)
 
         elapsed = format_time(time() - t0)
         logline(log_io, "  [done] map '$name' completed in $elapsed")
@@ -823,6 +739,238 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
               "(prior-limited $(round(100prior_frac, digits = 1))%)."
     finally
         close(log_io)
+    end
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Adaptive angular refinement of the half-circle `entries` (NamedTuples
+`(phi, K, g)`): up to `cfg.max_refine_levels` passes insert the midpoint
+direction wherever the capped radius `r_cap_of` of cyclically consecutive
+directions jumps by more than `cfg.neighbor_ratio_tol`; each pass
+evaluates all midpoints as one batch through `eval_angles`. Leaves
+`entries` sorted by angle and returns the number of directions added.
+"""
+function refine_directions!(entries::Vector, eval_angles, r_cap_of,
+    cfg::PipelineSettings)
+    added = 0
+    for _ in 1:cfg.max_refine_levels
+        sort!(entries, by = e -> e.phi)
+        rcaps = [r_cap_of(e) for e in entries]
+        mids = Float64[]
+        for i in 1:length(entries)
+            j = mod1(i + 1, length(entries))
+            gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
+            r1, r2 = rcaps[i], rcaps[j]
+            (isfinite(r1) && isfinite(r2)) || continue
+            ratio = max(r1, r2) / max(min(r1, r2), K_UNDERFLOW)
+            ratio > cfg.neighbor_ratio_tol && push!(mids, entries[i].phi + gap / 2)
+        end
+        isempty(mids) && break
+        curvature_new = eval_angles(mids)
+        append!(
+            entries,
+            [
+                (phi = mids[i], K = curvature_new[i][1], g = curvature_new[i][2])
+                for i in 1:length(mids)
+            ],
+        )
+        added += length(mids)
+    end
+    sort!(entries, by = e -> e.phi)
+    return added
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Exact corner vertices at capping crossovers. The boundary polygon chords
+over the direction where the mathematical contour pierces a prior wall
+(`r_math = r_box`), chamfering the zone's corners — and the neighbor-ratio
+refinement cannot see it, because the capped radius saturates at `r_box`
+on the wall side. Scans the full circle (the box need not be
+mirror-symmetric), brackets every capped/uncapped transition between
+consecutive directions, bisects each bracket on the capping predicate
+`capped_at(alpha, K)` for `iters` iterations (robust to `r_math = Inf` on
+degenerate directions, where a sign-based bisection would hit `Inf - Inf`;
+all active brackets are evaluated as one batch per iteration), folds the
+vertices onto the half-circle, dedupes them and appends them to `entries`
+(kept sorted). Returns `(n_brackets, n_inserted)`.
+"""
+function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, iters::Int)
+    n_entries = length(entries)
+    alphas = vcat([e.phi for e in entries], [e.phi + π for e in entries])
+    K_full_circle = vcat([e.K for e in entries], [e.K for e in entries]) # K is even
+    caps = [capped_at(alphas[k], K_full_circle[k]) for k in 1:(2n_entries)]
+    lo = Float64[]
+    hi = Float64[]
+    lo_capped = Bool[]
+    for k in 1:(2n_entries)
+        j = mod1(k + 1, 2n_entries)
+        caps[k] == caps[j] && continue
+        push!(lo, alphas[k])
+        push!(hi, alphas[j] + (j == 1 ? 2π : 0.0))
+        push!(lo_capped, caps[k])
+    end
+    isempty(lo) && return (0, 0)
+    for _ in 1:iters
+        mids = (lo .+ hi) ./ 2
+        curvature_mid = eval_angles(mod.(mids, π)) # K is even
+        for b in eachindex(mids)
+            if capped_at(mids[b], curvature_mid[b][1]) == lo_capped[b]
+                lo[b] = mids[b]
+            else
+                hi[b] = mids[b]
+            end
+        end
+    end
+    # fold onto the half-circle (the mirror adds the antipode);
+    # dedupe — a mirror-symmetric box yields the same φ twice
+    phis_new = Float64[]
+    for b in eachindex(lo)
+        phi_vertex = mod((lo[b] + hi[b]) / 2, Float64(π))
+        any(p -> abs(p - phi_vertex) < ANGLE_DEDUPE_TOL, phis_new) && continue
+        any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+            continue
+        push!(phis_new, phi_vertex)
+    end
+    if !isempty(phis_new)
+        curvature_new = eval_angles(phis_new)
+        append!(
+            entries,
+            [
+                (
+                    phi = phis_new[i],
+                    K = curvature_new[i][1],
+                    g = curvature_new[i][2],
+                )
+                for i in eachindex(phis_new)
+            ],
+        )
+        sort!(entries, by = e -> e.phi)
+    end
+    return (length(lo), length(phis_new))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Box-corner vertices: where two walls are simultaneously active,
+consecutive samples sit on different walls and their chord cuts the box
+corner. The corner direction is known analytically; if the ray through a
+finite box corner is capped there (`capped_at`), the true boundary passes
+through that exact corner — it is inserted into `entries` (one K
+evaluation per finite corner, at most four; kept sorted). Returns the
+number of corners inserted.
+"""
+function insert_box_corner_vertices!(entries::Vector, eval_angles, capped_at,
+    box::NTuple{4,Float64})
+    corner_alphas = [
+        atan(cy, cx) for cx in (box[1], box[2]), cy in (box[3], box[4])
+        if isfinite(cx) && isfinite(cy)
+    ]
+    isempty(corner_alphas) && return 0
+    curvature_corner = eval_angles(mod.(corner_alphas, π))
+    corner_new = Tuple{Float64,Float64,Float64}[]
+    for k in eachindex(corner_alphas)
+        capped_at(corner_alphas[k], curvature_corner[k][1]) || continue
+        phi_vertex = mod(corner_alphas[k], Float64(π))
+        any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+            continue
+        any(t -> abs(t[1] - phi_vertex) < ANGLE_DEDUPE_TOL, corner_new) &&
+            continue
+        push!(
+            corner_new,
+            (phi_vertex, curvature_corner[k][1], curvature_corner[k][2]),
+        )
+    end
+    if !isempty(corner_new)
+        append!(entries, [(phi = t[1], K = t[2], g = t[3]) for t in corner_new])
+        sort!(entries, by = e -> e.phi)
+    end
+    return length(corner_new)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Mirror the half-circle `entries` to the full circle and cap every
+direction at the prior box: K and g are exactly even in the direction, so
+`r_math` is mirrored bitwise, while `r_box` is re-evaluated with the
+exactly negated direction components (the prior box need not be
+symmetric). Directions with `g < g_uu_degenerate` are flagged degenerate.
+Returns the per-direction polar table as a NamedTuple of vectors
+(`angle`, `K_raw`, `g_uu`, `r_math`, `r_box`, `r_cap`, `dir_cos`,
+`dir_sin`, `prior_limited`, `degenerate`).
+"""
+function mirror_to_full_circle(entries::Vector, box::NTuple{4,Float64}, r_math_of,
+    g_uu_degenerate::Real)
+    half = length(entries)
+    angle = Vector{Float64}(undef, 2half)
+    K_raw = similar(angle)
+    g_uu = similar(angle)
+    r_math = similar(angle)
+    r_box = similar(angle)
+    r_cap = similar(angle)
+    dir_cos = similar(angle)
+    dir_sin = similar(angle)
+    prior_limited = falses(2half)
+    degenerate = falses(2half)
+    for (i, e) in enumerate(entries), half_idx in (0, 1)
+        k = i + half_idx * half
+        c, s = cos(e.phi), sin(e.phi)
+        half_idx == 1 && ((c, s) = (-c, -s))
+        angle[k] = e.phi + half_idx * π
+        dir_cos[k] = c
+        dir_sin[k] = s
+        K_raw[k] = e.K
+        g_uu[k] = e.g
+        r_math[k] = r_math_of(e.K)
+        r_box[k] = ray_box_crossing(c, s, box...)
+        r_cap[k] = min(r_math[k], r_box[k])
+        prior_limited[k] = isfinite(r_box[k]) && r_math[k] >= r_box[k]
+        degenerate[k] = e.g < g_uu_degenerate
+    end
+    return (; angle, K_raw, g_uu, r_math, r_box, r_cap, dir_cos, dir_sin, prior_limited,
+        degenerate)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Persist a completed map into `out_dir`: the contour table
+(`confusion_contour.csv`) from the capped polar table `polar`
+([`mirror_to_full_circle`](@ref), unbounded directions already capped for
+the polygon) and the zone figure (a figure failure is logged and never
+loses the numerical results).
+"""
+function persist_map_results(out_dir::AbstractString, map_spec::MapSpec,
+    box::NTuple{4,Float64}, polar, prior_frac::Real, degen_frac::Real)
+    name = map_spec.name
+    px = map_spec.param_x
+    py = map_spec.param_y
+    X = polar.r_cap .* polar.dir_cos
+    Y = polar.r_cap .* polar.dir_sin
+    df_map = DataFrame(Angle = polar.angle, X_Bound = X, Y_Bound = Y,
+        Dir_Cos = polar.dir_cos, Dir_Sin = polar.dir_sin,
+        R_Capped = polar.r_cap, R_Math = polar.r_math, R_Box = polar.r_box,
+        Prior_Limited = collect(polar.prior_limited),
+        Degenerate = collect(polar.degenerate),
+        K_Raw = polar.K_raw, G_uu = polar.g_uu)
+    CSV.write(backup_existing!(joinpath(out_dir, "confusion_contour.csv")), df_map)
+
+    try
+        fig = zone_figure(X, Y, collect(polar.prior_limited);
+            px = px, py = py, box = box,
+            prior_frac = prior_frac, degenerate_frac = degen_frac,
+            x_math = polar.r_math .* polar.dir_cos,
+            y_math = polar.r_math .* polar.dir_sin)
+        save_figure(fig, joinpath(out_dir, "confusion_zone"))
+    catch err
+        @warn "Map '$name': figure generation failed; numerical results are saved." exception =
+            (err, catch_backtrace())
     end
     return nothing
 end
