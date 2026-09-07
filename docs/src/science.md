@@ -4,46 +4,49 @@ This document serves as the theoretical and architectural companion for the `Cur
 
 ## 1. Theoretical Background: The Geometry of Source Confusion
 
-When observing a data stream containing two distinct, closely overlapping gravitational wave (GW) signals (a "two-source" hypothesis) with a small parameter separation $\delta$, standard analysis pipelines often attempt to fit them using a single-source model. 
+When observing a data stream containing two distinct, closely overlapping gravitational wave (GW) signals (a "two-source" hypothesis) with a small parameter separation ``\delta``, standard analysis pipelines often attempt to fit them using a single-source model. 
 
-Standard Fisher Information Matrix (linear) approximations suggest that the residual power—the squared distance $D^2$ between the true two-source data and the best-fit single-source manifold—should scale quadratically ($\delta^2$).
+Standard Fisher Information Matrix (linear) approximations suggest that the residual power—the squared distance ``D^2`` between the true two-source data and the best-fit single-source manifold—should scale quadratically (``\delta^2``).
 
-However, the mathematical backbone of this project demonstrates a non-linear geometric reality: the manifold of single-source waveforms $\mathcal{M}_1$ is "flexible." Because an optimizer is allowed to adjust the single source's parameters to fit the data, it perfectly absorbs the linear ($\mathcal{O}(\delta)$) and quadratic ($\mathcal{O}(\delta^2)$) differences (assuming equal amplitudes).
+However, the mathematical backbone of this project demonstrates a non-linear geometric reality: the manifold of single-source waveforms ``\mathcal{M}_1`` is "flexible." Because an optimizer is allowed to adjust the single source's parameters to fit the data, it perfectly absorbs the linear (``\mathcal{O}(\delta)``) and quadratic (``\mathcal{O}(\delta^2)``) differences (assuming equal amplitudes).
 
-The unabsorbable residual lies strictly in the normal space orthogonal to the tangent space of the signal manifold. The magnitude of this orthogonal projection is governed by the **Extrinsic Curvature** $K(u)$ of the manifold in the direction of the parameter separation $u$. 
+The unabsorbable residual lies strictly in the normal space orthogonal to the tangent space of the signal manifold. The magnitude of this orthogonal projection is governed by the **Extrinsic Curvature** ``K(u)`` of the manifold in the direction of the parameter separation ``u``. 
 
-Therefore, the distance $D^2$ scales **quartically**:
-$$ D^2 \approx \frac{1}{16} K(u) \delta^4 $$
+Therefore, the distance ``D^2`` scales **quartically**:
+```math
+D^2 \approx \frac{1}{16} K(u) \delta^4
+```
+*(Note: The amplitude ``A^2`` is absorbed natively into the inner product of ``K(u)`` in this pipeline).*
 
-*(Note: The amplitude $A^2$ is absorbed natively into the inner product of $K(u)$ in this pipeline).*
+## 2. The Discernibility Limit (``\delta_{\mathrm{min}}``)
 
-## 2. The Discernibility Limit ($\delta_{\mathrm{min}}$)
+To operationalize this geometry, we define a threshold residual Signal-to-Noise Ratio (SNR), ``\rho_{\mathrm{threshold}}``. For the two sources to be successfully distinguished from a single source by a Bayesian pipeline (e.g., via a Bayes Factor ``\ln \mathcal{B} \gg 1``), the leftover residual energy must exceed this threshold:
 
-To operationalize this geometry, we define a threshold residual Signal-to-Noise Ratio (SNR), $\rho_{\mathrm{threshold}}$. For the two sources to be successfully distinguished from a single source by a Bayesian pipeline (e.g., via a Bayes Factor $\ln \mathcal{B} \gg 1$), the leftover residual energy must exceed this threshold:
-
-$$ D^2 \ge \rho_{\mathrm{threshold}}^2 $$
-
+```math
+D^2 \ge \rho_{\mathrm{threshold}}^2
+```
 Substituting the geometric scaling law, we can analytically solve for the absolute mathematical limit of discernibility (the "Zone of Confusion" boundary):
 
-$$ \delta_{\mathrm{min}}(u) = \left( \frac{16 \cdot \rho_{\mathrm{threshold}}^2}{K(u)} \right)^{1/4} $$
-
-Because of the $1/4$ exponent, increasing a detector's sensitivity (lowering $\rho_{\mathrm{threshold}}$) yields heavily diminishing returns for resolving overlapping sources.
+```math
+\delta_{\mathrm{min}}(u) = \left( \frac{16 \cdot \rho_{\mathrm{threshold}}^2}{K(u)} \right)^{1/4}
+```
+Because of the ``1/4`` exponent, increasing a detector's sensitivity (lowering ``\rho_{\mathrm{threshold}}``) yields heavily diminishing returns for resolving overlapping sources.
 
 ## 3. Physical Model: High-Fidelity Physics Engine
 
 The pipeline implements a highly complex, 6-parameter Frequency-Domain inspiral model to accurately test the geometry.
 
 **The State Vector (`theta`):**
-1.  Amplitude ($A$)
-2.  Chirp Mass ($\mathcal{M}$)
-3.  Time of Coalescence ($t_c$)
-4.  Phase ($\phi_c$)
-5.  Primary Spin ($\chi_1$)
-6.  Secondary Spin ($\chi_2$)
+1.  Amplitude (``A``)
+2.  Chirp Mass (``\mathcal{M}``)
+3.  Time of Coalescence (``t_c``)
+4.  Phase (``\phi_c``)
+5.  Primary Spin (``\chi_1``)
+6.  Secondary Spin (``\chi_2``)
 
 **Key Physical Features:**
-*   **Spin-Orbit Coupling:** The phase evolution includes the leading-order 1.5PN spin-orbit coupling term, governed by the effective spin $\chi_{\mathrm{eff}}$. Modifying spins causes the sources to de-phase over time, radically twisting the Extrinsic Curvature of the manifold.
-*   **Higher-Order Harmonics (HM):** The model breaks standard degeneracies by injecting a sub-dominant $l=3, m=3$ harmonic. The $33$-mode evolves phase 1.5x faster than the dominant $22$-mode. This frequency asymmetry is physically crucial for breaking mass-time degeneracies.
+*   **Spin-Orbit Coupling:** The phase evolution includes the leading-order 1.5PN spin-orbit coupling term, governed by the effective spin ``\chi_{\mathrm{eff}}``. Modifying spins causes the sources to de-phase over time, radically twisting the Extrinsic Curvature of the manifold.
+*   **Higher-Order Harmonics (HM):** The model breaks standard degeneracies by injecting a sub-dominant ``l=3, m=3`` harmonic. The ``33``-mode evolves phase 1.5x faster than the dominant ``22``-mode. This frequency asymmetry is physically crucial for breaking mass-time degeneracies.
 
 ## 4. Detector Dynamics: Time Delay Interferometry (TDI)
 
@@ -51,10 +54,10 @@ The pipeline implements a highly complex, 6-parameter Frequency-Domain inspiral 
 
 ## 5. Physical Bounds and the Capped Zone of Confusion
 
-The local differential geometry is blind to global parameter bounds, and along quasi-degenerate directions the mathematical boundary legitimately diverges: the waveform depends on the spins only through $\chi_{\mathrm{eff}} = (\chi_1+\chi_2)/2$ (exactly, at equal mass), so along the anti-symmetric combination $\chi_a$ the manifold is flat and $\delta_{\mathrm{min}} \to \infty$. Physically, however, $|\chi| \le 1$, amplitudes/masses/times are non-negative, and phase deviations live on $[-\pi, \pi]$.
+The local differential geometry is blind to global parameter bounds, and along quasi-degenerate directions the mathematical boundary legitimately diverges: the waveform depends on the spins only through ``\chi_{\mathrm{eff}} = (\chi_1+\chi_2)/2`` (exactly, at equal mass), so along the anti-symmetric combination ``\chi_a`` the manifold is flat and ``\delta_{\mathrm{min}} \to \infty``. Physically, however, ``|\chi| \le 1``, amplitudes/masses/times are non-negative, and phase deviations live on ``[-\pi, \pi]``.
 
-The pipeline therefore computes, per direction $\varphi$, both the mathematical radius $r_{\mathrm{math}} = (16\rho^2/K_{\mathrm{raw}})^{1/4}$ and the distance to the physical prior box $r_{\mathrm{box}}$, and publishes the **capped** boundary $\min(r_{\mathrm{math}}, r_{\mathrm{box}})$ — the exact intersection of the mathematical zone with the prior. Directions where the prior takes over are flagged (`Prior_Limited`) and drawn distinctly in the figures. Both radii are persisted, so the raw mathematical zone remains fully recoverable from the data.
+The pipeline therefore computes, per direction ``\varphi``, both the mathematical radius ``r_{\mathrm{math}} = (16\rho^2/K_{\mathrm{raw}})^{1/4}`` and the distance to the physical prior box ``r_{\mathrm{box}}``, and publishes the **capped** boundary ``\min(r_{\mathrm{math}}, r_{\mathrm{box}})`` — the exact intersection of the mathematical zone with the prior. Directions where the prior takes over are flagged (`Prior_Limited`) and drawn distinctly in the figures. Both radii are persisted, so the raw mathematical zone remains fully recoverable from the data.
 
 ## 6. Computational Architecture (Software Engineering)
 
-Resolving distances down to $D^2 \sim 10^{-20}$ without precision loss rests on four pillars: $\mathcal{O}(1)$-rescaled parameters, fused nested-dual automatic differentiation, mirrored and adaptively refined angular mapping with exact corner vertices, and box-constrained interior-point Newton optimization inside the physical priors. The implementation is documented in [Architecture](architecture.md).
+Resolving distances down to ``D^2 \sim 10^{-20}`` without precision loss rests on four pillars: ``\mathcal{O}(1)``-rescaled parameters, fused nested-dual automatic differentiation, mirrored and adaptively refined angular mapping with exact corner vertices, and box-constrained interior-point Newton optimization inside the physical priors. The implementation is documented in [Architecture](architecture.md).
