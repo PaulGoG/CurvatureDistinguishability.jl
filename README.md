@@ -25,7 +25,8 @@ CurvatureDistinguishability/
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: portable GPU (gpu_backend = "auto")
-│   └── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
+│   ├── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
+│   └── hosts/              # per-hardware execution overlays on the production base
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
@@ -87,8 +88,12 @@ limit) are thin overlays on `configs/production_cpu.toml`: each declares
 `base_config = "production_cpu.toml"` and only the `[hardware]` keys that
 differ, so the physics is shared by construction. The pipeline merges base
 and overlay at load (sub-tables recurse; scalars and `[[sweeps]]`/`[[maps]]`
-lists in the overlay replace), hashes the merged configuration into the
-run ID and snapshots the merged file into the run directory. GPU runs are
+lists in the overlay replace) and snapshots the merged file into the run
+directory. The run ID hashes only what a run computes — every section
+except `[hardware]`, `[safety]` and `[monitoring]` — so one physical case
+has one identifier on every machine and reruns land in suffixed sibling
+directories with backend, host and timings in `metadata.toml`;
+`configs/hosts/` holds execution-only overlays per hardware model. GPU runs are
 pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,

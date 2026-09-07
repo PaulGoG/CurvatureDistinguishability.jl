@@ -1,16 +1,13 @@
 name: CI
+# Private-repository phase: manual dispatch only and a single Linux leg, so
+# no billed minutes are spent on pushes. At the public release restore the
+# push/pull_request/tag triggers, the macOS and Windows legs and the
+# pre-release Linux leg (see docs/src/roadmap.md, release checklist).
 on:
-  push:
-    branches:
-      - main
-    tags: ['*']
-  pull_request:
   workflow_dispatch:
 concurrency:
-  # Skip intermediate builds: always.
-  # Cancel intermediate builds: only if it is a pull request build.
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+  cancel-in-progress: false
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
@@ -22,13 +19,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # '1' = current stable across the three OSes; pre-release on Linux
-        # only. The Julia floor is the declared [compat] julia = "1.12".
+        # '1' = current stable; the Julia floor is the declared [compat]
+        # julia = "1.12"
         version: ['1']
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - version: 'pre'
-            os: ubuntu-latest
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
@@ -38,13 +32,9 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:
-          # coverage instrumentation slows the suite substantially; harvest
-          # happens on the Ubuntu/stable leg only, so only that leg pays
-          coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '1' }}
+          coverage: true
       - uses: julia-actions/julia-processcoverage@v1
-        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
       - uses: codecov/codecov-action@v5
-        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}

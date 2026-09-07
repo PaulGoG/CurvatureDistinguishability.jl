@@ -72,11 +72,14 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   actually installed, with loud diagnostics.
 - **`Provenance.jl`** — the effective configuration (an overlay deep-merged
   onto its `base_config`: sub-tables recurse, scalars and `[[sweeps]]`/
-  `[[maps]]` lists replace, one level only), run IDs from the SHA-256 of its
-  canonical serialization (reruns of identical physical/numerical content
-  are recognizable; comments, formatting, the base/overlay split and the
-  wall clock never affect identity), config snapshots into the run
-  directory (the merged table for overlays),
+  `[[maps]]` lists replace, one level only), run IDs from the SHA-256 of the
+  canonical serialization of its identity table — every section except the
+  execution sections `[hardware]`, `[safety]` and `[monitoring]` — so the
+  same physical case with the same numerical method has one identifier on
+  every machine (reruns land in suffixed sibling directories; comments,
+  formatting, execution settings, the base/overlay split and the wall clock
+  never affect identity), config snapshots into the run directory (the
+  merged table for overlays),
   `metadata.toml` (git state via DrWatson, Julia version, backend, threads,
   timings), and `safesave`-semantics backups for all output formats.
 - **`Plotting.jl`** — CairoMakie figures under one publication theme

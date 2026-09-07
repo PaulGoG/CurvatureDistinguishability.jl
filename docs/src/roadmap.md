@@ -135,3 +135,20 @@ cross-check available today, `Fminbox(NelderMead())` from Optim.jl (already
 in the dependency tree). Wire either through the existing
 `[pipeline].optimizer` validation and the `calculate_numerical_distance`
 dispatch; expect and document a raised floor in the scaling figures.
+
+## 6. Public-release checklist (repository is private until then)
+
+Deferred deliberately while Actions minutes are billed and the manuscript
+is under revision; every item is mechanical.
+
+- CI: restore the `push`/`pull_request`/tag triggers and the macOS,
+  Windows and pre-release Linux legs removed from `.github/workflows/CI.yml`
+  for the private phase.
+- Dependency automation: CompatHelper (weekly `[compat]` bumps) and
+  TagBot (release tags) workflows; the Dependabot GitHub-Actions ecosystem
+  stays.
+- Documentation: `deploydocs` to GitHub Pages with `prettyurls` restored
+  to the CI-conditional form in `docs/make.jl`.
+- Citation: DOI (Zenodo archive of the tagged release) in `CITATION.cff`
+  and the README.
+- Registration in the General registry after the v1.0.0 tag.

@@ -18,11 +18,18 @@ relative to the overlay) followed by only the `[hardware]` keys that
 differ. At load the overlay is deep-merged onto its base (sub-tables
 recurse; scalars, arrays and `[[sweeps]]`/`[[maps]]` lists present in the
 overlay replace the base's; one overlay level only), the merged table is
-validated and hashed into the run ID, and the run directory receives the
-merged, self-contained `config.toml`; `metadata.toml` records
-`config_file` and `base_config`. Any configuration may use the mechanism —
-for instance a per-host `[hardware]`/`[safety]` overlay on the production
-base.
+validated, and the run directory receives the merged, self-contained
+`config.toml`; `metadata.toml` records `config_file` and `base_config`.
+
+The run identifier hashes only the *identity* of a run — every section
+except `[hardware]`, `[safety]` and `[monitoring]`, which describe how a
+run executes rather than what it computes — so one physical case carries
+one identifier on every machine; reruns land in `_r2`, `_r3`, … sibling
+directories and `metadata.toml`/`hardware.txt` record backend, host and
+timings. The per-host files under `configs/hosts/` are execution-only
+overlays on `production_cpu.toml` (backend, thread count, memory budgets,
+Hessian chunking) named by hardware model; they carry no host-specific
+identifiers.
 
 ## 1. Global Simulation Grid
 

@@ -528,7 +528,8 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
             # all shipped configurations must validate as-is (production
             # variants carry the full 7-sweep campaign; quickstart carries 2)
-            for shipped in readdir(joinpath(dirname(@__DIR__), "configs"))
+            for shipped in filter(f -> endswith(f, ".toml"),
+                readdir(joinpath(dirname(@__DIR__), "configs")))
                 cfg_ship = load_and_validate_config(
                     joinpath(dirname(@__DIR__), "configs", shipped))
                 if startswith(shipped, "production")
@@ -682,7 +683,31 @@ u_dir = [0, 0, 1, 0, 0, 0]
             @test eff["grid"]["T_obs"] == 1.0e5
             # identity: an overlay hashes exactly like the equivalent monolithic file
             @test run_id_from_config(overlay) == run_id_from_config(mono)
-            @test run_id_from_config(overlay) != run_id_from_config(base)
+            @test run_id_from_config(overlay) != run_id_from_config(base) # sweeps differ
+            # execution sections never enter the identity: the same physical
+            # case on another machine (threads, backend, budgets, monitoring)
+            # keeps its run identifier
+            exec_variant = joinpath(dir, "exec_variant.toml")
+            write(exec_variant, read(mono, String) * """
+[safety]
+max_ram_gb = 200.0
+max_vram_gb = 48.0
+[monitoring]
+enabled = true
+""")
+            @test run_id_from_config(exec_variant) == run_id_from_config(mono)
+            hw_variant = joinpath(dir, "hw_variant.toml")
+            write(
+                hw_variant,
+                replace(read(mono, String), "max_threads = 4" => "max_threads = 64",
+                    "gpu_backend = \"auto\"" => "gpu_backend = \"none\""),
+            )
+            @test run_id_from_config(hw_variant) == run_id_from_config(mono)
+            @test !any(
+                haskey(identity_config(effective_config(exec_variant)), s)
+                for s in ("hardware", "safety", "monitoring")
+            )
+            @test haskey(identity_config(effective_config(exec_variant)), "grid")
             cfg = load_and_validate_config(overlay)
             @test cfg.gpu_backend === :auto && cfg.max_threads == 4 &&
                   cfg.hessian_chunk == 3
@@ -718,8 +743,23 @@ u_dir = [0, 0, 1, 0, 0, 0]
             @test collect(keys(raw)) ⊆ ["base_config", "hardware"]
             eff = effective_config(joinpath(configs, overlay))
             @test eff["sweeps"] == TOML.parsefile(joinpath(configs, base))["sweeps"]
-            @test run_id_from_config(joinpath(configs, overlay)) !=
+            # same physics, other execution settings: same run identifier
+            @test run_id_from_config(joinpath(configs, overlay)) ==
                   run_id_from_config(joinpath(configs, base))
+        end
+        # per-host overlays: thin execution-only files on the production base,
+        # each a complete, validating configuration with the base's identity
+        hosts = joinpath(configs, "hosts")
+        host_files = filter(f -> endswith(f, ".toml"), readdir(hosts))
+        @test !isempty(host_files)
+        production_id = run_id_from_config(joinpath(configs, "production_cpu.toml"))
+        for host in host_files
+            raw = TOML.parsefile(joinpath(hosts, host))
+            @test raw["base_config"] == "../production_cpu.toml"
+            @test collect(keys(raw)) ⊆ ["base_config", "hardware", "safety"]
+            cfg_host = load_and_validate_config(joinpath(hosts, host))
+            @test length(cfg_host.sweeps) == 7 && length(cfg_host.maps) == 7
+            @test run_id_from_config(joinpath(hosts, host)) == production_id
         end
     end
 

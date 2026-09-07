@@ -11,12 +11,20 @@ using DrWatson: gitdescribe
 using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 
-export run_id_from_config, effective_config,
+export run_id_from_config, effective_config, identity_config,
     unique_run_dir, snapshot_config, backup_existing!,
     write_run_metadata, write_hardware_fingerprint, git_state
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
+
+"""
+Configuration sections that describe how a run executes rather than what it
+computes: backend and concurrency (`[hardware]`), memory budgets
+(`[safety]`) and diagnostics (`[monitoring]`). They are excluded from the
+run identifier and recorded in `metadata.toml` and `hardware.txt` instead.
+"""
+const EXECUTION_SECTIONS = ("hardware", "safety", "monitoring")
 
 """
 $(TYPEDSIGNATURES)
@@ -50,6 +58,22 @@ function effective_config(config_path::AbstractString)
 end
 
 """
+$(TYPEDSIGNATURES)
+
+The part of a parsed configuration that defines the computed problem: every
+section except the [`EXECUTION_SECTIONS`](@ref). Two runs with equal identity
+tables compute the same physical case with the same numerical method,
+whatever hardware executes them.
+"""
+function identity_config(config::AbstractDict)
+    identity = Dict{String,Any}(config)
+    for section in EXECUTION_SECTIONS
+        delete!(identity, section)
+    end
+    return identity
+end
+
+"""
 Deep merge of `overlay` into `base`: sub-tables recurse; scalars, arrays and
 arrays of tables in the overlay replace the base value. Neither input is
 modified.
@@ -68,14 +92,18 @@ end
 $(TYPEDSIGNATURES)
 
 Deterministic run identifier: the first 8 hex characters of the SHA-256 of
-the canonically serialized *effective* configuration
-([`effective_config`](@ref): keys sorted, values only — never the wall
-clock), so identical physical/numerical content maps to identical IDs and
-reruns are recognizable. Comments, formatting and the split between a base
-file and its overlay do not affect a run's identity.
+the canonically serialized identity table of the effective configuration
+([`effective_config`](@ref) with the [`EXECUTION_SECTIONS`](@ref) removed by
+[`identity_config`](@ref); keys sorted, values only — never the wall
+clock). Identical physical/numerical content therefore maps to identical
+IDs whatever hardware executes it; reruns on other machines land in
+suffixed sibling directories whose `metadata.toml` records backend, host
+and timings. Comments, formatting, execution settings and the split
+between a base file and its overlay do not affect a run's identity.
 """
 function run_id_from_config(config_path::AbstractString)
-    canonical = sprint(io -> TOML.print(io, effective_config(config_path); sorted = true))
+    identity = identity_config(effective_config(config_path))
+    canonical = sprint(io -> TOML.print(io, identity; sorted = true))
     return "run_" * first(bytes2hex(sha256(canonical)), 8)
 end
 

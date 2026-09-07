@@ -1,0 +1,9 @@
+# Execution overlay of the CPU reference campaign (../production_cpu.toml,
+# merged in as base_config) for a 12-thread i7-10750H host on the CPU backend.
+# Identity-neutral: only [hardware] differs, so the run identifier is the
+# production campaign's.
+base_config = "../production_cpu.toml"
+
+[hardware]
+gpu_backend = "none"
+max_threads = 12

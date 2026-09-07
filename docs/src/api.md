@@ -117,6 +117,8 @@ CurvatureDistinguishability.Config.settings_from_config
 ```@docs
 CurvatureDistinguishability.Provenance.run_id_from_config
 CurvatureDistinguishability.Provenance.effective_config
+CurvatureDistinguishability.Provenance.identity_config
+CurvatureDistinguishability.Provenance.EXECUTION_SECTIONS
 CurvatureDistinguishability.Provenance.unique_run_dir
 CurvatureDistinguishability.Provenance.snapshot_config
 CurvatureDistinguishability.Provenance.backup_existing!
