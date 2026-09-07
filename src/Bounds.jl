@@ -6,7 +6,8 @@ module Bounds
 
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics: N_PARAMS
-export ParameterBounds, default_bounds, bounds_from_config, deviation_box,
+export ParameterBounds,
+    default_bounds, bounds_from_config, deviation_box,
     ray_box_crossing, clamp_interior
 public PARAM_KEYS, PHASE_INDEX, SPIN_INDICES
 

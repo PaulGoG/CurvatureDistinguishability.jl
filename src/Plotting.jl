@@ -14,7 +14,7 @@ using LaTeXStrings: LaTeXStrings, @L_str, latexstring
 using DataFrames: AbstractDataFrame
 using ..Bounds: PHASE_INDEX, SPIN_INDICES
 using MathTeXEngine: texfont
-using Printf: @sprintf
+using Printf: Printf, @sprintf
 using UnicodePlots: UnicodePlots
 using ..Provenance: backup_existing!
 
@@ -294,8 +294,9 @@ function coef_latex(v::Real)
     v == 0 && return "0"
     isfinite(v) || return string(v)
     e = floor(Int, log10(abs(v)))
-    m = @sprintf("%.2f", v / 10.0^e)
-    return e == 0 ? m : string(m, "\\times 10^{", e, "}")
+    # exponents −1..1 render as plain decimals keeping the two mantissa decimals
+    -1 <= e <= 1 && return Printf.format(Printf.Format("%.$(2 - e)f"), v)
+    return string(@sprintf("%.2f", v / 10.0^e), "\\times 10^{", e, "}")
 end
 
 """
@@ -313,6 +314,8 @@ function sci_tick_labels(values)
     e = floor(Int, log10(maxabs))
     return map(values) do v
         abs(v) < 1e-300 && return L"0"
+        # a common power in −1..1 is never displayed: plain decimals instead
+        -1 <= e <= 1 && return latexstring(@sprintf("%g", round(v, sigdigits = 3)))
         m = round(v / 10.0^e, sigdigits = 3)
         latexstring(@sprintf("%g", m), "\\times 10^{", e, "}")
     end
@@ -587,8 +590,8 @@ function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
         # residual entries each
         Legend(fig[0, 1],
             [[dA, bA, rA], [dE, bE, rE]],
-            [["data", "best fit", "residual"], ["data", "best fit", "residual"]],
-            ["channel A:", "channel E:"];
+            [["Data", "Best fit", "Residual"], ["Data", "Best fit", "Residual"]],
+            ["Channel A:", "Channel E:"];
             orientation = :horizontal, titleposition = :left,
             framevisible = false, tellwidth = false, tellheight = true,
             labelsize = 18, titlesize = 19, titlefont = :bold,
@@ -596,7 +599,7 @@ function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
             colgap = 10, titlegap = 8, padding = (0, 0, 4, 0))
         if noise_in_frame
             hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
-            text!(ax2, fmax, noise_level; text = "per-bin noise level",
+            text!(ax2, fmax, noise_level; text = "Per-bin noise level",
                 align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
         end
         ylims!(ax2, ylo2, yhi2)
@@ -691,13 +694,20 @@ function zone_axis_ticks!(fig, ax, axis::Symbol, param::Int, lo_d::Real, hi_d::R
     return lo, hi
 end
 
+# Okabe–Ito hues of the zone maps: curvature-limited boundary and fill, and
+# the prior-wall segments (colorblind-safe, distinct in grayscale by weight)
+const ZONE_BLUE = "#0072B2"
+const WALL_VERMILLION = "#D55E00"
+
 """
 $(TYPEDSIGNATURES)
 
 Zone-of-confusion map from the capped boundary polygon. The filled zone is
 the exact intersection of the mathematical zone with the physical prior box,
-and its boundary is drawn SOLID throughout — blue where curvature-limited,
-red where it runs along a hard physical wall (|χ|≤1, positivity, phase ±π).
+and its boundary is drawn SOLID throughout — Okabe–Ito blue where
+curvature-limited, heavier vermillion where it runs along a hard physical
+wall (|χ|≤1, positivity, phase ±π), the line weight keeping the two classes
+apart in grayscale.
 Where the prior cuts the zone off, the *uncapped mathematical* contour
 (`x_math`/`y_math`, when provided) continues past the wall as an empty
 dashed line with no fill — showing what curvature alone would allow; along
@@ -755,7 +765,7 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
         xlo, xhi = zone_axis_ticks!(fig, ax, :x, px, xlo_d, xhi_d, x_exponent)
         ylo, yhi = zone_axis_ticks!(fig, ax, :y, py, ylo_d, yhi_d, y_exponent)
 
-        poly!(ax, Point2f.(x, y); color = (:dodgerblue, 0.30), strokewidth = 0)
+        poly!(ax, Point2f.(x, y); color = (ZONE_BLUE, 0.25), strokewidth = 0)
 
         # The boundary of the filled (physical) zone is solid throughout:
         # curvature-limited runs in blue, prior-limited runs in red along the
@@ -773,13 +783,13 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
             ym = [isfinite(v) ? Float64(v) : NaN for v in y_math]
             edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
             mx, my = boundary_runs(xm, ym, edge_math, true)
-            isempty(mx) || lines!(ax, mx, my; color = (:dodgerblue4, 0.75),
+            isempty(mx) || lines!(ax, mx, my; color = (ZONE_BLUE, 0.75),
                 linewidth = 2.4, linestyle = :dash)
         end
         cx, cy = boundary_runs(x, y, edge_prior, false)
         bx, by = boundary_runs(x, y, edge_prior, true)
-        isempty(cx) || lines!(ax, cx, cy; color = :dodgerblue4, linewidth = 3.0)
-        isempty(bx) || lines!(ax, bx, by; color = :firebrick, linewidth = 3.0)
+        isempty(cx) || lines!(ax, cx, cy; color = ZONE_BLUE, linewidth = 3.0)
+        isempty(bx) || lines!(ax, bx, by; color = WALL_VERMILLION, linewidth = 4.5)
 
         xlims!(ax, xlo, xhi)
         ylims!(ax, ylo, yhi)

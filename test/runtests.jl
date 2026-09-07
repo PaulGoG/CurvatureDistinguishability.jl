@@ -1038,10 +1038,17 @@ enabled = true
         @test CD.Plotting.sci_latex(0.316) == "0.316"
         @test CD.Plotting.sci_latex(0) == "0"
 
-        # fit coefficients: ALWAYS mantissa ×10ⁿ with two decimals
+        # fit coefficients: mantissa ×10ⁿ with two decimals outside exponents −1..1
         @test CD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
         @test CD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
         @test CD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
+        @test CD.Plotting.coef_latex(14.46) == "14.5" # 2×10¹-style products fold
+        @test CD.Plotting.coef_latex(0.2346) == "0.235" # …and 10⁻¹ likewise
+        @test CD.Plotting.coef_latex(-14.46) == "-14.5"
+        # per-tick common-exponent labels never show a power in −1..1
+        plain = CD.Plotting.sci_tick_labels([-1.5, 0.0, 0.5])
+        @test plain[1].s == "\$-1.5\$" && plain[3].s == "\$0.5\$"
+        @test !any(l -> occursin("times", l.s), plain)
     end
 
     @testset "End-to-end minimal pipeline" begin
