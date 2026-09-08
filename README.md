@@ -26,6 +26,7 @@ CurvatureDistinguishability/
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: portable GPU (gpu_backend = "auto")
 │   ├── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
+│   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
 │   └── hosts/              # per-hardware execution overlays on the production base
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
@@ -51,9 +52,12 @@ CurvatureDistinguishability/
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
-│   └── fixtures/reference/ # committed golden-value regression fixtures
+│   └── fixtures/
+│       ├── generate_reference.jl  # regenerates the golden values from the current model
+│       └── reference/      # committed golden-value regression fixtures
 ├── bench/                  # BenchmarkTools scripts (own environment)
-├── docs/                   # Documenter.jl sources
+├── docs/                   # Documenter.jl sources (make.jl, src/, Literate example)
+├── CITATION.cff
 ├── data/
 │   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
 │   └── logs/               # detached-launch console logs (git-ignored)
@@ -161,8 +165,11 @@ overwritten.
   `confusion_zone.{pdf,png}` with prior-limited boundary segments (wall
   color, active wall values annotated) visually distinct from
   curvature-limited ones; the uncapped mathematical contour continues past
-  each wall as a dashed curve. K is computed on [0, π) only and mirrored (K(u) is exactly even),
-  with adaptive angular refinement near boundary spikes.
+  each wall as a dashed curve. Directions are sampled uniformly in the
+  Fisher-normalized plane (each axis in its own σ) so that strongly
+  anisotropic planes are resolved uniformly; K is computed on [0, π) only
+  and mirrored (K(u) is exactly even), with adaptive angular refinement
+  near boundary spikes.
 
 ## Status of components
 

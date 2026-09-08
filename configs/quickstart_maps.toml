@@ -1,0 +1,63 @@
+# Map verification on the quickstart grid: the seven production planes at
+# quickstart-scale base points plus two planes whose base point sits a
+# zone half-width from a spin wall (wall-segment rendering check).
+# Physical rationale: docs/src/parameters.md.
+base_config = "quickstart.toml"
+
+[pipeline]
+run_1d_sweeps = false
+run_2d_mapping = true
+
+[[maps]]
+name = "mass_vs_time_degeneracy"
+param_x = 2
+param_y = 3
+theta_0 = [3.0, 0.5, 25.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "spin1_vs_spin2_coupling"
+param_x = 5
+param_y = 6
+theta_0 = [3.0, 0.5, 25.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_spin1_twist"
+param_x = 2
+param_y = 5
+theta_0 = [3.0, 0.5, 25.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "time_vs_phase_doppler"
+param_x = 3
+param_y = 4
+theta_0 = [3.0, 0.5, 25.0, 0.0, 0.8, 0.8]
+
+[[maps]]
+name = "mass_vs_phase_low_mass"
+param_x = 2
+param_y = 4
+theta_0 = [2.0, 0.1, 20.0, 0.0, 0.7, 0.5]
+
+[[maps]]
+name = "time_vs_spin1_high_spin"
+param_x = 3
+param_y = 5
+theta_0 = [3.0, 0.5, 25.0, 1.57, 0.7, -0.7]
+
+[[maps]]
+name = "phase_vs_spin1_seed"
+param_x = 4
+param_y = 5
+theta_0 = [2.0, 0.1, 20.0, 0.0, 0.7, 0.5]
+
+[[maps]]
+name = "time_vs_spin1_wall_cut"
+param_x = 3
+param_y = 5
+theta_0 = [3.0, 0.5, 25.0, 1.57, 0.998923, -0.7]
+
+[[maps]]
+name = "spin1_vs_spin2_wall_cut"
+param_x = 5
+param_y = 6
+theta_0 = [3.0, 0.5, 25.0, 0.0, 0.9, 0.95]

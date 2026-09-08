@@ -1014,6 +1014,18 @@ enabled = true
         polar_w = CD.Orchestrator.mirror_to_full_circle(entries_w, box, r_math_of, 1e-6)
         @test polar_w.r_cap[1] == 2.0 && polar_w.prior_limited[1]
         @test polar_w.r_cap[2] ≈ 1.5 && polar_w.prior_limited[2] # r_math ≈ 2 > 1.5 anyway
+        # Fisher-normalized sampling: the direction map turns the sampling
+        # angle into a parameter-space unit vector, and the mirrored half
+        # uses its exact negation
+        aniso = phi -> CD.Orchestrator.unit_direction(phi, 1e-3, 1.0)
+        c45, s45 = aniso(π / 4)
+        @test hypot(c45, s45) ≈ 1.0 && s45 / c45 ≈ 1e3
+        @test all(aniso(π / 4 + π) .≈ (-c45, -s45))
+        polar_a = CD.Orchestrator.mirror_to_full_circle(
+            [(phi = π / 4, K = 16.0, g = 1.0, wall = 0x00)], box, r_math_of, 1e-6;
+            direction = aniso)
+        @test polar_a.dir_cos ≈ [c45, -c45] && polar_a.dir_sin ≈ [s45, -s45]
+        @test polar_a.r_box ≈ [0.5 / s45, 0.5 / s45] # the ±y walls at ±0.5 dominate
         @test CD.Orchestrator.wall_bit(0.5) == CD.Orchestrator.WALL_SELF
         @test CD.Orchestrator.wall_bit(4.0) == CD.Orchestrator.WALL_ANTIPODE
         @test CD.Orchestrator.wall_bit(-0.5) == CD.Orchestrator.WALL_ANTIPODE

@@ -20,6 +20,11 @@ recurse; scalars, arrays and `[[sweeps]]`/`[[maps]]` lists present in the
 overlay replace the base's; one overlay level only), the merged table is
 validated, and the run directory receives the merged, self-contained
 `config.toml`; `metadata.toml` records `config_file` and `base_config`.
+A fourth overlay, `quickstart_maps.toml`, replaces the quickstart work
+items by nine maps on the quickstart grid — the seven production planes
+at quickstart-scale base points plus two planes whose base point sits one
+zone half-width from a spin wall — as a minutes-scale visual check of the
+mapping stage (wall segments, corners, null-direction needles).
 
 The run identifier hashes only the *identity* of a run — every section
 except `[hardware]`, `[safety]` and `[monitoring]`, which describe how a
@@ -144,10 +149,15 @@ across seven physical scenarios.
 
 These configurations evaluate the extrinsic curvature over a 2D plane to
 draw the ``\delta_{\mathrm{min}}`` boundary. The angular resolution comes
-from the global `[mapping].n_angles` (per-map override allowed); the solver
-computes half the directions and mirrors (``K`` is exactly even), refining
-adaptively near boundary spikes, and caps every direction at the physical
-prior box (`Prior_Limited` flags in the CSV). Wherever consecutive
+from the global `[mapping].n_angles` (per-map override allowed); directions
+are sampled uniformly in the Fisher-normalized plane (each axis measured in
+its own ``\sigma`` at the base point, so that a plane like ``t_c`` against
+``\phi_c``, whose axes differ by ``10^{4}``–``10^{5}`` in ``\sigma``, is
+resolved uniformly rather than only along its axes), the solver computes
+half the directions and mirrors (``K`` is exactly even), refines adaptively
+near boundary spikes, and caps every direction at the physical prior box
+(`Prior_Limited` flags in the CSV; the quoted prior-limited fraction is a
+fraction of sampling angle). Wherever consecutive
 directions straddle a capping transition, the solver additionally bisects
 for the exact crossover direction ``r_{\mathrm{math}}(\varphi) =
 r_{\mathrm{box}}(\varphi)`` and inserts it as a boundary vertex

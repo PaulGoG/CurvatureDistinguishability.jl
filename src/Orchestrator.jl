@@ -63,8 +63,8 @@ Base.showerror(io::IO, e::ResourceBudgetError) = print(io, "ResourceBudgetError:
 
 # angular tolerance below which two map directions are the same vertex
 const ANGLE_DEDUPE_TOL = 1e-10
-# prior-limited boundary fraction above which the spin-plane χ_eff
-# degeneracy advisory is logged
+# prior-limited boundary fraction above which the spin-plane null-direction
+# advisory is logged
 const SPIN_PRIOR_NOTE_FRACTION = 0.25
 # simultaneously live whitened-vector buffers per nested-dual evaluation in
 # the plan_resources memory model (value + two derivative work arrays)
@@ -682,6 +682,24 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, "  [1/2] tangent basis (Jacobian at base point)")
         basis = compute_tangent_basis(theta0, ctx.freqs, ctx.Sn, ctx.df, wp)
         logline(log_io, "        basis rank: $(length(basis)) of $(length(theta0))")
+        # Directions are sampled uniformly in the Fisher-normalized plane —
+        # each axis measured in its own σ at the base point — and mapped to
+        # parameter units: a plane whose axes differ by five orders of
+        # magnitude in σ (a coalescence time against a phase for a loud
+        # source) is a needle in parameter units that a uniform angular grid
+        # would resolve only along its axes.
+        sigma_x, sigma_y =
+            axis_fisher_scales(theta0, px, py, basis, ctx, cfg.g_uu_degenerate)
+        logline(
+            log_io,
+            @sprintf("        axis Fisher σ: %.3e × %.3e (sampling anisotropy %.2e)",
+                sigma_x, sigma_y, max(sigma_x, sigma_y) / min(sigma_x, sigma_y))
+        )
+        direction = phi -> unit_direction(phi, sigma_x, sigma_y)
+        # boundary radius in the normalized plane (constant for an ellipse
+        # aligned with the σ scales): the refinement criterion lives here
+        normalized_radius(phi) =
+            (cs = direction(phi); hypot(cs[1] / sigma_x, cs[2] / sigma_y))
 
         n_base_directions = n_angles ÷ 2
         # milestones count against the base direction budget; refinement and
@@ -697,8 +715,7 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             out = Vector{NTuple{2,Float64}}(undef, length(phis))
             parallel_foreach(length(phis), ctx.map_tasks) do i
                 dir = zeros(N_PARAMS)
-                dir[px] = cos(phis[i])
-                dir[py] = sin(phis[i])
+                dir[px], dir[py] = direction(phis[i])
                 K, g = compute_extrinsic_curvature_from_basis(theta0, dir, basis,
                     ctx.freqs, ctx.Sn, ctx.df, wp)
                 out[i] = (K, g)
@@ -723,11 +740,15 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         ]
 
         r_math_of(K) = boundary_radius(K, rho_sq)
-        r_box_of(phi) = ray_box_crossing(cos(phi), sin(phi), box...)
-        # capped radii of a half-circle direction and of its mirror image: the
-        # prior box need not be symmetric, so both halves drive refinement
-        r_cap_pair(e) = (min(r_math_of(e.K), r_box_of(e.phi)),
-            min(r_math_of(e.K), r_box_of(e.phi + π)))
+        r_box_of(phi) = ray_box_crossing(direction(phi)..., box...)
+        # capped radii of a half-circle direction and of its mirror image in
+        # the normalized plane: the prior box need not be symmetric, so both
+        # halves drive refinement
+        function r_cap_pair(e)
+            scale = normalized_radius(e.phi)
+            return (min(r_math_of(e.K), r_box_of(e.phi)) * scale,
+                min(r_math_of(e.K), r_box_of(e.phi + π)) * scale)
+        end
 
         added = refine_directions!(entries, eval_angles, r_cap_pair, cfg)
         logline(
@@ -749,7 +770,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                     "        corner bisection: %d crossover(s) located, %d exact corner vertex(es) inserted (%d iterations)",
                     n_brackets, n_vertices, cfg.corner_bisect_iters)
             )
-            n_corners = insert_box_corner_vertices!(entries, eval_angles, capped_at, box)
+            n_corners = insert_box_corner_vertices!(entries, eval_angles, capped_at, box,
+                (cx, cy) -> atan(cy / sigma_y, cx / sigma_x))
             n_corners > 0 && logline(
                 log_io,
                 @sprintf("        box-corner vertices: %d inserted", n_corners)
@@ -757,7 +779,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         end
         finish!(prog)
 
-        polar = mirror_to_full_circle(entries, box, r_math_of, cfg.g_uu_degenerate)
+        polar = mirror_to_full_circle(entries, box, r_math_of, cfg.g_uu_degenerate;
+            direction = direction)
         r_cap = polar.r_cap
         n_unbounded, polygon_cap = cap_unbounded_radii!(r_cap, cfg.unbounded_cap_factor)
         n_unbounded > 0 &&
@@ -779,10 +802,10 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         if px in SPIN_INDICES && py in SPIN_INDICES && prior_frac > SPIN_PRIOR_NOTE_FRACTION
             logline(
                 log_io,
-                "  [note] the waveform depends on the spins only through " *
-                "χ_eff = (χ₁+χ₂)/2; along the anti-symmetric combination the " *
-                "manifold is flat, so the zone there is limited by the physical " *
-                "spin prior [-1, 1], not by curvature.",
+                "  [note] the 1.5PN phase depends on the spins only through β; " *
+                "along the combination with dβ = 0 (χ_a at equal mass, a tilted " *
+                "line otherwise) the manifold is exactly flat, so the zone there " *
+                "is limited by the physical spin prior [-1, 1], not by curvature.",
             )
         end
 
@@ -806,13 +829,52 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Unit direction in parameter units of the sampling angle `phi` of a plane
+whose axes are measured in their Fisher scales `sigma_x`, `sigma_y`:
+`(σ_x cos φ, σ_y sin φ)` normalized. Uniform sampling in `phi` resolves a
+zone uniformly when its extent along each axis is proportional to that
+axis' σ, which is what the Fisher metric predicts to leading order; the
+map is odd in `phi ↦ phi + π`, so mirroring stays exact.
+"""
+@inline function unit_direction(phi::Real, sigma_x::Real, sigma_y::Real)
+    vx = sigma_x * cos(phi)
+    vy = sigma_y * sin(phi)
+    inv_norm = 1 / hypot(vx, vy)
+    return vx * inv_norm, vy * inv_norm
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Fisher scales `(σ_x, σ_y) = (g_xx^{-1/2}, g_yy^{-1/2})` of the two axes of
+a map plane at `theta0`, from the directional Fisher norms of the unit
+axis vectors (two curvature evaluations). An axis whose Fisher norm falls
+below `g_uu_degenerate` (a null direction) gets the scale 1, so the
+normalization stays finite.
+"""
+function axis_fisher_scales(theta0::AbstractVector, px::Int, py::Int, basis::Vector,
+    ctx::RunContext, g_uu_degenerate::Real)
+    scales = ntuple(2) do k
+        dir = zeros(N_PARAMS)
+        dir[k == 1 ? px : py] = 1.0
+        _, g = compute_extrinsic_curvature_from_basis(theta0, dir, basis, ctx.freqs,
+            ctx.Sn, ctx.df, ctx.cfg.wp)
+        (isfinite(g) && g > g_uu_degenerate) ? 1 / sqrt(g) : 1.0
+    end
+    return scales
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Adaptive angular refinement of the half-circle `entries` (NamedTuples
 `(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE`
 mask of directions known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the midpoint
 direction wherever the capped radius of cyclically consecutive directions
 jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle —
 `r_cap_pair(e)` returns the capped radii of a direction and of its mirror
-image, whose prior-box crossing differs when the box is asymmetric. Each
+image (in the normalized sampling plane), whose prior-box crossing differs
+when the box is asymmetric. Each
 pass evaluates all midpoints as one batch through `eval_angles`. Leaves
 `entries` sorted by angle and returns the number of directions added.
 """
@@ -976,13 +1038,16 @@ consecutive samples sit on different walls and their chord cuts the box
 corner. The corner direction is known analytically; if the ray through a
 finite box corner is capped there (`capped_at`), the true boundary passes
 through that exact corner — it is inserted into `entries` (one K
-evaluation per finite corner, at most four; kept sorted). Returns the
-number of corners inserted.
+evaluation per finite corner, at most four; kept sorted). `corner_angle`
+maps a parameter-space corner `(cx, cy)` to the sampling angle of the
+direction through it (the identity `atan(cy, cx)` unless the plane is
+sampled in normalized coordinates, see [`unit_direction`](@ref)). Returns
+the number of corners inserted.
 """
 function insert_box_corner_vertices!(entries::Vector, eval_angles, capped_at,
-    box::NTuple{4,Float64})
+    box::NTuple{4,Float64}, corner_angle = (cx, cy) -> atan(cy, cx))
     corner_alphas = [
-        atan(cy, cx) for cx in (box[1], box[2]), cy in (box[3], box[4])
+        corner_angle(cx, cy) for cx in (box[1], box[2]), cy in (box[3], box[4])
         if isfinite(cx) && isfinite(cy)
     ]
     isempty(corner_alphas) && return 0
@@ -1021,7 +1086,9 @@ Mirror the half-circle `entries` to the full circle and cap every
 direction at the prior box: K and g are exactly even in the direction, so
 `r_math` is mirrored bitwise, while `r_box` is re-evaluated with the
 exactly negated direction components (the prior box need not be
-symmetric). Vertices whose wall mask marks the evaluated side are capped
+symmetric). `direction(phi)` maps a sampling angle to the unit direction
+`(cos, sin)` in parameter units ([`unit_direction`](@ref) for
+Fisher-normalized sampling; the identity by default). Vertices whose wall mask marks the evaluated side are capped
 exactly at the wall and flagged prior-limited; every other direction goes
 through [`cap_at_prior`](@ref). Directions with `g < g_uu_degenerate` are
 flagged degenerate.
@@ -1030,7 +1097,7 @@ Returns the per-direction polar table as a NamedTuple of vectors
 `dir_sin`, `prior_limited`, `degenerate`).
 """
 function mirror_to_full_circle(entries::Vector, box::NTuple{4,Float64}, r_math_of,
-    g_uu_degenerate::Real)
+    g_uu_degenerate::Real; direction = phi -> (cos(phi), sin(phi)))
     half = length(entries)
     angle = Vector{Float64}(undef, 2half)
     K_raw = similar(angle)
@@ -1044,7 +1111,7 @@ function mirror_to_full_circle(entries::Vector, box::NTuple{4,Float64}, r_math_o
     degenerate = falses(2half)
     for (i, e) in enumerate(entries), half_idx in (0, 1)
         k = i + half_idx * half
-        c, s = cos(e.phi), sin(e.phi)
+        c, s = direction(e.phi)
         half_idx == 1 && ((c, s) = (-c, -s))
         angle[k] = e.phi + half_idx * π
         dir_cos[k] = c

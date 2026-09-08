@@ -131,9 +131,17 @@ physical bounds before ``\delta_{\mathrm{max}}``.
 ### 2D confusion maps (`[[maps]]`)
 In raw parameter coordinates the boundary radius is
 ``r(\varphi) = (16\rho^2/K_{\mathrm{raw}})^{1/4}`` — the Fisher-norm
-rescaling cancels exactly, so no division by ``g(u,u)`` occurs. ``K`` is
-evaluated on ``[0, \pi)`` only and mirrored (it is exactly even in ``u``),
-halving the cost and enforcing the theorem-level symmetry. Near-singular
+rescaling cancels exactly, so no division by ``g(u,u)`` occurs. Directions
+are sampled uniformly in the **Fisher-normalized plane** — each axis
+measured in its own ``\sigma = g_{ii}^{-1/2}`` at the base point
+(`unit_direction`) — and mapped to parameter units, because a plane whose
+axes differ by five orders of magnitude in ``\sigma`` (a coalescence time
+against a phase for a loud source) is a needle in parameter units that a
+uniform angular grid would resolve only along its axes; the persisted
+`Angle` is that sampling angle, `Dir_Cos`/`Dir_Sin` the direction in
+parameter units, and the prior-limited fraction is measured in the sampling
+angle. ``K`` is evaluated on ``[0, \pi)`` only and mirrored (it is exactly
+even in ``u``), halving the cost and enforcing the theorem-level symmetry. Near-singular
 spikes (quasi-degenerate directions) are handled by **polar prior-capping**:
 ``r_{\mathrm{plot}} = \min(r_{\mathrm{math}}, r_{\mathrm{box}})`` against the
 deviation-space physical box, with `R_Math`, `R_Box`, `Prior_Limited` and
