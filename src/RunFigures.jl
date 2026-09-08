@@ -12,7 +12,7 @@ using CSV: CSV
 using DataFrames: DataFrame
 using TOML: TOML
 using ..Bounds: deviation_box
-using ..Geometry: boundary_radius, cap_unbounded_radii!
+using ..Geometry: boundary_radius, cap_unbounded_radii!, cap_at_prior
 using ..Config: load_and_validate_config
 using ..Plotting
 using ..Fitting:
@@ -178,7 +178,9 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     else
         suffix = rho_tag(rho)
         r_math = boundary_radius.(contour_stored.K_Raw, Float64(rho)^2)
-        r_cap = min.(r_math, contour_stored.R_Box)
+        capped = cap_at_prior.(r_math, contour_stored.R_Box)
+        r_cap = first.(capped)
+        prior = collect(last.(capped))
         cap_unbounded_radii!(r_cap, cfg.unbounded_cap_factor)
         dir_cos = contour_stored.Dir_Cos
         dir_sin = contour_stored.Dir_Sin
@@ -186,8 +188,6 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
         Y = r_cap .* dir_sin
         x_math = r_math .* dir_cos
         y_math = r_math .* dir_sin
-        prior =
-            collect(isfinite.(contour_stored.R_Box) .& (r_math .>= contour_stored.R_Box))
         contour = DataFrame(Angle = contour_stored.Angle, X_Bound = X, Y_Bound = Y,
             Dir_Cos = dir_cos, Dir_Sin = dir_sin,
             R_Capped = r_cap, R_Math = r_math, R_Box = contour_stored.R_Box,

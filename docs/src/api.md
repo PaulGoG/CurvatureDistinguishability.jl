@@ -99,6 +99,8 @@ CurvatureDistinguishability.Geometry.compute_extrinsic_curvature
 CurvatureDistinguishability.Geometry.GS_NORM_TOL
 CurvatureDistinguishability.Geometry.K_UNDERFLOW
 CurvatureDistinguishability.Geometry.boundary_radius
+CurvatureDistinguishability.Geometry.WALL_RTOL
+CurvatureDistinguishability.Geometry.cap_at_prior
 CurvatureDistinguishability.Geometry.cap_unbounded_radii!
 ```
 

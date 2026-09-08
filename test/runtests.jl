@@ -388,6 +388,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             0.1, 0.5)
         @test p2 == [2.0, 2.1, 3.0, 0.0, 0.5, 0.5]
         @test boundary_radius(16.0, 1.0) == 1.0
+        # prior-wall capping: a crossover vertex reaching the wall to round-off
+        # is snapped onto it and flagged; interior and unbounded directions are not
+        @test cap_at_prior(0.3 * (1 - 1e-12), 0.3) == (0.3, true)
+        @test cap_at_prior(0.5, 0.3) == (0.3, true)
+        @test cap_at_prior(0.3 * (1 - 1e-6), 0.3) == (0.3 * (1 - 1e-6), false)
+        @test cap_at_prior(0.5, Inf) == (0.5, false)
         @test boundary_radius(16.0, 4.0) ≈ sqrt(2.0)
         @test isinf(boundary_radius(0.0, 1.0)) && isinf(boundary_radius(1e-320, 1.0))
         r = [1.0, Inf, 2.0, Inf]
@@ -988,7 +994,8 @@ enabled = true
 
         # mirroring: K and g are even, r_box is re-evaluated on the negated
         # direction (the box is asymmetric), degenerate and capped flags follow
-        entries = [(phi = 0.0, K = 16.0, g = 1.0), (phi = π / 2, K = 1e-320, g = 1e-9)]
+        entries = [(phi = 0.0, K = 16.0, g = 1.0, wall = 0x00),
+            (phi = π / 2, K = 1e-320, g = 1e-9, wall = 0x00)]
         box = (-1.5, 2.0, -0.5, 0.5)
         r_math_of(K) = K > CD.Geometry.K_UNDERFLOW ? (16.0 / K)^(1 / 4) : Inf
         polar = CD.Orchestrator.mirror_to_full_circle(entries, box, r_math_of, 1e-6)
@@ -999,11 +1006,23 @@ enabled = true
         @test polar.r_cap ≈ [1.0, 0.5, 1.0, 0.5]
         @test polar.prior_limited == [false, true, false, true]
         @test polar.degenerate == [false, true, false, true]
+        # a crossover vertex marked on one side only: that side is snapped onto
+        # the wall and flagged although r_math sits a hair inside it; the
+        # antipode keeps the plain comparison
+        entries_w = [(phi = 0.0, K = 16.0 / (2.0 * (1 - 1e-7))^4, g = 1.0,
+            wall = CD.Orchestrator.WALL_SELF)]
+        polar_w = CD.Orchestrator.mirror_to_full_circle(entries_w, box, r_math_of, 1e-6)
+        @test polar_w.r_cap[1] == 2.0 && polar_w.prior_limited[1]
+        @test polar_w.r_cap[2] ≈ 1.5 && polar_w.prior_limited[2] # r_math ≈ 2 > 1.5 anyway
+        @test CD.Orchestrator.wall_bit(0.5) == CD.Orchestrator.WALL_SELF
+        @test CD.Orchestrator.wall_bit(4.0) == CD.Orchestrator.WALL_ANTIPODE
+        @test CD.Orchestrator.wall_bit(-0.5) == CD.Orchestrator.WALL_ANTIPODE
 
         # box-corner insertion: a ray through a finite box corner that is capped
         # there becomes a boundary vertex; the four corners fold onto two
         # half-circle directions
-        entries_c = [(phi = 0.0, K = 1.0, g = 1.0), (phi = π / 2, K = 1.0, g = 1.0)]
+        entries_c = [(phi = 0.0, K = 1.0, g = 1.0, wall = 0x00),
+            (phi = π / 2, K = 1.0, g = 1.0, wall = 0x00)]
         n_inserted = CD.Orchestrator.insert_box_corner_vertices!(entries_c,
             phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> true,
             (-1.0, 1.0, -1.0, 1.0))
@@ -1011,6 +1030,10 @@ enabled = true
         @test any(e -> isapprox(e.phi, π / 4), entries_c) &&
               any(e -> isapprox(e.phi, 3π / 4), entries_c)
         @test issorted([e.phi for e in entries_c])
+        # a symmetric box folds each corner pair onto one direction carrying
+        # both wall bits (the direction and its antipode end on a corner)
+        @test all(e -> e.wall == 0x03, filter(e -> !(e.phi in (0.0, π / 2)), entries_c))
+        @test all(e -> e.wall == 0x00, filter(e -> e.phi in (0.0, π / 2), entries_c))
         # an uncapped corner inserts nothing
         @test CD.Orchestrator.insert_box_corner_vertices!(copy(entries_c),
             phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> false, (-1.0, 1.0, -1.0, 1.0),
@@ -1247,6 +1270,12 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 @test all(cm.Angle[(half+1):end] .≈ cm.Angle[1:half] .+ π)
                 @test isfile(joinpath(mdir, "confusion_zone.pdf"))
                 @test isfile(joinpath(mdir, "confusion_zone.png"))
+                # every vertex sitting on a prior wall carries the flag (the
+                # bisected crossover vertices included), so the drawn wall
+                # segment reaches its corners
+                on_wall = isfinite.(cm.R_Box) .& (cm.R_Capped .== cm.R_Box)
+                @test all(cm.Prior_Limited[on_wall])
+                @test !any(cm.Prior_Limited[.!on_wall])
                 # exact prior-crossover corners: at every capped/uncapped
                 # transition along the boundary polygon, one of the two rows
                 # must be the bisection-inserted vertex with r_math ≈ r_box —

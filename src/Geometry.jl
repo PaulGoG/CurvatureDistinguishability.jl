@@ -12,8 +12,8 @@ using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
     compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
-    boundary_radius, cap_unbounded_radii!
-public flat_response, GS_NORM_TOL, K_UNDERFLOW, value_and_directional_derivs
+    boundary_radius, cap_unbounded_radii!, cap_at_prior
+public flat_response, GS_NORM_TOL, K_UNDERFLOW, WALL_RTOL, value_and_directional_derivs
 
 """
 Gram–Schmidt drop tolerance, relative to the candidate's norm before
@@ -42,6 +42,32 @@ Mathematical boundary radius `(16 ρ²/K)^{1/4}` of the leading-order law
 """
 boundary_radius(K::Real, rho_sq::Real) =
     K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+
+"""
+Relative tolerance of the prior-wall test: a direction whose mathematical
+radius reaches the prior box within this fraction is capped exactly at the
+wall and flagged prior-limited. The crossover vertices located by
+bisection satisfy `r_math = r_box` only to round-off, and the plain
+comparison `r_math >= r_box` left them on the curvature side, which cut
+the drawn wall segment short of its corners.
+"""
+const WALL_RTOL = 1e-9
+
+"""
+$(TYPEDSIGNATURES)
+
+Cap the mathematical radius `r_math` of one direction at its prior-box
+distance `r_box`: returns `(r_capped, prior_limited)` with
+`r_capped = r_box` and `prior_limited = true` whenever `r_math` reaches the
+wall within [`WALL_RTOL`](@ref) (finite `r_box`), otherwise
+`(r_math, false)`.
+"""
+function cap_at_prior(r_math::Real, r_box::Real)
+    if isfinite(r_box) && r_math >= r_box * (1 - WALL_RTOL)
+        return float(r_box), true
+    end
+    return float(r_math), false
+end
 
 """
 $(TYPEDSIGNATURES)

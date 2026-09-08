@@ -46,7 +46,7 @@ include("Geometry.jl")
 using .Geometry
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
     compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
-    boundary_radius, cap_unbounded_radii!
+    boundary_radius, cap_unbounded_radii!, cap_at_prior
 
 include("Fitting.jl")
 using .Fitting

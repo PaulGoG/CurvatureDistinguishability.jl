@@ -717,7 +717,9 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         phis = [(k - 1) * π / n_base_directions for k in 1:n_base_directions]
         curvature_norm_pairs = eval_angles(phis)
         entries = [
-            (phi = phis[i], K = curvature_norm_pairs[i][1], g = curvature_norm_pairs[i][2]) for i in 1:n_base_directions
+            (phi = phis[i], K = curvature_norm_pairs[i][1],
+                g = curvature_norm_pairs[i][2],
+                wall = 0x00) for i in 1:n_base_directions
         ]
 
         r_math_of(K) = boundary_radius(K, rho_sq)
@@ -805,7 +807,8 @@ end
 $(TYPEDSIGNATURES)
 
 Adaptive angular refinement of the half-circle `entries` (NamedTuples
-`(phi, K, g)`): up to `cfg.max_refine_levels` passes insert the midpoint
+`(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE`
+mask of directions known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the midpoint
 direction wherever the capped radius of cyclically consecutive directions
 jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle —
 `r_cap_pair(e)` returns the capped radii of a direction and of its mirror
@@ -837,7 +840,8 @@ function refine_directions!(entries::Vector, eval_angles, r_cap_pair,
         append!(
             entries,
             [
-                (phi = mids[i], K = curvature_new[i][1], g = curvature_new[i][2])
+                (phi = mids[i], K = curvature_new[i][1], g = curvature_new[i][2],
+                    wall = 0x00)
                 for i in 1:length(mids)
             ],
         )
@@ -845,6 +849,41 @@ function refine_directions!(entries::Vector, eval_angles, r_cap_pair,
     end
     sort!(entries, by = e -> e.phi)
     return added
+end
+
+"""
+Wall mask bit of a half-circle direction entry: the direction itself ends
+on a prior wall (it is a bisected crossover or a box corner).
+"""
+const WALL_SELF = 0x01
+
+"""
+Wall mask bit of a half-circle direction entry: its antipode ends on a
+prior wall (the box need not be mirror-symmetric, so the two halves are
+marked independently).
+"""
+const WALL_ANTIPODE = 0x02
+
+"""
+$(TYPEDSIGNATURES)
+
+Wall mask bit of a full-circle angle: `WALL_SELF` on `[0, π)`,
+`WALL_ANTIPODE` on `[π, 2π)`.
+"""
+wall_bit(alpha_full::Real) = mod(alpha_full, 2π) < π ? WALL_SELF : WALL_ANTIPODE
+
+"""
+$(TYPEDSIGNATURES)
+
+Merge a wall-mask bit into the entry of `entries` whose direction lies
+within `ANGLE_DEDUPE_TOL` of `phi`; returns `true` when such an
+entry exists (the vertex is a duplicate).
+"""
+function mark_existing_wall!(entries::Vector, phi::Real, bit::UInt8)
+    idx = findfirst(e -> abs(e.phi - phi) < ANGLE_DEDUPE_TOL, entries)
+    idx === nothing && return false
+    entries[idx] = merge(entries[idx], (wall = entries[idx].wall | bit,))
+    return true
 end
 
 """
@@ -861,7 +900,10 @@ consecutive directions, bisects each bracket on the capping predicate
 degenerate directions, where a sign-based bisection would hit `Inf - Inf`;
 all active brackets are evaluated as one batch per iteration), folds the
 vertices onto the half-circle, dedupes them and appends them to `entries`
-(kept sorted). Returns `(n_brackets, n_inserted)`.
+(kept sorted) with the wall mask of the side that ends on the wall — the
+capping stage flags these vertices prior-limited by construction, since
+their `r_math = r_box` holds only to the bisection resolution. Returns
+`(n_brackets, n_inserted)`.
 """
 function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, iters::Int)
     n_entries = length(entries)
@@ -893,12 +935,19 @@ function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, ite
     # fold onto the half-circle (the mirror adds the antipode);
     # dedupe — a mirror-symmetric box yields the same φ twice
     phis_new = Float64[]
+    walls_new = UInt8[]
     for b in eachindex(lo)
-        phi_vertex = mod((lo[b] + hi[b]) / 2, Float64(π))
-        any(p -> abs(p - phi_vertex) < ANGLE_DEDUPE_TOL, phis_new) && continue
-        any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+        alpha_vertex = (lo[b] + hi[b]) / 2
+        phi_vertex = mod(alpha_vertex, Float64(π))
+        bit = wall_bit(alpha_vertex)
+        dup = findfirst(p -> abs(p - phi_vertex) < ANGLE_DEDUPE_TOL, phis_new)
+        if dup !== nothing
+            walls_new[dup] |= bit
             continue
+        end
+        mark_existing_wall!(entries, phi_vertex, bit) && continue
         push!(phis_new, phi_vertex)
+        push!(walls_new, bit)
     end
     if !isempty(phis_new)
         curvature_new = eval_angles(phis_new)
@@ -909,6 +958,7 @@ function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, ite
                     phi = phis_new[i],
                     K = curvature_new[i][1],
                     g = curvature_new[i][2],
+                    wall = walls_new[i],
                 )
                 for i in eachindex(phis_new)
             ],
@@ -937,21 +987,28 @@ function insert_box_corner_vertices!(entries::Vector, eval_angles, capped_at,
     ]
     isempty(corner_alphas) && return 0
     curvature_corner = eval_angles(mod.(corner_alphas, π))
-    corner_new = Tuple{Float64,Float64,Float64}[]
+    corner_new = Tuple{Float64,Float64,Float64,UInt8}[]
     for k in eachindex(corner_alphas)
         capped_at(corner_alphas[k], curvature_corner[k][1]) || continue
         phi_vertex = mod(corner_alphas[k], Float64(π))
-        any(e -> abs(e.phi - phi_vertex) < ANGLE_DEDUPE_TOL, entries) &&
+        bit = wall_bit(corner_alphas[k])
+        dup = findfirst(t -> abs(t[1] - phi_vertex) < ANGLE_DEDUPE_TOL, corner_new)
+        if dup !== nothing
+            t = corner_new[dup]
+            corner_new[dup] = (t[1], t[2], t[3], t[4] | bit)
             continue
-        any(t -> abs(t[1] - phi_vertex) < ANGLE_DEDUPE_TOL, corner_new) &&
-            continue
+        end
+        mark_existing_wall!(entries, phi_vertex, bit) && continue
         push!(
             corner_new,
-            (phi_vertex, curvature_corner[k][1], curvature_corner[k][2]),
+            (phi_vertex, curvature_corner[k][1], curvature_corner[k][2], bit),
         )
     end
     if !isempty(corner_new)
-        append!(entries, [(phi = t[1], K = t[2], g = t[3]) for t in corner_new])
+        append!(
+            entries,
+            [(phi = t[1], K = t[2], g = t[3], wall = t[4]) for t in corner_new],
+        )
         sort!(entries, by = e -> e.phi)
     end
     return length(corner_new)
@@ -964,7 +1021,10 @@ Mirror the half-circle `entries` to the full circle and cap every
 direction at the prior box: K and g are exactly even in the direction, so
 `r_math` is mirrored bitwise, while `r_box` is re-evaluated with the
 exactly negated direction components (the prior box need not be
-symmetric). Directions with `g < g_uu_degenerate` are flagged degenerate.
+symmetric). Vertices whose wall mask marks the evaluated side are capped
+exactly at the wall and flagged prior-limited; every other direction goes
+through [`cap_at_prior`](@ref). Directions with `g < g_uu_degenerate` are
+flagged degenerate.
 Returns the per-direction polar table as a NamedTuple of vectors
 (`angle`, `K_raw`, `g_uu`, `r_math`, `r_box`, `r_cap`, `dir_cos`,
 `dir_sin`, `prior_limited`, `degenerate`).
@@ -993,8 +1053,14 @@ function mirror_to_full_circle(entries::Vector, box::NTuple{4,Float64}, r_math_o
         g_uu[k] = e.g
         r_math[k] = r_math_of(e.K)
         r_box[k] = ray_box_crossing(c, s, box...)
-        r_cap[k] = min(r_math[k], r_box[k])
-        prior_limited[k] = isfinite(r_box[k]) && r_math[k] >= r_box[k]
+        on_wall = (e.wall & (half_idx == 0 ? WALL_SELF : WALL_ANTIPODE)) != 0x00
+        if on_wall && isfinite(r_box[k])
+            # bisected crossover / box-corner vertex: on the wall by construction
+            r_cap[k] = r_box[k]
+            prior_limited[k] = true
+        else
+            r_cap[k], prior_limited[k] = cap_at_prior(r_math[k], r_box[k])
+        end
         degenerate[k] = e.g < g_uu_degenerate
     end
     return (; angle, K_raw, g_uu, r_math, r_box, r_cap, dir_cos, dir_sin, prior_limited,
