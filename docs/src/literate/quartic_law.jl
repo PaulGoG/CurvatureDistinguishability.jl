@@ -11,8 +11,8 @@ using CairoMakie
 
 # A reduced frequency grid with the Robson et al. (2019) noise model:
 
-physics = (mass_scale = 10.0, time_scale = 100.0, amp_scale = 1e-21, eta = 0.25,
-    amp_33_factor = 0.1, sky_theta = 1.047, sky_phi = 3.1415,
+physics = (mass_scale = 1.0, time_scale = 100.0, eta = 0.25,
+    ecliptic_longitude = 3.1415, ecliptic_latitude = 0.5238,
     inclination = 0.523, polarization = 0.785)
 wp = waveform_params(; physics...)
 df = 1e-5
@@ -43,10 +43,8 @@ delta_min = (16 / K_norm)^(1 / 4)
 deltas = 10.0 .^ range(-3, -1, length = 5)
 D2_num = map(deltas) do d
     p2 = theta0 .+ d .* u_norm
-    h1 = scaled_waveform_model(theta0, freqs, wp)
-    h2 = scaled_waveform_model(p2, freqs, wp)
-    data = map((a, b) -> a .+ b, project_to_tdi(h1, freqs, theta0, wp),
-        project_to_tdi(h2, freqs, p2, wp))
+    data = map((a, b) -> a .+ b, channel_strain(theta0, freqs, wp),
+        channel_strain(p2, freqs, wp))
     d2, _, _ = calculate_numerical_distance(data, copy(theta0), freqs, Sn, df;
         iterations = 60, wp = wp)
     d2

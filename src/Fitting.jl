@@ -11,7 +11,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using Statistics: mean
 
 public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask,
-    MIN_FIT_POINTS
+    perturbative_mask, MIN_FIT_POINTS
 
 """
 Minimum number of clean points for the log-log slope and the
@@ -61,6 +61,22 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     resid = y .- c1 .* deltas .- c2 .* deltas .^ 2
     c1_err = n > 2 ? sqrt(max(0.0, sum(abs2, resid) / (n - 2)) * s4 / det) : NaN
     return c1, c1_err, c2
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Points admitted to the `O(δ⁵)` ratio-correction fit: the `clean` (above
+optimizer floor) separations whose `D²_num/D²_theo` ratio departs from
+unity by at most `max_departure`
+(`[pipeline.sweep_settings].correction_fit_max_departure`). The expansion
+`1 + c₁δ + c₂δ²` is perturbative in the departure from the leading-order
+law, so separations far off the law would bias `c₁` — and with it the
+validity window derived from it — rather than measure it.
+"""
+function perturbative_mask(ratio::AbstractVector, clean::AbstractVector{Bool},
+    max_departure::Real)
+    return clean .& (abs.(ratio .- 1.0) .<= max_departure)
 end
 
 """

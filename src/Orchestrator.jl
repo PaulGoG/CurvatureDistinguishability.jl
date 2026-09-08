@@ -33,7 +33,7 @@ using ..Plotting
 using ..Plotting: map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
     MIN_FIT_POINTS, above_floor_mask, loglog_slope, optimizer_floor,
-    ratio_correction_fit
+    perturbative_mask, ratio_correction_fit
 
 export run_pipeline
 public ResourceBudgetError, DEFAULT_CONFIG
@@ -308,7 +308,14 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, @sprintf("        normalized K(u)          : %.6e", K_norm))
         logline(log_io, @sprintf("        delta_min                : %.6e", delta_min))
 
-        deltas = 10 .^ range(cfg.min_log_delta, cfg.max_log_delta, length = cfg.n_deltas)
+        # separation grid in units of δ_min: the same D²/ρ² dynamic range for
+        # every direction and source loudness, and never below the round-off
+        # floor of the fits (the Fisher σ of a loud source is far below the
+        # relative precision of the parameters)
+        deltas =
+            delta_min .*
+            10 .^ range(cfg.min_log_delta_ratio, cfg.max_log_delta_ratio,
+                length = cfg.n_deltas)
 
         # verify the second source stays within the physical bounds at δ_max
         theta_far = second_source(theta0, u_norm, maximum(deltas), amp_ratio)
@@ -399,18 +406,17 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
     parallel_foreach(n, ctx.sweep_tasks) do i
         d = deltas[i]
         p2 = second_source(theta0, u_norm, d, amp_ratio)
-        h1 = scaled_waveform_model(theta0, ctx.freqs, wp)
-        h2 = scaled_waveform_model(p2, ctx.freqs, wp)
-        ch1 = project_to_tdi(h1, ctx.freqs, theta0, wp)
-        ch2 = project_to_tdi(h2, ctx.freqs, p2, wp)
+        ch1 = channel_strain(theta0, ctx.freqs, wp)
+        ch2 = channel_strain(p2, ctx.freqs, wp)
         data = map((a, b) -> a .+ b, ch1, ch2)
         if !(ctx.backend isa KernelAbstractions.CPU)
             data = map(a -> to_backend(a, ctx.backend), data)
         end
         # degenerate effective source: amplitude (1+q)A at the weighted
-        # midpoint, with q = A₂/A₁ the amplitude ratio
+        # midpoint, with q = A₂/A₁ the amplitude ratio — luminosity distance
+        # D/(1+q)
         guess = theta0 .+ (amp_ratio / (1 + amp_ratio) * d) .* u_norm
-        guess[1] = (1 + amp_ratio) * theta0[1]
+        guess[1] = theta0[1] / (1 + amp_ratio)
 
         freqs_active =
             ctx.backend isa KernelAbstractions.CPU ? ctx.freqs : ctx.freqs_dev
@@ -418,6 +424,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
         solve(x0) =
             calculate_numerical_distance(data, x0, freqs_active, Sn_active, ctx.df;
                 g_tol = cfg.g_tol,
+                f_reltol = cfg.f_reltol,
                 iterations = cfg.max_iterations,
                 backend = ctx.backend,
                 optimizer = cfg.optimizer,
@@ -494,7 +501,15 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
             "        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
             count(clean), n, slope, slope_err)
     )
-    c1, c1_err, c2 = ratio_correction_fit(deltas[clean], ratio[clean])
+    # the correction expansion is fitted only where the ratio is still
+    # perturbatively close to unity (Fitting.perturbative_mask)
+    perturbative = perturbative_mask(ratio, clean, cfg.correction_fit_max_departure)
+    c1, c1_err, c2 = ratio_correction_fit(deltas[perturbative], ratio[perturbative])
+    logline(
+        log_io,
+        @sprintf("        O(δ⁵) fit window: %d/%d clean points within %.0f%% of the law",
+            count(perturbative), count(clean), 100cfg.correction_fit_max_departure),
+    )
     delta_valid =
         (isfinite(c1) && abs(c1) > 1e-12) ?
         cfg.correction_validity_fraction / abs(c1) : Inf
@@ -537,7 +552,8 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
 
     results_table = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
         D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
-        BestFit_Amplitude = best_fits[:, 1], BestFit_ChirpMass = best_fits[:, 2],
+        BestFit_LuminosityDistance = best_fits[:, 1],
+        BestFit_ChirpMass = best_fits[:, 2],
         BestFit_CoalescenceTime = best_fits[:, 3],
         BestFit_CoalescencePhase = best_fits[:, 4],
         BestFit_Spin1 = best_fits[:, 5], BestFit_Spin2 = best_fits[:, 6],

@@ -44,11 +44,15 @@ penalty of the six extra parameters of the two-source hypothesis.
 
 ## 3. Physical Model
 
-The pipeline implements a reduced six-parameter frequency-domain inspiral
-model, documented equation by equation in [Physics and Waveform Model](physics.md).
+The pipeline implements a six-parameter frequency-domain inspiral of an
+aligned-spin massive black-hole binary — TaylorF2 phasing to 1.5PN order,
+0.5PN harmonic amplitudes, an innermost-stable-orbit window — observed
+through the long-wavelength response of the LISA constellation on its
+analytic orbits, documented equation by equation in
+[Physics and Waveform Model](physics.md).
 
 **The State Vector (`theta`):**
-1.  Amplitude (``A``)
+1.  Luminosity distance (``D_L``)
 2.  Chirp Mass (``\mathcal{M}``)
 3.  Time of Coalescence (``t_c``)
 4.  Phase (``\phi_c``)
@@ -56,21 +60,28 @@ model, documented equation by equation in [Physics and Waveform Model](physics.m
 6.  Secondary Spin (``\chi_2``)
 
 **Key Physical Features:**
-*   **Spin–orbit coupling:** the phasing carries the leading-order 1.5PN
-    spin–orbit term, governed by the effective spin ``\chi_{\mathrm{eff}}`` at
-    equal mass; it couples the spins to the chirp mass and the coalescence
-    time and sets the curvature of the spin directions.
-*   **Sub-dominant harmonic:** a ``(3,3)`` harmonic with its own
-    stationary-phase phase and a phenomenological amplitude breaks the
-    amplitude–mass–time degeneracies of a single-harmonic model.
+*   **Spin–orbit coupling:** the phasing carries the complete 1.5PN
+    spin–orbit term of Poisson and Will, which couples the spins to the
+    chirp mass and the coalescence time through the single coefficient
+    ``\beta``; the spin combination with ``\mathrm{d}\beta = 0`` is
+    therefore an exact flat direction at every mass ratio.
+*   **Physical harmonics:** the ``(1,1)`` and ``(3,3)`` harmonics enter with
+    their 0.5PN amplitudes, proportional to the mass asymmetry
+    ``\sqrt{1 - 4\eta}``, and break the distance–mass–time degeneracies of a
+    single-harmonic model without any phenomenological factor.
 
 ## 4. Detector Dynamics: Time Delay Interferometry (TDI)
 
-`Detector.jl` projects the source-frame strain into the LISA TDI observables — orbital Doppler modulation, time-dependent antenna patterns, and the noise-orthogonal A/E channels — evaluated per frequency bin through the stationary-phase time–frequency relation. The full detector model is documented in [Physics and Waveform Model](physics.md).
+`Detector.jl` projects the source-frame strain into the noise-orthogonal
+A and E channels of the constellation — Michelson antenna patterns on the
+analytic spacecraft orbits, the orbital Doppler phase and the finite-arm
+roll-off — evaluated per frequency bin and per harmonic at the
+stationary-phase emission time. The full detector model is documented in
+[Physics and Waveform Model](physics.md).
 
 ## 5. Physical Bounds and the Capped Zone of Confusion
 
-The local differential geometry is blind to global parameter bounds, and along quasi-degenerate directions the mathematical boundary legitimately diverges: the waveform depends on the spins only through ``\chi_{\mathrm{eff}} = (\chi_1+\chi_2)/2`` (exactly, at equal mass), so along the anti-symmetric combination ``\chi_a`` the manifold is flat and ``\delta_{\mathrm{min}} \to \infty``. Physically, however, ``|\chi| \le 1``, amplitudes/masses/times are non-negative, and phase deviations live on ``[-\pi, \pi]``.
+The local differential geometry is blind to global parameter bounds, and along quasi-degenerate directions the mathematical boundary legitimately diverges. The 1.5PN phase sees the spins only through ``\beta``, so along the spin combination with ``\mathrm{d}\beta = 0`` (``\chi_a`` at equal mass, a tilted line otherwise) the manifold is exactly flat and ``\delta_{\mathrm{min}} \to \infty``. Physically, however, ``|\chi| \le 1``, distances/masses/times are non-negative, and phase deviations live on ``[-\pi, \pi]``.
 
 The pipeline therefore computes, per direction ``\varphi``, both the mathematical radius ``r_{\mathrm{math}} = (16\rho^2/K_{\mathrm{raw}})^{1/4}`` (equal source amplitudes are assumed throughout the mapping stage) and the distance to the physical prior box ``r_{\mathrm{box}}``, and publishes the **capped** boundary ``\min(r_{\mathrm{math}}, r_{\mathrm{box}})`` — the exact intersection of the mathematical zone with the prior. Directions where the prior takes over are flagged (`Prior_Limited`) and drawn distinctly in the figures. Both radii are persisted, so the raw mathematical zone remains fully recoverable from the data.
 

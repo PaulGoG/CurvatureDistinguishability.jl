@@ -17,11 +17,10 @@ D^2 \approx \frac{1}{16} K(u)\, \delta^4,
 
 The published zone-of-confusion maps are the exact intersection of this
 mathematical boundary with the hard physical parameter bounds
-(``A, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase topology
-``\pm\pi``) — along degenerate directions (e.g. the equal-mass spin
-difference, which the waveform cannot see) the zone is limited by the
-prior, not by curvature, and the figures mark those boundary segments
-distinctly.
+(``D_L, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase topology
+``\pm\pi``) — along degenerate directions (e.g. the spin combination the
+1.5PN phase cannot see) the zone is limited by the prior, not by
+curvature, and the figures mark those boundary segments distinctly.
 
 The repository README is the operational reference (file structure,
 environment setup, usage, component status). This documentation covers the
@@ -31,7 +30,7 @@ deeper layers:
   GPU path and extension points.
 - [Scientific Context](science.md) — the source-confusion problem and the
   geometric formulation.
-- [Waveform Physics](physics.md) — the frequency-domain model, TDI
+- [Waveform Physics](physics.md) — the 1.5PN inspiral model, constellation
   response and noise model.
 - [Complex Run Parameters](parameters.md) — the physical rationale of the
   production configuration's sweeps and maps.

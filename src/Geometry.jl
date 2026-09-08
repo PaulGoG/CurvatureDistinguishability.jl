@@ -102,8 +102,7 @@ whose Jacobian defines the signal-manifold tangent space. Generic over dual
 numbers.
 """
 function flat_response(p::AbstractVector, freqs::AbstractVector, wp::WaveformParams)
-    h = scaled_waveform_model(p, freqs, wp)
-    chans = project_to_tdi(h, freqs, p, wp)
+    chans = channel_strain(p, freqs, wp)
     n = length(freqs)
     out = Vector{real(eltype(chans[1]))}(undef, 2 * length(chans) * n)
     off = 0

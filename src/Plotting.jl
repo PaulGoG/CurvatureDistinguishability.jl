@@ -22,7 +22,7 @@ export publication_theme,
     save_figure, scaling_figure, residual_figure,
     ResidualFigureMeta, zone_figure
 public decade_ticks, pi_ticks, log_ticks_125, offset_ticks, sci_tick_labels,
-    sci_latex, coef_latex, axis_exponent, sweep_diagnostic_panel,
+    sci_latex, coef_latex, slope_latex, axis_exponent, sweep_diagnostic_panel,
     map_diagnostic_panel
 
 """
@@ -45,7 +45,7 @@ Short LaTeX axis labels for the six model parameters (deviation form is
 composed by the figure builders).
 """
 const PARAM_LABELS =
-    (L"\mathcal{A}", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_1", L"\chi_2")
+    (L"D_L", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_1", L"\chi_2")
 
 deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
 
@@ -287,6 +287,25 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Fitted-slope annotation `value ± error` with the decimal places set by the
+error — one significant digit of the uncertainty, never fewer than three
+decimals nor more than six (`3.9998 ± 0.0001`, `3.824 ± 0.043`); the bare
+three-decimal value when the error is not finite.
+"""
+function slope_latex(slope::Real, slope_err::Real)
+    isfinite(slope) || return string(slope)
+    decimals = 3
+    if isfinite(slope_err) && slope_err > 0
+        decimals = clamp(-floor(Int, log10(slope_err)), 3, 6)
+    end
+    value = Printf.format(Printf.Format("%.$(decimals)f"), slope)
+    (isfinite(slope_err) && slope_err > 0) || return value
+    return value * " \\pm " * Printf.format(Printf.Format("%.$(decimals)f"), slope_err)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Fit-coefficient formatting: always mantissa × power-of-10 with two decimal
 places (`1.07×10⁻³`); the ×10⁰ factor alone is omitted.
 """
@@ -379,9 +398,8 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
             [theory_line, numerical_scatter],
             [L"D^2_{\mathrm{theoretical}}",
                 latexstring(
-                    @sprintf(
-                        "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ %.3f \\pm %.3f",
-                        slope, slope_err)
+                    "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ " *
+                    slope_latex(slope, slope_err),
                 )];
             orientation = :horizontal, framevisible = false,
             tellwidth = false, tellheight = true, labelsize = 19,
@@ -765,6 +783,11 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
 
         xlo, xhi = zone_axis_ticks!(fig, ax, :x, px, xlo_d, xhi_d, x_exponent)
         ylo, yhi = zone_axis_ticks!(fig, ax, :y, py, ylo_d, yhi_d, y_exponent)
+        # a tall same-unit zone (needle along a null spin direction) leaves the
+        # x axis narrow: rotate its tick labels so they cannot collide
+        if same_units && (xhi - xlo) < 0.6 * (yhi - ylo)
+            ax.xticklabelrotation = π / 4
+        end
 
         poly!(ax, Point2f.(x, y); color = (ZONE_BLUE, 0.25), strokewidth = 0)
 

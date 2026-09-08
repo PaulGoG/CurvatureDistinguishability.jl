@@ -5,8 +5,8 @@ using CSV, DataFrames
 const FIXDIR = joinpath(@__DIR__, "reference")
 const FIX_DF = 1e-5
 const FIX_FREQS = collect(1e-3:FIX_DF:3e-3)
-const FIX_PHYS = (mass_scale = 10.0, time_scale = 100.0, amp_scale = 1e-21, eta = 0.25,
-    amp_33_factor = 0.1, sky_theta = 1.047, sky_phi = 3.1415,
+const FIX_PHYS = (mass_scale = 1.0, time_scale = 100.0, eta = 0.25,
+    ecliptic_longitude = 3.1415, ecliptic_latitude = 0.5238,
     inclination = 0.523, polarization = 0.785)
 const FIX_WP = waveform_params(; FIX_PHYS...)
 const THETA0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
@@ -25,16 +25,14 @@ u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
 K_u, g_uu = compute_extrinsic_curvature(THETA0, u_raw, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
 K_norm = K_u / g_uu^2
 u_norm = u_raw ./ sqrt(g_uu)
-deltas = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame).Delta
-h1 = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
-c1 = project_to_tdi(h1, FIX_FREQS, THETA0, FIX_WP)
+deltas = (16 / K_norm)^(1 / 4) .* 10 .^ range(-2.0, 0.3, length = 8) # δ/δ_min ∈ [0.01, 2]
+c1 = channel_strain(THETA0, FIX_FREQS, FIX_WP)
 d2_num = map(deltas) do d
     p2 = THETA0 .+ d .* u_norm
-    h2 = scaled_waveform_model(p2, FIX_FREQS, FIX_WP)
-    c2 = project_to_tdi(h2, FIX_FREQS, p2, FIX_WP)
+    c2 = channel_strain(p2, FIX_FREQS, FIX_WP)
     data = map((a, b) -> a .+ b, c1, c2)
     guess = THETA0 .+ (0.5 * d) .* u_norm
-    guess[1] *= 2.0
+    guess[1] /= 2.0
     first(
         calculate_numerical_distance(data, guess, FIX_FREQS, FIX_SN, FIX_DF;
             optimizer = :ipnewton, wp = FIX_WP),

@@ -20,15 +20,13 @@ df = 1.0 / T_obs
 freqs = collect(1.0e-3:df:2.0e-3)
 noise = NoiseParams()
 Sn_vals = analytic_noise_psd.(freqs; noise = noise)
-wp = waveform_params(time_scale = 100.0, sky_phi = π, polarization = 0.785)
+wp = waveform_params(time_scale = 100.0, ecliptic_longitude = π, polarization = 0.785)
 
 theta_0 = [1.0, 2.0, 1.0, 0.0, 0.5, 0.5]
 u_dir = [0.0, 1.0, 0.1, 0.0, 0.0, 0.0]
 
-h1 = scaled_waveform_model(theta_0, freqs, wp)
-h2 = scaled_waveform_model(theta_0 .+ 1e-4 .* u_dir, freqs, wp)
-H1 = project_to_tdi(h1, freqs, theta_0, wp)
-H2 = project_to_tdi(h2, freqs, theta_0 .+ 1e-4 .* u_dir, wp)
+H1 = channel_strain(theta_0, freqs, wp)
+H2 = channel_strain(theta_0 .+ 1e-4 .* u_dir, freqs, wp)
 data = map((a, b) -> a .+ b, H1, H2)
 
 println("=====================================================")

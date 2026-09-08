@@ -9,29 +9,51 @@ production campaign.
 this page is post-publication follow-up work; item 5 is closed and will
 not be implemented.
 
-## 1. 2PN spin–spin phase term (lifts the exact χ_a degeneracy)
+## 1. 2PN spin–spin phase term
 
-**Why.** At equal masses the current 1.5PN spin–orbit model depends on the
-spins only through ``\chi_{\rm eff} = (\chi_1+\chi_2)/2``; the anti-symmetric
-combination ``\chi_a`` is an exact flat direction (tangent rank 5), so the
-spin-plane confusion zones are prior-limited along it. The 2PN phase carries a
-spin1–spin2 coupling ``\sigma \propto \chi_1\chi_2`` which breaks the pure
-``\chi_{\rm eff}`` dependence and turns those boundary segments
+**Why.** The 1.5PN spin–orbit phase depends on the spins only through
+``\beta = [(113 - 76\eta)\chi_s + 113\,\delta_m\chi_a]/12``, so the spin
+combination with ``\mathrm{d}\beta = 0`` (``\chi_a`` at equal mass, a
+tilted line otherwise) is an exact flat direction at every mass ratio
+(tangent rank 5), and the spin-plane confusion zones are prior-limited
+along it. The 2PN phase carries a spin1–spin2 coupling
+``\sigma \propto \chi_1\chi_2`` (plus ``\chi_i^2`` self-terms) which adds
+genuinely new spin structure and turns those boundary segments
 curvature-limited.
 
 **How.**
-- Extend `strain_bin` (src/Physics.jl) with the 2PN term in the bracket:
-  ``[1 - 4\beta v^3 + (\ldots)\,\sigma v^4]`` using the standard TaylorF2 2PN
-  coefficient (transcribe from a primary reference — e.g. Buonanno, Iyer,
-  Ochsner et al. 2009, Table/Eqs. for ``\psi_4`` — with the same care as the
-  Robson Table 1 transcription; add the transcription to the test suite).
+- Extend `pn_phase` (src/Physics.jl) with the 2PN term of the bracket,
+  ``(15293365/508032 + 27145\eta/504 + 3085\eta^2/72 - 10\sigma)\,v^4``, with
+  ``\sigma`` transcribed from a primary reference (Poisson & Will 1995;
+  Arun et al. 2009 for the aligned-spin self-terms) with the same care as
+  the Robson Table 1 transcription; add the transcription to the test suite.
 - Config-gate it: `[physics] spin_spin_2pn = false` (default off) threaded
-  through `WaveformParams`, so all existing fixtures/tests and the published
+  through `WaveformParams`, so all existing fixtures/tests and the v1.0
   model stay bit-identical when disabled.
-- Consequences when enabled: tangent rank becomes 6 (Gram–Schmidt keeps the
-  6th vector), K values change everywhere, spin maps gain genuine structure —
-  the paper would need a model-variant note and regenerated figures. The A/B
-  fixture tests must assert the *disabled* path only.
+- Consequences when enabled: K values change everywhere and spin maps gain
+  genuine structure — the paper would need a model-variant note and
+  regenerated figures. The A/B fixture tests must assert the *disabled*
+  path only.
+
+## 1b. Inspiral–merger–ringdown realism (IMRPhenomD)
+
+**Why.** The LDC massive-binary catalogues (Sangria, Spritz, Yorsh) are
+generated with IMRPhenomD/HM; the inspiral-only model windows the signal
+out at ISCO and discards the merger SNR, which dominates for
+``M \gtrsim 10^{6}\,M_\odot`` sources in the LISA band. A frequency-domain
+phenomenological approximant is the natural next step for realism.
+
+**How.**
+- Port the IMRPhenomD amplitude and phase (Husa et al. 2016; Khan et al.
+  2016) as a second scalar core selectable through `[physics].approximant`,
+  keeping the six-parameter state vector (``\eta`` fixed per scenario).
+- The GPU kernels take the coefficient set as kernel arguments; the
+  IMRPhenomD coefficient struct exceeds the 2048-byte argument limit of the
+  Intel iGPU compiler, so the coefficients must be recomputed per bin from
+  ``(\mathcal{M}, \eta, \chi_1, \chi_2)`` inside the kernel (they are cheap
+  polynomials) rather than passed in.
+- Validation: SNR and phase agreement against an independent
+  implementation (LAL through PythonCall) on the fixture grid.
 
 ## 2. Noise-realization study (distribution of the distance statistic)
 

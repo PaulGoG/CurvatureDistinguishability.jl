@@ -30,8 +30,8 @@ CurvatureDistinguishability/
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
-│   ├── Physics.jl          # Robson (2019) noise model; scalar waveform core
-│   ├── Detector.jl         # TDI A/E response (fused single-pass projection)
+│   ├── Physics.jl          # Robson (2019) noise model; 1.5PN inspiral waveform core
+│   ├── Detector.jl         # LISA A/E response on the analytic orbits (fused scalar core)
 │   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
 │   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
@@ -148,7 +148,8 @@ overwritten.
 - **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
   parameters, convergence diagnostics, active-bound flags, multi-start gain),
   `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
-  the O(δ⁵) correction coefficients c₁/c₂ with a 10%-validity radius,
+  the O(δ⁵) correction coefficients c₁/c₂ — fitted on the points within
+  `correction_fit_max_departure` of the law — with a 10%-validity radius,
   optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log
   panel plus a D²_num/D²_theo ratio panel with the correction-fit overlay),
   `residual_plot.{pdf,png}` (d(SNR²)/df and d(D²)/df densities for channels

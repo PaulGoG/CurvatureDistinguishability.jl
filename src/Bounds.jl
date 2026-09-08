@@ -26,7 +26,7 @@ const SPIN_INDICES = (5, 6)
 """
 Canonical TOML keys for the six model parameters, in index order.
 """
-const PARAM_KEYS = ("amplitude", "chirp_mass", "coalescence_time",
+const PARAM_KEYS = ("luminosity_distance", "chirp_mass", "coalescence_time",
     "coalescence_phase", "spin1", "spin2")
 
 """
@@ -48,7 +48,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Physical defaults: `A ≥ 0`, `M_c ≥ 0`, `t_c ≥ 0`, phase periodic with period
+Physical defaults: `D_L ≥ 0`, `M_c ≥ 0`, `t_c ≥ 0`, phase periodic with period
 `2π` (unbounded for the optimizer, deviation-limited to ±π), spins in `[−1, 1]`.
 """
 function default_bounds()
@@ -62,7 +62,7 @@ end
 $(TYPEDSIGNATURES)
 
 Build bounds from a `[parameter_bounds]` TOML table mapping parameter names
-(`amplitude`, `chirp_mass`, `coalescence_time`, `coalescence_phase`,
+(`luminosity_distance`, `chirp_mass`, `coalescence_time`, `coalescence_phase`,
 `spin1`, `spin2`) to `[lower, upper]` pairs (`inf`/`-inf` allowed). Missing
 keys keep the defaults; the phase axis stays periodic regardless.
 """

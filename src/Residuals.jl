@@ -9,8 +9,8 @@ module Residuals
 using DocStringExtensions: TYPEDSIGNATURES
 using DataFrames: DataFrame
 using Statistics: mean
-using ..Physics: WaveformParams, scaled_waveform_model, second_source
-using ..Detector: project_to_tdi
+using ..Physics: WaveformParams, second_source
+using ..Detector: channel_strain
 
 export residual_spectrum
 
@@ -35,13 +35,10 @@ function residual_spectrum(theta0::AbstractVector, u_norm::AbstractVector,
     freqs::AbstractVector, Sn::AbstractVector, df::Real,
     wp::WaveformParams; n_windows::Integer)
     p2 = second_source(theta0, u_norm, delta, amp_ratio)
-    h1 = scaled_waveform_model(theta0, freqs, wp)
-    h2 = scaled_waveform_model(p2, freqs, wp)
-    ch1 = project_to_tdi(h1, freqs, theta0, wp)
-    ch2 = project_to_tdi(h2, freqs, p2, wp)
+    ch1 = channel_strain(theta0, freqs, wp)
+    ch2 = channel_strain(p2, freqs, wp)
     data = map((a, b) -> a .+ b, ch1, ch2)
-    hb = scaled_waveform_model(best_fit, freqs, wp)
-    bf = project_to_tdi(hb, freqs, best_fit, wp)
+    bf = channel_strain(best_fit, freqs, wp)
 
     dens(x, i) = 4 * abs2(x) / Sn[i]
     n = length(freqs)

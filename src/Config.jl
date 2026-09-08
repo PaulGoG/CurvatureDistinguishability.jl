@@ -66,18 +66,20 @@ Base.@kwdef struct PipelineSettings
     rng_seed::Int
     # sweep settings
     n_deltas::Int
-    min_log_delta::Float64
-    max_log_delta::Float64
+    min_log_delta_ratio::Float64
+    max_log_delta_ratio::Float64
     sweep_rho_thresh::Float64
     g_uu_degenerate::Float64
     n_starts::Int
     g_tol::Float64
+    f_reltol::Float64
     max_iterations::Int
     floor_detection_ratio::Float64
     secondary_minimum_gain::Float64
     multi_start_parallel_scale::Float64
     multi_start_transverse_scale::Float64
     correction_validity_fraction::Float64
+    correction_fit_max_departure::Float64
     residual_spectrum_windows::Int
     # grid
     T_obs::Float64
@@ -123,16 +125,18 @@ const KNOWN_KEYS = Dict(
     "monitoring" => ["enabled", "progress_log_fraction"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
         "sweep_settings"],
-    "pipeline.sweep_settings" => ["n_deltas", "min_log_delta", "max_log_delta",
-        "rho_thresh", "g_uu_degenerate", "n_starts",
-        "floor_detection_ratio", "secondary_minimum_gain",
-        "multi_start_parallel_scale", "multi_start_transverse_scale",
-        "correction_validity_fraction", "residual_spectrum_windows",
-        "g_tol", "max_iterations"],
+    "pipeline.sweep_settings" =>
+        ["n_deltas", "min_log_delta_ratio", "max_log_delta_ratio",
+            "rho_thresh", "g_uu_degenerate", "n_starts",
+            "floor_detection_ratio", "secondary_minimum_gain",
+            "multi_start_parallel_scale", "multi_start_transverse_scale",
+            "correction_validity_fraction", "correction_fit_max_departure",
+            "residual_spectrum_windows",
+            "g_tol", "f_reltol", "max_iterations"],
     "grid" => ["T_obs", "f_min", "f_max"],
-    "physics" => ["mass_scale", "time_scale", "amp_scale", "eta", "amp_33_factor",
-        "sky_theta", "sky_phi", "inclination", "polarization",
-        "include_t_channel"],
+    "physics" => ["mass_scale", "time_scale", "distance_scale", "eta",
+        "ecliptic_longitude", "ecliptic_latitude", "inclination", "polarization",
+        "orbit_phase", "constellation_phase", "cutoff_width", "include_t_channel"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
         "confusion_beta", "confusion_kappa", "confusion_gamma",
         "confusion_knee_freq", "arm_length", "oms_amplitude",
@@ -297,13 +301,13 @@ function parse_sweep_settings(config::AbstractDict)
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 ||
         config_error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
-    min_log_delta =
-        get_number(sweep_settings, "min_log_delta", -4.5, "pipeline.sweep_settings")
-    max_log_delta =
-        get_number(sweep_settings, "max_log_delta", -0.5, "pipeline.sweep_settings")
-    min_log_delta < max_log_delta ||
+    min_log_delta_ratio =
+        get_number(sweep_settings, "min_log_delta_ratio", -2.0, "pipeline.sweep_settings")
+    max_log_delta_ratio =
+        get_number(sweep_settings, "max_log_delta_ratio", 0.3, "pipeline.sweep_settings")
+    min_log_delta_ratio < max_log_delta_ratio ||
         config_error(
-            "[pipeline.sweep_settings]: min_log_delta ($min_log_delta) must be < max_log_delta ($max_log_delta)",
+            "[pipeline.sweep_settings]: min_log_delta_ratio ($min_log_delta_ratio) must be < max_log_delta_ratio ($max_log_delta_ratio)",
         )
     sweep_rho_thresh =
         get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
@@ -324,6 +328,9 @@ function parse_sweep_settings(config::AbstractDict)
     g_tol < 1e-11 &&
         @warn "[pipeline.sweep_settings].g_tol = $g_tol is tighter than the numerical " *
               "precision floor of small-separation fits; expect iteration-cap stalls there."
+    f_reltol = get_number(sweep_settings, "f_reltol", 1e-10, "pipeline.sweep_settings")
+    f_reltol > 0 ||
+        config_error("[pipeline.sweep_settings].f_reltol must be > 0, got $f_reltol")
     max_iterations =
         get_integer(sweep_settings, "max_iterations", 100, "pipeline.sweep_settings")
     max_iterations >= 1 ||
@@ -356,14 +363,21 @@ function parse_sweep_settings(config::AbstractDict)
         sweep_settings, "correction_validity_fraction", 0.1, "pipeline.sweep_settings")
     correction_validity_fraction > 0 ||
         config_error("[pipeline.sweep_settings].correction_validity_fraction must be > 0")
+    correction_fit_max_departure = get_number(
+        sweep_settings, "correction_fit_max_departure", 0.3, "pipeline.sweep_settings")
+    correction_fit_max_departure > 0 ||
+        config_error("[pipeline.sweep_settings].correction_fit_max_departure must be > 0")
     residual_spectrum_windows = get_integer(
         sweep_settings, "residual_spectrum_windows", 600, "pipeline.sweep_settings")
     residual_spectrum_windows >= 8 ||
         config_error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
-    return (; n_deltas, min_log_delta, max_log_delta, sweep_rho_thresh, g_uu_degenerate,
-        n_starts, g_tol, max_iterations, floor_detection_ratio, secondary_minimum_gain,
+    return (; n_deltas, min_log_delta_ratio, max_log_delta_ratio, sweep_rho_thresh,
+        g_uu_degenerate,
+        n_starts, g_tol, f_reltol, max_iterations, floor_detection_ratio,
+        secondary_minimum_gain,
         multi_start_parallel_scale, multi_start_transverse_scale,
-        correction_validity_fraction, residual_spectrum_windows)
+        correction_validity_fraction, correction_fit_max_departure,
+        residual_spectrum_windows)
 end
 
 """
@@ -389,40 +403,43 @@ end
 
 """
 `[physics]` into a [`WaveformParams`](@ref); defaults are owned by the
-struct and never restated here. The response transfer frequency follows
-from the instrument's `arm_length` (parsed with `[noise]`), so the noise
-model and the signal response share one arm length.
+struct and never restated here. The instrument's `arm_length` (parsed with
+`[noise]`) sets the constellation eccentricity and the transfer frequency of
+the response, so the noise model and the signal response share one arm
+length.
 """
 function parse_physics(config::AbstractDict, arm_length::Real)
     phys = get(config, "physics", Dict{String,Any}())
     warn_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
+    number(key, default) = get_number(phys, key, default, "physics")
     wp = WaveformParams(
-        mass_scale = get_number(phys, "mass_scale", wp_default.mass_scale, "physics"),
-        time_scale = get_number(phys, "time_scale", wp_default.time_scale, "physics"),
-        amp_scale = get_number(phys, "amp_scale", wp_default.amp_scale, "physics"),
-        eta = get_number(phys, "eta", wp_default.eta, "physics"),
-        amp_33_factor = get_number(
-            phys, "amp_33_factor", wp_default.amp_33_factor, "physics"),
-        sky_theta = get_number(phys, "sky_theta", wp_default.sky_theta, "physics"),
-        sky_phi = get_number(phys, "sky_phi", wp_default.sky_phi, "physics"),
-        inclination = get_number(phys, "inclination", wp_default.inclination, "physics"),
-        polarization = get_number(
-            phys, "polarization", wp_default.polarization, "physics"),
-        transfer_frequency = Physics.transfer_frequency(arm_length),
+        mass_scale = number("mass_scale", wp_default.mass_scale),
+        time_scale = number("time_scale", wp_default.time_scale),
+        distance_scale = number("distance_scale", wp_default.distance_scale),
+        eta = number("eta", wp_default.eta),
+        ecliptic_longitude = number("ecliptic_longitude", wp_default.ecliptic_longitude),
+        ecliptic_latitude = number("ecliptic_latitude", wp_default.ecliptic_latitude),
+        inclination = number("inclination", wp_default.inclination),
+        polarization = number("polarization", wp_default.polarization),
+        orbit_phase = number("orbit_phase", wp_default.orbit_phase),
+        constellation_phase = number("constellation_phase", wp_default.constellation_phase),
+        cutoff_width = number("cutoff_width", wp_default.cutoff_width),
+        arm_length = arm_length,
         include_t_channel = get_boolean(
             phys, "include_t_channel", n_channels(wp_default) == 3, "physics"),
     )
     for (fname, val) in (("mass_scale", wp.mass_scale), ("time_scale", wp.time_scale),
-        ("amp_scale", wp.amp_scale), ("amp_33_factor", wp.amp_33_factor))
+        ("distance_scale", wp.distance_scale), ("cutoff_width", wp.cutoff_width))
         val > 0 || config_error("[physics].$fname must be > 0, got $val")
     end
-    wp.eta == 0.25 || config_error(
-        "[physics].eta must be 0.25: the spin–orbit coefficient and the exact χ_a " *
-        "degeneracy of the waveform assume equal masses (got $(wp.eta))",
+    0.0 < wp.eta <= 0.25 || config_error(
+        "[physics].eta must be in (0, 0.25] (symmetric mass ratio), got $(wp.eta)")
+    abs(wp.ecliptic_latitude) <= π / 2 || config_error(
+        "[physics].ecliptic_latitude must be in [-π/2, π/2], got $(wp.ecliptic_latitude)",
     )
-    0.0 <= wp.sky_theta <= π ||
-        @warn "[physics].sky_theta = $(wp.sky_theta) is outside [0, π]; interpreting as-is."
+    0.0 <= wp.inclination <= π ||
+        config_error("[physics].inclination must be in [0, π], got $(wp.inclination)")
     return (; wp)
 end
 

@@ -15,8 +15,8 @@ const FIXDIR = joinpath(@__DIR__, "fixtures", "reference")
 # Fixture context: the tiny 201-bin grid the reference values were generated on.
 const FIX_DF = 1e-5
 const FIX_FREQS = collect(1e-3:FIX_DF:3e-3)
-const FIX_PHYS = (mass_scale = 10.0, time_scale = 100.0, amp_scale = 1e-21, eta = 0.25,
-    amp_33_factor = 0.1, sky_theta = 1.047, sky_phi = 3.1415,
+const FIX_PHYS = (mass_scale = 1.0, time_scale = 100.0, eta = 0.25,
+    ecliptic_longitude = 3.1415, ecliptic_latitude = 0.5238,
     inclination = 0.523, polarization = 0.785)
 const FIX_WP = waveform_params(; FIX_PHYS...)
 const THETA0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
@@ -119,111 +119,164 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             noise = NoiseParams(confusion_enabled = false, arm_length = 5.0e9)) != s_def
     end
 
-    @testset "Waveform scalar core" begin
-        h_bc = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
-        A = THETA0[1] * FIX_WP.amp_scale
-        chirp_mass = THETA0[2] * FIX_WP.mass_scale
-        coalescence_time = THETA0[3] * FIX_WP.time_scale
-        spin_orbit = spin_orbit_coefficient(THETA0[5], THETA0[6], FIX_WP.eta)
-        h_sc = [
-            strain_bin(
-                f,
-                A,
-                chirp_mass,
-                coalescence_time,
-                THETA0[4],
-                spin_orbit,
-                FIX_WP.amp_33_factor,
-            ) for
-            f in FIX_FREQS
-        ]
-        @test h_bc == h_sc
-        @test eltype(h_bc) <: Complex
-
-        # TaylorF2 conventions: the (2,2) phase derivative is 2π t(f) with the
-        # Newtonian SPA map the detector modulation evaluates on, the
-        # spin–orbit term is the Poisson–Will β at the total-mass velocity, and
-        # the (3,3) harmonic shares the arrival time (its 0PN term scales by
-        # (3/2)^{8/3}, the spin–orbit term by (3/2)^{5/3}, the phase by 3/2)
-        f0 = 2e-3
-        dpsi_df = ForwardDiff.derivative(
-            f -> harmonic_phase(f, 2, chirp_mass, coalescence_time, 0.3, 0.0), f0)
-        v0 = (π * chirp_mass * f0)^(1 / 3)
-        @test dpsi_df / (2π) ≈ coalescence_time - 5 * chirp_mass / (256 * v0^8) rtol = 1e-10
-        @test spin_orbit_coefficient(0.5, 0.3, 0.25) ≈ 4 * 3.1333333333333333 * 0.25^(-0.6) rtol =
+    @testset "Waveform physics: phasing, amplitudes, taper" begin
+        Mc, D = 1.5, CD.Physics.GIGAPARSEC_SEC
+        # the leading amplitude is the standard stationary-phase form
+        # √(5/24) π^{-2/3} 𝓜^{5/6} f^{-7/6} (1 + c²)/(2D) at every inclination
+        for ι in (0.0, 0.523, π / 2)
+            a_plus, a_cross = harmonic_amplitudes(2e-3, 2, Mc, 0.25, ι, D)
+            closed =
+                sqrt(5 / 24) * π^(-2 / 3) * Mc^(5 / 6) * (2e-3)^(-7 / 6) *
+                (1 + cos(ι)^2) / (2 * D)
+            @test abs(a_plus) ≈ closed rtol = 1e-12
+            @test a_cross ≈ a_plus * 2 * cos(ι) / (1 + cos(ι)^2) rtol = 1e-12
+        end
+        # the 0.5PN harmonics vanish at equal mass and carry the Blanchet
+        # coefficients times the mass asymmetry otherwise
+        @test all(iszero, harmonic_amplitudes(2e-3, 1, Mc, 0.25, 0.5, D))
+        @test all(iszero, harmonic_amplitudes(2e-3, 3, Mc, 0.25, 0.5, D))
+        @test CD.Physics.mass_asymmetry(0.16) ≈ 0.6 rtol = 1e-14
+        @test CD.Physics.mass_asymmetry(0.25) == 0.0
+        c, s_i = cos(0.5), sin(0.5)
+        for (k, plus_coef, cross_coef) in ((1, -(s_i / 8) * (5 + c^2), -(3 / 4) * s_i * c),
+            (3, (9 * s_i / 8) * (1 + c^2), (9 / 4) * s_i * c))
+            F = 2 * 2e-3 / k
+            M = total_mass(Mc, 0.16)
+            x = (π * M * F)^(2 / 3)
+            chirp_rate = (96 / 5) * π^(8 / 3) * Mc^(5 / 3) * F^(11 / 3)
+            pref = (M * 0.16 * x / D) * sqrt(2 / (k * chirp_rate)) * sqrt(x) * 0.6
+            a_plus, a_cross = harmonic_amplitudes(2e-3, k, Mc, 0.16, 0.5, D)
+            @test a_plus ≈ plus_coef * pref rtol = 1e-12
+            @test a_cross ≈ cross_coef * pref rtol = 1e-12
+        end
+        # TaylorF2 phasing to 1.5PN in the total-mass velocity
+        for eta in (0.25, 0.16)
+            beta = spin_beta(0.7, -0.2, eta)
+            v = (π * total_mass(Mc, eta) * 3e-3)^(1 / 3)
+            expected =
+                3 / (128 * eta * v^5) *
+                (1 + (3715 / 756 + 55 * eta / 9) * v^2 + (4 * beta - 16 * π) * v^3)
+            @test pn_phase(3e-3, Mc, eta, beta) ≈ expected rtol = 1e-14
+        end
+        # Poisson–Will spin–orbit coefficient: symmetric part at equal mass,
+        # antisymmetric part proportional to the mass asymmetry
+        @test spin_beta(0.5, 0.3, 0.25) ≈ 3.1333333333333333 rtol = 1e-14
+        @test spin_beta(1.0, 0.0, 0.16) ≈ ((113 - 76 * 0.16) * 0.5 + 113 * 0.6 * 0.5) / 12 rtol =
             1e-14
-        psi2 = harmonic_phase(f0, 2, chirp_mass, coalescence_time, 0.3, spin_orbit)
-        psi3 = harmonic_phase(f0, 3, chirp_mass, coalescence_time, 0.3, spin_orbit)
-        pn0 = (3 / 128) * v0^(-5)
-        @test psi3 - psi2 ≈
-              -0.15 + ((3 / 2)^(8 / 3) - 1) * pn0 +
-              ((3 / 2)^(5 / 3) - 1) * pn0 * spin_orbit * v0^3 rtol = 1e-12
-        @test ForwardDiff.derivative(
-            f -> harmonic_phase(f, 3, chirp_mass, coalescence_time, 0.3, 0.0), 1e3) / (2π) ≈
-              coalescence_time rtol = 1e-6 # arrival time common to the harmonics
+        # the spins enter the 1.5PN phase only through β: the combination
+        # (∂β/∂χ₂, −∂β/∂χ₁) is an exact null direction at every mass ratio
+        for eta in (0.25, 2 / 9, 0.16)
+            dm = CD.Physics.mass_asymmetry(eta)
+            c1 = (113 - 76 * eta + 113 * dm) / 24
+            c2 = (113 - 76 * eta - 113 * dm) / 24
+            dbeta = ForwardDiff.derivative(
+                s -> spin_beta(0.3 + s * c2, -0.3 - s * c1, eta), 0.0)
+            @test abs(dbeta) < 1e-12
+        end
+        # the Newtonian stationary-phase map is the frequency derivative of
+        # the (2,2) phase at low velocity: the 1PN term shifts the derivative
+        # by (3/5)(3715/756 + 55η/9) v² ≈ 7e-5 at v = 4e-3
+        f0, Mc_light = 1e-5, 0.001
+        dpsi_df = ForwardDiff.derivative(
+            f -> harmonic_phase(f, 2, Mc_light, 0.25, 200.0, 0.3, 0.0), f0)
+        @test dpsi_df / (2π) ≈ CD.Physics.spa_time(f0, Mc_light, 200.0) rtol = 5e-4
+        # every harmonic shares the arrival-time term and the −π/4; the PN part
+        # is (k/2) times the (2,2) phase at the (2,2) frequency 2f/k
+        beta = spin_beta(0.5, 0.3, 0.16)
+        for k in (1, 3)
+            lhs =
+                harmonic_phase(3e-3, k, Mc, 0.16, 200.0, 0.3, beta) - 2π * 3e-3 * 200.0 +
+                π / 4
+            rhs =
+                (k / 2) * (
+                    harmonic_phase(2 * 3e-3 / k, 2, Mc, 0.16, 200.0, 0.3, beta) -
+                    2π * (2 * 3e-3 / k) * 200.0 + π / 4
+                )
+            @test lhs ≈ rhs rtol = 1e-12
+        end
+        # innermost stable orbit and the taper around it
+        @test isco_frequency(4.925) ≈ 4.398e-3 rtol = 1e-3 # 10⁶ M⊙
+        fi = isco_frequency(total_mass(Mc, 0.25))
+        @test CD.Physics.inspiral_taper(0.5 * fi, fi, 0.1) ≈ 1.0 atol = 1e-4
+        @test CD.Physics.inspiral_taper(fi, fi, 0.1) == 0.5
+        @test CD.Physics.inspiral_taper(1.5 * fi, fi, 0.1) < 1e-4
         # the physical-model boundary rejects unknown keywords (typo protection)
         @test_throws ArgumentError waveform_params(sky_thata = 1.0)
-        # type stability of the hot scalar core
-        @test (@inferred strain_bin(
-            1e-3,
-            A,
-            chirp_mass,
-            coalescence_time,
-            0.0,
-            spin_orbit,
-            0.1,
-        )) isa ComplexF64
+        # type stability of the hot scalar cores
+        @test (@inferred harmonic_amplitudes(1e-3, 3, 1.5, 0.16, 0.5, 1e17)) isa
+              NTuple{2,Float64}
+        @test (@inferred pn_phase(1e-3, 1.5, 0.16, 2.0)) isa Float64
     end
 
-    @testset "Detector / TDI projection" begin
-        h = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
-        A2, E2 = project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)
-        @test length(A2) == length(FIX_FREQS) == length(E2)
-
-        # 3-channel variant (include_t_channel): identical A/E plus a zero T
-        wp3 = waveform_params(; FIX_PHYS..., include_t_channel = true)
-        A3, E3, T3 = project_to_tdi(h, FIX_FREQS, THETA0, wp3)
-        @test A3 == A2 && E3 == E2
-        @test all(iszero, T3)
-
-        # A and E carry the same long-wavelength normalisation: E is A rotated
-        # by 45° in polarisation, so the polarisation-averaged powers agree
-        chirp_mass = THETA0[2] * FIX_WP.mass_scale
-        coalescence_time = THETA0[3] * FIX_WP.time_scale
-        power(ch) = sum(
-            abs2(
-                tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time,
-                    waveform_params(; FIX_PHYS..., polarization = psi))[ch],
+    @testset "Detector: orbits, patterns, channels" begin
+        arm_sec = FIX_WP.arm_length / CD.Physics.C_LIGHT
+        # analytic orbits: equal arms to O(e²) at every orbital phase, the
+        # constellation centre on the 1 AU circle, the plane tilted by 60°
+        for alpha in (0.0, 1.0, 2.5, 4.0)
+            r1, r2, r3 = CD.Detector.spacecraft_positions(cos(alpha), sin(alpha),
+                FIX_WP.geometry)
+            arm(a, b) = sqrt(sum((a .- b) .^ 2))
+            @test all(
+                isapprox.((arm(r1, r2), arm(r2, r3), arm(r3, r1)), arm_sec; rtol = 3e-3),
             )
-            for psi in (0.0, π / 4, π / 2, 3π / 4))
-        @test power(1) ≈ power(2) rtol = 1e-12
-        # transfer roll-off: response power falls to 1/1.6 at f = f★
-        wp_star = waveform_params(; FIX_PHYS..., transfer_frequency = FIX_FREQS[1])
-        wp_flat = waveform_params(; FIX_PHYS..., transfer_frequency = Inf)
-        @test abs2(
-            tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time, wp_star)[1],
-        ) ≈
-              abs2(
-            tdi_modulation_bin(FIX_FREQS[1], chirp_mass, coalescence_time, wp_flat)[1],
-        ) /
-              1.6 rtol = 1e-12
-        @test FIX_WP.transfer_frequency ≈ 2.99792458e8 / (2π * 2.5e9) rtol = 1e-14
+            center = (r1 .+ r2 .+ r3) ./ 3
+            @test hypot(center[1], center[2]) ≈ CD.Physics.R_ORBIT_SEC rtol = 1e-4
+            e12 = r2 .- r1
+            e13 = r3 .- r1
+            normal = (e12[2] * e13[3] - e12[3] * e13[2], e12[3] * e13[1] - e12[1] * e13[3],
+                e12[1] * e13[2] - e12[2] * e13[1])
+            @test abs(normal[3]) / sqrt(sum(normal .^ 2)) ≈ 0.5 atol = 1e-2
+        end
+        # sky- and polarization-averaged response power of A and E is the
+        # long-wavelength 3/10 of a 60° Michelson (Robson et al. 2019, Eq. 13)
+        # and the two channels are uncorrelated
+        acc = zeros(3)
+        n_dir = 0
+        for lambda in range(0, 2π, length = 17)[1:(end-1)],
+            sin_beta in range(-1, 1, length = 17), psi in
+                                                   range(0, π, length = 5)[1:(end-1)]
 
-        # fused projection ≡ per-bin modulation
-        coalescence_time = THETA0[3] * FIX_WP.time_scale
-        mA, mE = tdi_modulation_bin(FIX_FREQS[7], chirp_mass, coalescence_time, FIX_WP)
-        @test mA * h[7] ≈ A2[7] rtol = 1e-14
-        @test mE * h[7] ≈ E2[7] rtol = 1e-14
-        @test (@inferred tdi_modulation_bin(1e-3, chirp_mass, coalescence_time, FIX_WP)) isa
-              NTuple{2,ComplexF64}
-
-        # channel count is a WaveformParams type parameter: the projection
-        # return type (2- vs 3-tuple) and the flat response infer concretely
+            w = waveform_params(; ecliptic_longitude = lambda,
+                ecliptic_latitude = asin(sin_beta), polarization = psi)
+            FA_plus, FA_cross, FE_plus, FE_cross, _, _ =
+                CD.Detector.channel_patterns(0.3 * SECONDS_PER_YEAR, w.geometry,
+                    w.orbit_phase)
+            acc .+= (FA_plus^2 + FA_cross^2, FE_plus^2 + FE_cross^2,
+                FA_plus * FE_plus + FA_cross * FE_cross)
+            n_dir += 1
+        end
+        @test acc[1] / n_dir ≈ 0.3 rtol = 0.03
+        @test acc[2] / n_dir ≈ 0.3 rtol = 0.03
+        @test abs(acc[3] / n_dir) < 0.01
+        # Doppler: a wave from +x reaches the constellation at +x one AU early
+        w0 = waveform_params(; ecliptic_longitude = 0.0, ecliptic_latitude = 0.0)
+        @test CD.Detector.doppler_phase(1e-3, 1.0, 0.0, w0.geometry) ≈
+              2π * 1e-3 * CD.Physics.R_ORBIT_SEC rtol = 1e-14
+        @test CD.Physics.transfer_frequency(FIX_WP.arm_length) ≈ 2.99792458e8 / (2π * 2.5e9) rtol =
+            1e-14
+        # the strain dies above the innermost stable orbit
+        physical(θ) = (θ[1] * FIX_WP.distance_scale, θ[2] * FIX_WP.mass_scale,
+            θ[3] * FIX_WP.time_scale, θ[4], θ[5], θ[6])
+        fi = isco_frequency(total_mass(THETA0[2] * FIX_WP.mass_scale, FIX_WP.eta))
+        strain(f) = abs(channel_strain_bin(f, physical(THETA0)..., FIX_WP)[1])
+        @test strain(2 * fi) < 1e-6 * strain(0.5 * fi)
+        # fused channel strains ≡ per-bin core; T identically zero when requested
+        A2, E2 = channel_strain(THETA0, FIX_FREQS, FIX_WP)
+        @test length(A2) == length(FIX_FREQS) == length(E2)
+        wp3 = waveform_params(; FIX_PHYS..., include_t_channel = true)
+        A3, E3, T3 = channel_strain(THETA0, FIX_FREQS, wp3)
+        @test A3 == A2 && E3 == E2 && all(iszero, T3)
+        hA, hE = channel_strain_bin(FIX_FREQS[7], physical(THETA0)..., FIX_WP)
+        @test hA == A2[7] && hE == E2[7]
+        # both channels carry comparable power (no channel under-weighted)
+        @test 0.2 < sum(abs2, E2) / sum(abs2, A2) < 5.0
         @test n_channels(FIX_WP) == 2 && n_channels(wp3) == 3
-        @test (@inferred project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)) isa
+        @test (@inferred channel_strain(THETA0, FIX_FREQS, FIX_WP)) isa
               NTuple{2,Vector{ComplexF64}}
-        @test (@inferred project_to_tdi(h, FIX_FREQS, THETA0, wp3)) isa
+        @test (@inferred channel_strain(THETA0, FIX_FREQS, wp3)) isa
               NTuple{3,Vector{ComplexF64}}
+        @test (@inferred channel_strain_bin(1e-3, physical(THETA0)..., FIX_WP)) isa
+              NTuple{2,ComplexF64}
         @test (@inferred CD.Geometry.flat_response(THETA0, FIX_FREQS, FIX_WP)) isa
               Vector{Float64}
     end
@@ -241,8 +294,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # single-channel inner product through the public path: the closed
         # form 4 df Σ Re(h1* h2)/Sn, and the multi-channel sum reducing to it
-        h = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
-        A2, E2 = project_to_tdi(h, FIX_FREQS, THETA0, FIX_WP)
+        A2, E2 = channel_strain(THETA0, FIX_FREQS, FIX_WP)
         ip_closed =
             4 * FIX_DF * sum(real(conj(a) * e) / s for (a, e, s) in zip(A2, E2, FIX_SN))
         @test inner_product(A2, E2, FIX_SN, FIX_DF) ≈ ip_closed rtol = 1e-12
@@ -286,14 +338,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 dir[py] = sin(row.Angle)
                 K, g = compute_extrinsic_curvature_from_basis(THETA0, dir, basis,
                     FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+                # directions whose curvature is round-off (∂²h in the tangent
+                # space, e.g. the pure coalescence-phase direction of a
+                # single-harmonic signal) carry no reproducible K or radius
                 if row.K_raw > 1e-10 * Kmax
                     @test K ≈ row.K_raw rtol = 1e-8
-                end
-                if row.G_uu > 1e-6
-                    @test g ≈ row.G_uu rtol = 1e-6
                     # capped-mapping radius formula ≡ reference x/y bounds (s(φ) cancels)
                     r_math = (16.0 * 1.0 / K)^(1 / 4)
                     @test r_math ≈ hypot(row.X_Bound, row.Y_Bound) rtol = 1e-8
+                end
+                if row.G_uu > 1e-6
+                    @test g ≈ row.G_uu rtol = 1e-6
                 end
             end
         end
@@ -317,8 +372,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # with the base source as the "best fit" the residual is exactly the
         # second source, so the residual integrals sum to its SNR²
         p2 = THETA0 .+ delta .* u_norm
-        h2 = scaled_waveform_model(p2, FIX_FREQS, FIX_WP)
-        ch2 = project_to_tdi(h2, FIX_FREQS, p2, FIX_WP)
+        ch2 = channel_strain(p2, FIX_FREQS, FIX_WP)
         @test integrals.int_A + integrals.int_E ≈
               multi_channel_inner_product(ch2, ch2, FIX_SN, FIX_DF) rtol = 1e-12
         @test integrals.int_A > 0 && integrals.int_E > 0
@@ -329,9 +383,10 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     end
 
     @testset "Second source, boundary radius, unbounded cap" begin
+        # half the amplitude ⇔ twice the luminosity distance
         p2 = second_source([1.0, 2.0, 3.0, 0.0, 0.5, 0.5], [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
             0.1, 0.5)
-        @test p2 == [0.5, 2.1, 3.0, 0.0, 0.5, 0.5]
+        @test p2 == [2.0, 2.1, 3.0, 0.0, 0.5, 0.5]
         @test boundary_radius(16.0, 1.0) == 1.0
         @test boundary_radius(16.0, 4.0) ≈ sqrt(2.0)
         @test isinf(boundary_radius(0.0, 1.0)) && isinf(boundary_radius(1e-320, 1.0))
@@ -372,11 +427,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     end
 
     @testset "Inference: kernel ≡ loop, optimizers, bounds" begin
-        h1 = scaled_waveform_model(THETA0, FIX_FREQS, FIX_WP)
         θ2 = THETA0 .+ [0.0, 0.01, 0.02, 0.01, 0.0, 0.0]
-        h2 = scaled_waveform_model(θ2, FIX_FREQS, FIX_WP)
-        c1 = project_to_tdi(h1, FIX_FREQS, THETA0, FIX_WP)
-        c2 = project_to_tdi(h2, FIX_FREQS, θ2, FIX_WP)
+        c1 = channel_strain(THETA0, FIX_FREQS, FIX_WP)
+        c2 = channel_strain(θ2, FIX_FREQS, FIX_WP)
         data = map((a, b) -> a .+ b, c1, c2)
 
         loop = loss_function(data, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP, CPU())
@@ -453,11 +506,10 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         for row in eachrow(sweep_fix)[(end-3):end]
             d = row.Delta
             p2 = THETA0 .+ d .* u_norm
-            hh2 = scaled_waveform_model(p2, FIX_FREQS, FIX_WP)
-            cc2 = project_to_tdi(hh2, FIX_FREQS, p2, FIX_WP)
+            cc2 = channel_strain(p2, FIX_FREQS, FIX_WP)
             dstream = map((a, b) -> a .+ b, c1, cc2)
             guess = THETA0 .+ (0.5 * d) .* u_norm
-            guess[1] *= 2.0
+            guess[1] /= 2.0 # two equal sources: amplitude 2A ⇔ distance D/2
             d_new, bf, res =
                 calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN, FIX_DF;
                     optimizer = :ipnewton, wp = FIX_WP)
@@ -534,6 +586,15 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             # progress-log cadence
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[physics]\neta = 0.3\n"))
+            @test load_and_validate_config(write_cfg(dir, "[physics]\neta = 0.2\n")).wp.eta ==
+                  0.2
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[physics]\necliptic_latitude = 2.0\n"))
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[physics]\ncutoff_width = 0.0\n"))
+            cfg_arm =
+                load_and_validate_config(write_cfg(dir, "[noise]\narm_length = 5.0e9\n"))
+            @test cfg_arm.wp.arm_length == 5.0e9 # one arm length for noise and response
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[monitoring]\nprogress_log_fraction = 2.0\n"))
             tiny = joinpath(dir, "tiny.toml")
@@ -622,6 +683,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             end
             # analysis tunables: defaults, override roundtrip, validation
             @test cfg_def.floor_detection_ratio == 2.0
+            @test cfg_def.min_log_delta_ratio == -2.0 && cfg_def.max_log_delta_ratio == 0.3
+            @test cfg_def.correction_fit_max_departure == 0.3
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir,
+                    "[pipeline.sweep_settings]\ncorrection_fit_max_departure = 0.0\n"),
+            )
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir,
+                    "[pipeline.sweep_settings]\nmin_log_delta_ratio = 0.5\nmax_log_delta_ratio = 0.3\n",
+                ),
+            )
             @test cfg_def.secondary_minimum_gain == 1.5
             @test cfg_def.unbounded_cap_factor == 5.0
             @test cfg_def.residual_spectrum_windows == 600
@@ -874,6 +946,13 @@ enabled = true
         @test isnan(CD.Fitting.loglog_slope([1.0, 10.0], [1.0, 1e4])[2]) # no error with 2 points
         @test CD.Fitting.above_floor_mask([1.0, 2.0, 3.0], 2.0) == [false, false, true]
         @test CD.Fitting.above_floor_mask([0.0, 1.0, -1.0], NaN) == [false, true, false]
+        # the O(δ⁵) window keeps clean points within the departure bound only
+        @test CD.Fitting.perturbative_mask(
+            [1.05, 0.8, 1.4, 1.0],
+            [true, true, true, false],
+            0.3,
+        ) ==
+              [true, true, false, false]
     end
 
     @testset "Orchestrator: resource planning, seeding, mirroring" begin
@@ -1039,6 +1118,11 @@ enabled = true
         @test CD.Plotting.sci_latex(0) == "0"
 
         # fit coefficients: mantissa ×10ⁿ with two decimals outside exponents −1..1
+        # slope annotation: decimals follow the uncertainty (≥ 3, ≤ 6)
+        @test CD.Plotting.slope_latex(3.99984, 0.00012) == "3.9998 \\pm 0.0001"
+        @test CD.Plotting.slope_latex(3.8241, 0.0432) == "3.824 \\pm 0.043"
+        @test CD.Plotting.slope_latex(3.9812, 0.0081) == "3.981 \\pm 0.008"
+        @test CD.Plotting.slope_latex(4.0, NaN) == "4.000"
         @test CD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
         @test CD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
         @test CD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
@@ -1062,8 +1146,8 @@ optimizer = "ipnewton"
 rng_seed = 11
 [pipeline.sweep_settings]
 n_deltas = 6
-min_log_delta = -3.0
-max_log_delta = -0.5
+min_log_delta_ratio = -2.0
+max_log_delta_ratio = 0.3
 n_starts = 2
 [grid]
 T_obs = 1.0e5
@@ -1071,7 +1155,8 @@ f_min = 1.0e-3
 f_max = 3.0e-3
 [physics]
 time_scale = 100.0
-sky_phi = 3.1415
+ecliptic_longitude = 3.1415
+ecliptic_latitude = 0.5238
 polarization = 0.785
 [mapping]
 n_angles = 32

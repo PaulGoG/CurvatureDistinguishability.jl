@@ -31,15 +31,10 @@ between the 2-channel (A, E) data and the single-source model at parameters
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
-        A = θ[1] * wp.amp_scale
-        chirp_mass = θ[2] * wp.mass_scale
-        coalescence_time = θ[3] * wp.time_scale
-        spin_orbit = spin_orbit_coefficient(θ[5], θ[6], wp.eta)
-        h = strain_bin(f, A, chirp_mass, coalescence_time, θ[4], spin_orbit,
-            wp.amp_33_factor)
-        mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
-        diff_A = data_A[i] - mod_A * h
-        diff_E = data_E[i] - mod_E * h
+        hA, hE = channel_strain_bin(f, θ[1] * wp.distance_scale, θ[2] * wp.mass_scale,
+            θ[3] * wp.time_scale, θ[4], θ[5], θ[6], wp)
+        diff_A = data_A[i] - hA
+        diff_E = data_E[i] - hE
         out[i] = (real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)) / Sn[i]
     end
 end
@@ -194,15 +189,10 @@ end
     i = @index(Global, Linear)
     @inbounds begin
         f = freqs[i]
-        A = θ[1] * wp.amp_scale
-        chirp_mass = θ[2] * wp.mass_scale
-        coalescence_time = θ[3] * wp.time_scale
-        spin_orbit = spin_orbit_coefficient(θ[5], θ[6], wp.eta)
-        h = strain_bin(f, A, chirp_mass, coalescence_time, θ[4], spin_orbit,
-            wp.amp_33_factor)
-        mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
-        diff_A = data_A[i] - mod_A * h
-        diff_E = data_E[i] - mod_E * h
+        hA, hE = channel_strain_bin(f, θ[1] * wp.distance_scale, θ[2] * wp.mass_scale,
+            θ[3] * wp.time_scale, θ[4], θ[5], θ[6], wp)
+        diff_A = data_A[i] - hA
+        diff_E = data_E[i] - hE
         c = (real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)) / Sn[i]
         _store_dual!(out, i, 1, c)
     end
@@ -272,21 +262,19 @@ end
 
 function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Real,
     wp::WaveformParams)
-    A = p[1] * wp.amp_scale
+    distance = p[1] * wp.distance_scale
     chirp_mass = p[2] * wp.mass_scale
     coalescence_time = p[3] * wp.time_scale
-    coalescence_phase = p[4]
-    spin_orbit = spin_orbit_coefficient(p[5], p[6], wp.eta)
 
     # Allocation-free loop (avoids GC lock contention under outer threading).
     dist_sq = sum(eachindex(freqs)) do i
         @inbounds begin
             f = freqs[i]
-            h = strain_bin(f, A, chirp_mass, coalescence_time, coalescence_phase,
-                spin_orbit, wp.amp_33_factor)
-            mod_A, mod_E = tdi_modulation_bin(f, chirp_mass, coalescence_time, wp)
-            diff_A = data_stream[1][i] - mod_A * h
-            diff_E = data_stream[2][i] - mod_E * h
+            hA, hE =
+                channel_strain_bin(f, distance, chirp_mass, coalescence_time, p[4],
+                    p[5], p[6], wp)
+            diff_A = data_stream[1][i] - hA
+            diff_E = data_stream[2][i] - hE
             c = real(conj(diff_A) * diff_A) + real(conj(diff_E) * diff_E)
             if length(data_stream) == 3
                 diff_T = data_stream[3][i] # model T channel is identically zero
@@ -352,7 +340,7 @@ keyword (defaults to the model defaults). Returns
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
     freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
-    g_tol::Real = 1e-10, iterations::Int = 100,
+    g_tol::Real = 1e-10, f_reltol::Real = 1e-10, iterations::Int = 100,
     backend = get_best_backend(),
     optimizer::Symbol = :ipnewton,
     bounds::Union{Nothing,ParameterBounds} = default_bounds(),
@@ -376,7 +364,12 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
         ForwardDiff.HessianConfig(loss, x_proto)
     h!(H, x) = ForwardDiff.hessian!(H, loss, x, hess_cfg)
 
-    opts = Optim.Options(g_tol = g_tol, iterations = iterations, show_trace = false)
+    # two convergence triggers: the projected-gradient norm, and the relative
+    # change of D² between Newton steps — the gradient floor of a
+    # million-bin objective sits orders of magnitude above g_tol while the
+    # distance itself is converged to ten digits
+    opts = Optim.Options(g_tol = g_tol, f_reltol = f_reltol, iterations = iterations,
+        show_trace = false)
 
     opt_res = if optimizer === :ipnewton
         bounds === nothing && throw(ArgumentError("optimizer = :ipnewton requires bounds"))

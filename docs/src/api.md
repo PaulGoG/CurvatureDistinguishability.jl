@@ -33,16 +33,24 @@ CurvatureDistinguishability.Physics.NoiseParams
 CurvatureDistinguishability.Physics.robson_confusion_params
 CurvatureDistinguishability.Physics.analytic_noise_psd
 CurvatureDistinguishability.Physics.WaveformParams
+CurvatureDistinguishability.Physics.ResponseGeometry
 CurvatureDistinguishability.Physics.waveform_params
+CurvatureDistinguishability.Physics.total_mass
+CurvatureDistinguishability.Physics.mass_asymmetry
+CurvatureDistinguishability.Physics.isco_frequency
 CurvatureDistinguishability.Physics.spin_beta
-CurvatureDistinguishability.Physics.spin_orbit_coefficient
 CurvatureDistinguishability.Physics.pn_phase
 CurvatureDistinguishability.Physics.harmonic_phase
-CurvatureDistinguishability.Physics.strain_bin
-CurvatureDistinguishability.Physics.scaled_waveform_model
+CurvatureDistinguishability.Physics.spa_time
+CurvatureDistinguishability.Physics.harmonic_amplitudes
+CurvatureDistinguishability.Physics.inspiral_taper
 CurvatureDistinguishability.Physics.second_source
 CurvatureDistinguishability.Physics.N_PARAMS
+CurvatureDistinguishability.Physics.HARMONICS
 CurvatureDistinguishability.Physics.SECONDS_PER_YEAR
+CurvatureDistinguishability.Physics.C_LIGHT
+CurvatureDistinguishability.Physics.R_ORBIT_SEC
+CurvatureDistinguishability.Physics.GIGAPARSEC_SEC
 CurvatureDistinguishability.Physics.LISA_ARM_LENGTH
 CurvatureDistinguishability.Physics.transfer_frequency
 ```
@@ -50,8 +58,11 @@ CurvatureDistinguishability.Physics.transfer_frequency
 ## Detector
 
 ```@docs
-CurvatureDistinguishability.Detector.tdi_modulation_bin
-CurvatureDistinguishability.Detector.project_to_tdi
+CurvatureDistinguishability.Detector.spacecraft_positions
+CurvatureDistinguishability.Detector.doppler_phase
+CurvatureDistinguishability.Detector.channel_patterns
+CurvatureDistinguishability.Detector.channel_strain_bin
+CurvatureDistinguishability.Detector.channel_strain
 CurvatureDistinguishability.Detector.n_channels
 ```
 
@@ -150,6 +161,7 @@ CurvatureDistinguishability.Plotting.offset_ticks
 CurvatureDistinguishability.Plotting.sci_tick_labels
 CurvatureDistinguishability.Plotting.sci_latex
 CurvatureDistinguishability.Plotting.coef_latex
+CurvatureDistinguishability.Plotting.slope_latex
 CurvatureDistinguishability.Plotting.axis_exponent
 CurvatureDistinguishability.Plotting.sweep_diagnostic_panel
 CurvatureDistinguishability.Plotting.map_diagnostic_panel
@@ -166,6 +178,7 @@ CurvatureDistinguishability.Fitting.loglog_slope
 CurvatureDistinguishability.Fitting.ratio_correction_fit
 CurvatureDistinguishability.Fitting.optimizer_floor
 CurvatureDistinguishability.Fitting.above_floor_mask
+CurvatureDistinguishability.Fitting.perturbative_mask
 CurvatureDistinguishability.Fitting.MIN_FIT_POINTS
 ```
 

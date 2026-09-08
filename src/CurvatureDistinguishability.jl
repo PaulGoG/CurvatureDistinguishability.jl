@@ -24,13 +24,13 @@ export get_best_backend, to_backend, backend_name
 include("Physics.jl")
 using .Physics
 export NoiseParams, robson_confusion_params, analytic_noise_psd,
-    WaveformParams, waveform_params, spin_beta, spin_orbit_coefficient,
-    harmonic_phase, strain_bin, scaled_waveform_model, second_source,
+    WaveformParams, waveform_params, spin_beta, pn_phase, harmonic_phase,
+    harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
 
 include("Detector.jl")
 using .Detector
-export tdi_modulation_bin, project_to_tdi, n_channels
+export channel_strain, channel_strain_bin, n_channels
 
 include("Residuals.jl")
 using .Residuals

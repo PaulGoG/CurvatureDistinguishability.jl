@@ -15,8 +15,9 @@ using ..Bounds: deviation_box
 using ..Geometry: boundary_radius, cap_unbounded_radii!
 using ..Config: load_and_validate_config
 using ..Plotting
-using ..Fitting: MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
-    above_floor_mask
+using ..Fitting:
+    MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
+    above_floor_mask, perturbative_mask
 
 export run_cases, sweep_figures, zone_map_figure
 
@@ -83,7 +84,9 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
             count(clean) >= MIN_FIT_POINTS ?
             loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
         ratio = res.D2_Numerical ./ res.D2_Theoretical
-        c1, _, c2 = ratio_correction_fit(res.Delta[clean], ratio[clean])
+        window = perturbative_mask(ratio, collect(clean),
+            run_config(run_dir).correction_fit_max_departure)
+        c1, _, c2 = ratio_correction_fit(res.Delta[window], ratio[window])
     else
         slope = Float64(get(meta, "slope", NaN))
         slope_err = Float64(get(meta, "slope_err", NaN))

@@ -30,16 +30,23 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   defaults.
 - **`Physics.jl`** — the Robson et al. (2019) noise model: instrumental
   Eq. 12 plus the Eq. 14 galactic-confusion fit with Table-1 coefficients
-  selected by observation time (all overridable in `[noise]`); and the scalar
-  waveform core `strain_bin` (2,2 mode with 1.5PN spin–orbit phasing + 3,3
-  harmonic), which is the **single implementation** shared by the broadcast
-  model, the CPU inference loop and the GPU kernel.
-- **`Detector.jl`** — scalar TDI modulation `tdi_modulation_bin` (orbital
-  Doppler, rotating-detector antenna patterns, the finite-arm transfer
-  roll-off and the common `√3/2` A/E normalisation) and a fused single-pass
-  `project_to_tdi`. Channels A and E by default; the identically zero null
-  channel T is opt-in (`[physics].include_t_channel`) and exists only for
-  diagnostic comparisons — it adds dead compute.
+  selected by observation time (all overridable in `[noise]`); the physical
+  constants (arm length, AU, year, Gpc); and the scalar source-frame
+  waveform: TaylorF2 phasing to 1.5PN (`pn_phase`, `harmonic_phase`,
+  `spin_beta`), the 0.5PN harmonic amplitudes (`harmonic_amplitudes`), the
+  stationary-phase time and the innermost-stable-orbit window. `WaveformParams`
+  carries the scenario constants (scales, mass ratio, sky, inclination,
+  polarization, constellation phases) and the precomputed response geometry.
+- **`Detector.jl`** — the long-wavelength LISA response on the analytic
+  Rubbo–Cornish–Poujade orbits: spacecraft positions, Michelson antenna
+  patterns combined into the noise-orthogonal A and E channels
+  (`channel_patterns`), the orbital Doppler phase and the finite-arm transfer
+  roll-off, assembled per bin and per harmonic by the scalar core
+  `channel_strain_bin` — the **single implementation** shared by the fused
+  broadcast model `channel_strain`, the CPU inference loop and the GPU
+  kernel. The identically zero null channel T is opt-in
+  (`[physics].include_t_channel`) and exists only for diagnostic
+  comparisons — it adds dead compute.
 - **`Residuals.jl`** — residual-spectrum diagnostics of the sweeps: the
   decimated `d(SNR²)/df` densities of the two-source data, the best-fit
   single source and the unabsorbed residual (channels A and E, log-uniform
@@ -52,9 +59,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   interior clamping for the constrained optimizer.
 - **`Geometry.jl`** — the differential-geometry engine. One ForwardDiff
   Jacobian of the flattened response + modified Gram–Schmidt gives the
-  noise-weighted orthonormal tangent basis (exactly degenerate directions,
-  e.g. the equal-mass spin difference ``\chi_a``, are dropped — the basis has
-  rank 5 in this model). Directional value/first/second derivatives come
+  noise-weighted orthonormal tangent basis (exactly degenerate directions
+  are dropped — the 1.5PN spins enter through one scalar ``\beta``, so the
+  basis has rank 5 at every mass ratio). Directional value/first/second derivatives come
   from a **single fused nested-dual evaluation**. Geometry always runs on
   CPU arrays: `ForwardDiff.jacobian` is incompatible with device arrays, and
   the map stage costs minutes, not days.
@@ -136,8 +143,8 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
 
 ## 4. Notes for future development
 
-1. Keep the scalar cores (`strain_bin`, `tdi_modulation_bin`) the single
-   source of physics truth — the loop, broadcast and kernel paths all call
+1. Keep the scalar core (`channel_strain_bin` over the `Physics` kernels)
+   the single source of physics truth — the loop, broadcast and kernel paths all call
    them, and the test suite asserts their equivalence.
 2. New physical parameters go: configuration TOML → `Config.jl` validation →
    `WaveformParams` field → scalar core. Never a bare kwarg default
