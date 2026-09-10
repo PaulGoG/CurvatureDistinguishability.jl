@@ -6,8 +6,8 @@ production campaign.
 
 **Scope decision (2026-08):** the current publication is complete with the
 1.5PN waveform model and the noiseless-baseline validation. Every item on
-this page is post-publication follow-up work; item 5 is closed and will
-not be implemented.
+this page is post-publication follow-up work; items 4 and 5 are closed
+and will not be implemented.
 
 ## 1. 2PN spin–spin phase term
 
@@ -29,19 +29,20 @@ curvature-limited.
   the Robson Table 1 transcription; add the transcription to the test suite.
 - Config-gate it: `[physics] spin_spin_2pn = false` (default off) threaded
   through `WaveformParams`, so all existing fixtures/tests and the v1.0
-  model stay bit-identical when disabled.
+  model stay bit-identical when disabled. The term is a toggle, not a
+  replacement: the 1.5PN model remains the default and stays selectable.
 - Consequences when enabled: K values change everywhere and spin maps gain
   genuine structure — the paper would need a model-variant note and
   regenerated figures. The A/B fixture tests must assert the *disabled*
   path only.
-- Display revert: `Plotting.zone_figure` draws a same-unit zone whose
+- Display: `Plotting.zone_figure` draws a same-unit zone whose
   principal-axis aspect reaches `NEEDLE_ASPECT` in the frame of its null
   direction (abscissa along it, ordinate transverse; introduced for the
-  1.5PN spin needles, whose transverse width is otherwise invisible). With
-  the 2PN term the spin zone closes, the criterion stops firing and the
-  parameter frame returns by itself; verify this on the regenerated spin
-  maps, then remove the needle branch, `principal_axis` and their tests
-  rather than leaving dead code.
+  1.5PN spin needles, whose transverse width is otherwise invisible).
+  Because the term is a toggle, the 1.5PN needles remain and the frame
+  stays; with the term enabled the spin zone closes, the criterion stops
+  firing and the parameter frame returns by itself — verify this on the
+  first 2PN spin maps.
 
 ## 1b. Inspiral–merger–ringdown realism (IMRPhenomD)
 
@@ -126,13 +127,13 @@ machine-epsilon agreement (2e-16) against the CPU reference — a full
 production-size IPNewton solve ≈ 16 s on the iGPU versus 161 s on 22 CPU
 threads. The chunked path is exercised in the test suite.
 
-## 4. Float32 + compensated summation (only with a validated error model)
+## 4. Float32 + compensated summation (closed — will not be implemented)
 
-FP32 doubles consumer-GPU throughput ~64× for this kernel, but ``D^2`` spans
-``10^{-21}``–``10^{-3}`` relative to the signal norm: naive FP32 is unusable.
-A viable scheme needs Kahan/Neumaier compensation in the bin reduction *and*
-an error model validated against FP64 on the target grid (the fixture harness
-is the right tool). Pursue only if a concrete GPU-bound campaign demands it.
+FP32 would raise consumer-GPU throughput ~64× for this kernel, but ``D^2``
+spans ``10^{-21}``–``10^{-3}`` relative to the signal norm, so naive FP32 is
+unusable and a viable scheme would need compensated bin reductions plus an
+error model validated against FP64 on the target grid. Closed: the
+pipeline stays FP64 throughout.
 
 ## 5. Derivative-free optimizer fallback (closed — will not be implemented)
 
