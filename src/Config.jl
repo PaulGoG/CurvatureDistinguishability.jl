@@ -100,6 +100,7 @@ Base.@kwdef struct PipelineSettings
     gpu_backend::Symbol
     max_threads::Int
     hessian_chunk::Int
+    require_gpu::Bool
     gc_between_stages::Bool
     # safety
     max_ram_gb::Float64
@@ -144,7 +145,7 @@ const KNOWN_KEYS = Dict(
     "mapping" =>
         ["n_angles", "neighbor_ratio_tol", "max_refine_levels", "corner_bisect_iters",
             "unbounded_cap_factor"],
-    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk",
+    "hardware" => ["gpu_backend", "max_threads", "hessian_chunk", "require_gpu",
         "gc_between_stages", "heap_size_hint_gb"],
     "safety" => ["max_ram_gb", "bytes_per_bin_per_task_gpu", "max_vram_gb",
         "os_vram_overhead_gb"],
@@ -510,8 +511,8 @@ function parse_mapping(config::AbstractDict)
 end
 
 """
-`[hardware]`: backend selection, concurrency cap, Hessian chunking and
-inter-stage memory maintenance. `heap_size_hint_gb` is validated here but
+`[hardware]`: backend selection and requirement, concurrency cap, Hessian
+chunking and inter-stage memory maintenance. `heap_size_hint_gb` is validated here but
 consumed only by the detached launcher.
 """
 function parse_hardware(config::AbstractDict)
@@ -532,13 +533,19 @@ function parse_hardware(config::AbstractDict)
             "[hardware].hessian_chunk must be in 0:6 (0 = full 6-parameter chunk), " *
             "got $hessian_chunk",
         )
+    require_gpu = get_boolean(hardware, "require_gpu", false, "hardware")
+    require_gpu && gpu_backend === :none &&
+        config_error(
+            "[hardware].require_gpu = true contradicts gpu_backend = \"none\"; " *
+            "request auto or a GPU backend",
+        )
     gc_between_stages = get_boolean(hardware, "gc_between_stages", true, "hardware")
     heap_size_hint_gb = get_number(hardware, "heap_size_hint_gb", 0.0, "hardware")
     heap_size_hint_gb >= 0 ||
         config_error(
             "[hardware].heap_size_hint_gb must be >= 0 (0 = no hint), got $heap_size_hint_gb",
         )
-    return (; gpu_backend, max_threads, hessian_chunk, gc_between_stages)
+    return (; gpu_backend, max_threads, hessian_chunk, require_gpu, gc_between_stages)
 end
 
 """

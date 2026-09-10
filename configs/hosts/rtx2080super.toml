@@ -8,6 +8,8 @@ base_config = "../production_cpu.toml"
 # gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
 # "oneapi"; GPU backends require the matching package installed
 gpu_backend = "cuda"
+# abort before any output when no functional GPU backend resolves (true | false)
+require_gpu = true
 max_threads = 12
 # ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk)

@@ -59,7 +59,7 @@ let hw = get(effective_config(config_path), "hardware", Dict{String,Any}())
             if Base.find_package(pkgname) === nothing
                 requested == key &&
                     @warn "Requested GPU backend '$key' but package $pkgname is not installed " *
-                          "in this environment. Install it with: julia --project -e " *
+                          "in the default (stacked) environment. Install it with: julia -e " *
                           "'using Pkg; Pkg.add(\"$pkgname\")'"
                 continue
             end

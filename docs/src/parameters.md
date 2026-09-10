@@ -36,6 +36,16 @@ overlays on `production_cpu.toml` (backend, thread count, memory budgets,
 Hessian chunking) named by hardware model; they carry no host-specific
 identifiers.
 
+Execution keys left out of a configuration take host-adaptive defaults:
+`[hardware].max_threads` the Julia thread count, `[safety].max_ram_gb`
+80 % of system memory, `[safety].max_vram_gb` / `os_vram_overhead_gb`
+8 GB / 1 GB (the floor of the discrete-GPU fleet). The production base
+sets none of them, so it runs unmodified on any host. `[hardware]
+.require_gpu = true` (default `false`) aborts a run before any output is
+written when no functional GPU backend resolves for the requested
+`gpu_backend`; every shipped GPU overlay sets it, so a missing vendor
+package can never turn a GPU campaign into a silent CPU run.
+
 ## 1. Global Simulation Grid
 
 *   **Observation Time (``T_{\mathrm{obs}}``):** ``3.15576 \times 10^7`` s

@@ -7,6 +7,14 @@ base_config = "production_cpu.toml"
 # gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
 # "oneapi"; GPU backends require the matching package installed
 gpu_backend = "oneapi"
+# abort before any output when no functional GPU backend resolves (true | false)
+require_gpu = true
 # ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
 hessian_chunk = 3
+
+[safety]
+# device memory budget and the share reserved for the OS [GB]; the iGPU
+# draws on the shared 32 GB system memory
+max_vram_gb = 32.0
+os_vram_overhead_gb = 4.0

@@ -1205,6 +1205,17 @@ logged with its backtrace and the remaining stages continue.
 function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     output_dir::AbstractString)
     cfg = load_and_validate_config(config_path)
+    # a required GPU is checked before any output exists: the probe is
+    # idempotent and repeated inside _run_pipeline
+    cfg.require_gpu &&
+        get_best_backend(prefer = cfg.gpu_backend) isa KernelAbstractions.CPU &&
+        throw(
+            ArgumentError(
+                "[hardware].require_gpu = true but no functional GPU backend resolved for " *
+                "gpu_backend = \"$(cfg.gpu_backend)\" (the vendor package must be loaded from " *
+                "the default environment and its device functional); no run directory was created.",
+            ),
+        )
     run_id = run_id_from_config(config_path)
     out_base = unique_run_dir(joinpath(project_root, output_dir), run_id)
     snapshot_config(config_path, out_base)

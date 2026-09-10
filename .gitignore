@@ -17,3 +17,5 @@ bench/Manifest.toml
 docs/Manifest.toml
 test/Manifest.toml
 docs/src/generated/
+# local execution configurations (deployment-specific campaign plans)
+configs/private/

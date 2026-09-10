@@ -95,17 +95,13 @@ spin2 = [-1.0, 1.0]
 # gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" |
 # "oneapi"; GPU backends require the matching package installed
 gpu_backend = "none"
-max_threads = 22
 # ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
 # nested-dual kernel (0 = full chunk; 3 validated on Intel iGPU/IGC)
 hessian_chunk = 0
+# max_threads and the [safety] budgets max_ram_gb / max_vram_gb /
+# os_vram_overhead_gb are host-adaptive when absent (docs/src/parameters.md)
 
 [safety]
-# memory budgets in GB; the pipeline refuses to start (or downscales
-# concurrency) beyond them
-max_ram_gb = 24.0
-max_vram_gb = 32.0
-os_vram_overhead_gb = 4.0
 # per-bin VRAM footprint of the single GPU optimization task, in bytes
 bytes_per_bin_per_task_gpu = 1000
 

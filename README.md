@@ -97,6 +97,9 @@ into your default (stacked) environment — the pipeline resolves it through
 the load path and the corresponding package extension activates
 automatically; without one, the pipeline runs on the multi-threaded CPU
 backend (`[hardware].gpu_backend = "none"` forces this).
+`[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
+run before any output when no functional GPU backend resolves, so a missing
+vendor package cannot degrade a GPU campaign into a silent CPU run.
 `configs/production_gpu.toml` (portable, backend auto-detection) and
 `configs/production_oneapi.toml` (Intel, `hessian_chunk = 3` — the full
 49-lane nested-dual kernel exceeds the Intel iGPU's kernel-argument size

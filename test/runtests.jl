@@ -570,6 +570,14 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 write_cfg(dir, "[pipeline.sweep_settings]\nn_deltas = 1\n"))
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[parameter_bounds]\nspin1 = [2.0, 1.0]\n"))
+            # require_gpu contradicts a forced CPU backend; with a GPU request
+            # it is a plain flag
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[hardware]\ngpu_backend = \"none\"\nrequire_gpu = true\n"))
+            @test load_and_validate_config(
+                write_cfg(dir, "[hardware]\ngpu_backend = \"auto\"\nrequire_gpu = true\n"),
+            ).require_gpu
+            @test !load_and_validate_config(write_cfg(dir, "")).require_gpu
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(
                     dir,
@@ -901,14 +909,16 @@ enabled = true
             write(absent, "base_config = 3\n")
             @test_throws ArgumentError effective_config(absent)
         end
-        # the shipped GPU variants are thin [hardware] overlays on their bases
+        # the shipped GPU variants are thin execution-only overlays on their
+        # bases ([hardware], and [safety] for the device budget)
         configs = joinpath(dirname(@__DIR__), "configs")
         for (overlay, base) in (("production_gpu.toml", "production_cpu.toml"),
             ("production_oneapi.toml", "production_cpu.toml"),
             ("quickstart_gpu.toml", "quickstart.toml"))
             raw = TOML.parsefile(joinpath(configs, overlay))
             @test raw["base_config"] == base
-            @test collect(keys(raw)) ⊆ ["base_config", "hardware"]
+            @test collect(keys(raw)) ⊆ ["base_config", "hardware", "safety"]
+            @test raw["hardware"]["require_gpu"] === true
             eff = effective_config(joinpath(configs, overlay))
             @test eff["sweeps"] == TOML.parsefile(joinpath(configs, base))["sweeps"]
             # same physics, other execution settings: same run identifier
@@ -982,6 +992,16 @@ enabled = true
                     @test_logs (:warn, r"Concurrency downscaled") CD.Orchestrator.plan_resources(
                         cfg2, 10^6, 2, CPU())
                 @test sweep_tasks == 2 && map_tasks == 2 && est <= 1.3
+            end
+            # require_gpu aborts before the run directory exists whenever the
+            # resolved backend is the CPU (no GPU package is loaded here)
+            if get_best_backend(prefer = :auto) isa CPU
+                write(
+                    path,
+                    grid * "[hardware]\ngpu_backend = \"auto\"\nrequire_gpu = true\n",
+                )
+                @test_throws ArgumentError run_pipeline(path, dir, "out")
+                @test !isdir(joinpath(dir, "out"))
             end
         end
 
