@@ -1,7 +1,5 @@
-using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
-Pkg.activate(PROJECT_ROOT; io = devnull)
-Pkg.instantiate(; io = devnull)
+include(joinpath(PROJECT_ROOT, "activate.jl"))
 
 using CurvatureDistinguishability
 

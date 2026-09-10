@@ -26,6 +26,16 @@ rho_tag(rho) = "_rho" * replace(string(rho), "." => "p")
 """
 $(TYPEDSIGNATURES)
 
+Read a persisted run table. The tables are kilobytes to megabytes, so
+parsing is single-task by construction: CSV.jl's chunked multithreaded
+parser fails its row-boundary check on the residual-spectrum tables under
+many threads and falls back with an error-level log entry.
+"""
+read_run_table(path::AbstractString) = CSV.read(path, DataFrame; ntasks = 1)
+
+"""
+$(TYPEDSIGNATURES)
+
 Enumerate the sweep and map case names present in a pipeline run directory
 (sorted); a case counts when its primary CSV exists.
 """
@@ -73,7 +83,7 @@ the persisted normalized curvature: `suffix` carries the `_rho…` tag and
 function sweep_figures(run_dir::AbstractString, case::AbstractString;
     refit::Bool = false, rho::Union{Nothing,Real} = nothing)
     dir = joinpath(run_dir, "sweeps", case)
-    res = CSV.read(joinpath(dir, "results.csv"), DataFrame)
+    res = read_run_table(joinpath(dir, "results.csv"))
     meta_path = joinpath(dir, "sweep_meta.toml")
     meta = isfile(meta_path) ? TOML.parsefile(meta_path) : Dict{String,Any}()
     floor_level = Float64(get(meta, "floor_level", -1.0))
@@ -105,7 +115,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     residual = nothing
     spec_path = joinpath(dir, "residual_spectrum.csv")
     if rho === nothing && isfile(spec_path)
-        spec = CSV.read(spec_path, DataFrame)
+        spec = read_run_table(spec_path)
         residual = residual_figure(spec,
             ResidualFigureMeta(Float64(get(meta, "delta_star", NaN)),
                 Float64(get(meta, "df", 1.0)),
@@ -117,7 +127,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     residual_threshold = nothing
     thr_path = joinpath(dir, "residual_spectrum_threshold.csv")
     if rho === nothing && isfile(thr_path) && haskey(meta, "delta_thr")
-        spec_thr = CSV.read(thr_path, DataFrame)
+        spec_thr = read_run_table(thr_path)
         residual_threshold = residual_figure(spec_thr,
             ResidualFigureMeta(Float64(get(meta, "delta_thr", NaN)),
                 Float64(get(meta, "df", 1.0)),
@@ -147,7 +157,7 @@ different ρ.
 function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     rho::Union{Nothing,Real} = nothing)
     dir = joinpath(run_dir, "maps", case)
-    contour_stored = CSV.read(joinpath(dir, "confusion_contour.csv"), DataFrame)
+    contour_stored = read_run_table(joinpath(dir, "confusion_contour.csv"))
     cfg = run_config(run_dir)
     matches = filter(m -> m.name == case, cfg.maps)
     isempty(matches) &&

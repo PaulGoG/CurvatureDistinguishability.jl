@@ -7,6 +7,7 @@ using CSV
 using DataFrames
 using ForwardDiff
 using KernelAbstractions
+using Random: Xoshiro
 using TOML
 
 const CD = CurvatureDistinguishability
@@ -984,13 +985,19 @@ enabled = true
             end
         end
 
-        # multi-start streams: deterministic per work item, distinct across
-        # starts, and pinned so a change of derivation cannot silently alter
-        # the perturbations recorded under one rng_seed
-        stream(k) = CD.Orchestrator.multi_start_stream(42, "sweep", 3, k)
-        @test randn(stream(2), 3) == randn(stream(2), 3)
-        @test randn(stream(2)) != randn(stream(3))
-        @test randn(stream(2)) ≈ -1.5863254334055301 rtol = 1e-15
+        # multi-start streams: a pure function of the work-item coordinates,
+        # distinct across starts, stages and master seeds, and pinned at the
+        # derived seed (first UInt64 of the SHA-256 of "seed|name|i|k")
+        # rather than at a drawn value, so the pin depends on neither the
+        # randn implementation nor the Xoshiro seeding of the Julia release
+        # while a change of derivation still cannot silently alter the
+        # perturbations recorded under one rng_seed
+        stream(seed, name, k) = CD.Orchestrator.multi_start_stream(seed, name, 3, k)
+        @test stream(42, "sweep", 2) == Xoshiro(0x810bd37a17606c49)
+        @test randn(stream(42, "sweep", 2), 3) == randn(stream(42, "sweep", 2), 3)
+        @test stream(42, "sweep", 2) != stream(42, "sweep", 3)
+        @test stream(42, "sweep", 2) != stream(42, "map", 2)
+        @test stream(42, "sweep", 2) != stream(43, "sweep", 2)
 
         # mirroring: K and g are even, r_box is re-evaluated on the negated
         # direction (the box is asymmetric), degenerate and capped flags follow

@@ -20,6 +20,7 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
 ├── Manifest.toml           # version-controlled — portability guarantee
+├── activate.jl             # silent activation of the package environment (included by every script)
 ├── configs/
 │   ├── quickstart.toml     # base: minutes-scale demonstration run (the default)
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
@@ -52,11 +53,12 @@ CurvatureDistinguishability/
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── Project.toml
+│   ├── activate.jl         # interactive test sandbox via TestEnv.jl
 │   └── fixtures/
 │       ├── generate_reference.jl  # regenerates the golden values from the current model
 │       └── reference/      # committed golden-value regression fixtures
-├── bench/                  # BenchmarkTools scripts (own environment)
-├── docs/                   # Documenter.jl sources (make.jl, src/, Literate example)
+├── bench/                  # BenchmarkTools scripts (own environment: activate.jl)
+├── docs/                   # Documenter.jl sources (own environment: activate.jl, make.jl, src/)
 ├── CITATION.cff
 ├── data/
 │   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
@@ -66,10 +68,19 @@ CurvatureDistinguishability/
 
 ## Environment setup
 
-```julia
-using Pkg
-Pkg.activate(".")           # from this directory
-Pkg.instantiate()
+Julia ≥ 1.12 (`[compat]`), installed through `juliaup`; the committed
+`Manifest.toml` is resolved on Julia 1.13, on which the test suite,
+documentation build and benchmarks are verified (a 1.12 session re-resolves
+the stdlib JLLs with a warning). Each environment ships a pure-Julia
+activation script that activates and instantiates it silently; every entry
+point includes the script of its environment, and `julia -i` on one opens a
+REPL in it:
+
+```bash
+julia -i activate.jl        # package environment
+julia -i docs/activate.jl   # documentation environment (package by path)
+julia -i bench/activate.jl  # benchmark environment (package by path)
+julia -i test/activate.jl   # test sandbox through TestEnv.jl (installed into a shared environment on first use)
 ```
 
 To use the package as a library from another environment (unregistered;

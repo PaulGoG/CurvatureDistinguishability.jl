@@ -1,7 +1,4 @@
-using Pkg
-Pkg.activate(@__DIR__; io = devnull)
-# the package resolves by path via [sources] (unregistered dependency)
-Pkg.instantiate(; io = devnull)
+include(joinpath(@__DIR__, "activate.jl"))
 
 using Documenter
 using DocumenterCitations

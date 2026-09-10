@@ -12,10 +12,8 @@
 # that resolve to run directories take precedence over the destination
 # argument. With no selectors, every data/run_* directory is rendered.
 # Figure files are prefixed with the run id (run_<hash>_...).
-using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
-Pkg.activate(PROJECT_ROOT; io = devnull)
-Pkg.instantiate(; io = devnull)
+include(joinpath(PROJECT_ROOT, "activate.jl"))
 
 using CairoMakie
 using CurvatureDistinguishability

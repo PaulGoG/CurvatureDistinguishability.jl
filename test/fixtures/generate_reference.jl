@@ -1,5 +1,6 @@
 # Regenerate the committed reference fixtures on the 201-bin fixture grid
-# with the current model (run from the package root: julia --project test/fixtures/generate_reference.jl).
+# with the current model: julia test/fixtures/generate_reference.jl
+include(joinpath(@__DIR__, "..", "..", "activate.jl"))
 using CurvatureDistinguishability
 using CSV, DataFrames
 const FIXDIR = joinpath(@__DIR__, "reference")

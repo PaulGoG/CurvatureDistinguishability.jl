@@ -1,13 +1,10 @@
 # Performance benchmarks, kept out of the test suite by design (benchmarks
-# measure, tests assert). Uses its own environment; the package resolves by
-# path via [sources].
+# measure, tests assert). Uses its own environment (activate.jl); the
+# package resolves by path via [sources].
 #
 #   julia --threads=auto bench/run_benchmarks.jl
 #
-using Pkg
-Pkg.activate(@__DIR__; io = devnull)
-# the package resolves by path via [sources] (unregistered dependency)
-Pkg.instantiate(; io = devnull)
+include(joinpath(@__DIR__, "activate.jl"))
 
 using BenchmarkTools
 using ForwardDiff

@@ -9,10 +9,8 @@
 # the boundary radius is r = (16ρ²/K)^{1/4} and K is persisted per direction,
 # so maps (and the scaling-plot threshold markers) are rescaled exactly and
 # written to *_rho<R> files, leaving the originals untouched.
-using Pkg
 const PROJECT_ROOT = dirname(@__DIR__)
-Pkg.activate(PROJECT_ROOT; io = devnull)
-Pkg.instantiate(; io = devnull)
+include(joinpath(PROJECT_ROOT, "activate.jl"))
 
 using CSV
 using CurvatureDistinguishability
