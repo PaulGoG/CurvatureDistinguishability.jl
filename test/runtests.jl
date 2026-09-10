@@ -689,7 +689,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             end
             # analysis tunables: defaults, override roundtrip, validation
             @test cfg_def.floor_detection_ratio == 2.0
-            @test cfg_def.min_log_delta_ratio == -2.0 && cfg_def.max_log_delta_ratio == 0.3
+            @test cfg_def.min_log_delta == -3.0 && cfg_def.max_log_delta == 2.5
             @test cfg_def.correction_fit_max_departure == 0.3
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir,
@@ -697,7 +697,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             )
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir,
-                    "[pipeline.sweep_settings]\nmin_log_delta_ratio = 0.5\nmax_log_delta_ratio = 0.3\n",
+                    "[pipeline.sweep_settings]\nmin_log_delta = 0.5\nmax_log_delta = 0.3\n",
                 ),
             )
             @test cfg_def.secondary_minimum_gain == 1.5
@@ -1168,6 +1168,41 @@ enabled = true
         plain = CD.Plotting.sci_tick_labels([-1.5, 0.0, 0.5])
         @test plain[1].s == "\$-1.5\$" && plain[3].s == "\$0.5\$"
         @test !any(l -> occursin("times", l.s), plain)
+
+        # needle frame of same-unit zone maps: a zone drawn edge-on along a
+        # null direction is rotated into its principal frame (abscissa along,
+        # ordinate transverse), a round zone keeps the parameter frame with
+        # equal data aspect
+        null_slope = -2.29
+        ϑ_null = atan(null_slope)
+        s_needle = range(-0.4, 0.4; length = 40)
+        w_needle = 2e-3
+        x_needle = vcat(s_needle .* cos(ϑ_null) .- w_needle * sin(ϑ_null),
+            reverse(s_needle) .* cos(ϑ_null) .+ w_needle * sin(ϑ_null))
+        y_needle = vcat(s_needle .* sin(ϑ_null) .+ w_needle * cos(ϑ_null),
+            reverse(s_needle) .* sin(ϑ_null) .- w_needle * cos(ϑ_null))
+        ϑ_fit, aspect = CD.Plotting.principal_axis(x_needle, y_needle)
+        @test tan(ϑ_fit) ≈ null_slope rtol = 1e-6
+        @test aspect ≈ 0.8 / (2w_needle) rtol = 1e-6
+        @test aspect > CD.Plotting.NEEDLE_ASPECT
+        fig_needle = CD.Plotting.zone_figure(x_needle, y_needle, falses(length(x_needle));
+            px = 5, py = 6, box = (-1.8, 0.2, -1.8, 0.2),
+            prior_frac = 0.0, degenerate_frac = 0.0)
+        ax_needle = first(filter(c -> c isa CD.Plotting.Axis, fig_needle.content))
+        @test occursin("parallel", ax_needle.xlabel[])
+        @test occursin("-2.29", ax_needle.xlabel[])
+        @test !(ax_needle.aspect[] isa CD.Plotting.DataAspect)
+        φ_round = range(0, 2π; length = 64)[1:(end-1)]
+        _, aspect_round =
+            CD.Plotting.principal_axis(0.1 .* cos.(φ_round), 0.1 .* sin.(φ_round))
+        @test aspect_round ≈ 1 rtol = 1e-2
+        fig_round = CD.Plotting.zone_figure(0.1 .* cos.(φ_round), 0.1 .* sin.(φ_round),
+            falses(length(φ_round));
+            px = 5, py = 6, box = (-1.8, 0.2, -1.8, 0.2),
+            prior_frac = 0.0, degenerate_frac = 0.0)
+        ax_round = first(filter(c -> c isa CD.Plotting.Axis, fig_round.content))
+        @test ax_round.xlabel[] == CD.Plotting.deviation_label(5)
+        @test ax_round.aspect[] isa CD.Plotting.DataAspect
     end
 
     @testset "End-to-end minimal pipeline" begin
@@ -1181,8 +1216,8 @@ optimizer = "ipnewton"
 rng_seed = 11
 [pipeline.sweep_settings]
 n_deltas = 6
-min_log_delta_ratio = -2.0
-max_log_delta_ratio = 0.3
+min_log_delta = 0.4
+max_log_delta = 2.7
 n_starts = 2
 [grid]
 T_obs = 1.0e5

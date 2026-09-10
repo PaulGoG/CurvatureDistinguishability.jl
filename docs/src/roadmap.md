@@ -34,6 +34,14 @@ curvature-limited.
   genuine structure — the paper would need a model-variant note and
   regenerated figures. The A/B fixture tests must assert the *disabled*
   path only.
+- Display revert: `Plotting.zone_figure` draws a same-unit zone whose
+  principal-axis aspect reaches `NEEDLE_ASPECT` in the frame of its null
+  direction (abscissa along it, ordinate transverse; introduced for the
+  1.5PN spin needles, whose transverse width is otherwise invisible). With
+  the 2PN term the spin zone closes, the criterion stops firing and the
+  parameter frame returns by itself; verify this on the regenerated spin
+  maps, then remove the needle branch, `principal_axis` and their tests
+  rather than leaving dead code.
 
 ## 1b. Inspiral–merger–ringdown realism (IMRPhenomD)
 

@@ -44,18 +44,20 @@ identifiers.
 *   **Resolution:** at a spacing of ``1/T_{\mathrm{obs}}`` the grid spans
     ``\approx 1.57`` million frequency bins. The `[safety].max_ram_gb` budget
     is checked against this size before anything is allocated.
-*   **Separations:** 30 log-spaced values of ``\delta/\delta_{\mathrm{min}}``
-    over ``[10^{-2}, 10^{0.3}]``. ``\delta`` is measured in Fisher-metric
-    units (``u`` is normalized to ``g(u,u)=1``) and the grid is anchored to
-    the threshold separation ``\delta_{\mathrm{min}}`` of each direction, so
-    every sweep covers the same ``D^2/\rho^2 \in [10^{-8}, 16]`` dynamic
-    range: the leading-order law over six decades, the threshold crossing,
-    and the onset of the ``\mathcal{O}(\delta^5)`` departure. The anchoring
-    also keeps every fit far above the round-off floor of the parameters —
-    for these loud sources (SNR of order ``10^3``–``10^4``) one Fisher σ is
-    a relative change of ``10^{-5}``–``10^{-6}`` in the chirp mass, and a
-    fixed absolute grid reaching ``10^{-5}`` σ would sit entirely below the
-    double-precision resolution of the fit.
+*   **Separations:** 30 log-spaced values of ``\delta`` over
+    ``[10^{-3}, 10^{2.5}]`` in Fisher-metric units (``u`` is normalized to
+    ``g(u,u)=1``, so ``\delta = 1`` is one Fisher σ along the direction). The
+    absolute grid runs from below the optimizer floor of the fits — the
+    struck-through points inside the grey band of the scaling figure — through
+    the leading-order law, the threshold crossing at ``\delta_{\mathrm{min}}``
+    (tens to hundreds of σ for these loud sources) and the onset of the
+    ``\mathcal{O}(\delta^5)`` departure. The floor is the double-precision
+    resolution of the fitted parameters: for the quickstart source (SNR
+    ``2\times 10^4``) it sits at ``D^2 \approx 3\times 10^{-13}``, reached at
+    ``\delta \approx 0.08`` σ, and it moves to smaller ``\delta`` for quieter
+    sources. A sweep whose grid does not bracket ``\delta_{\mathrm{min}}``
+    logs a warning; the residual spectrum is evaluated at the clean
+    separation nearest ``2\,\delta_{\mathrm{min}}``.
 *   **Scenario constants:** ``\eta = 2/9`` (mass ratio 2:1), source at
     ecliptic longitude 180° and latitude 30°, inclination 30°, polarization
     45°, constellation phases zero at ``t = 0``. Masses are detector-frame

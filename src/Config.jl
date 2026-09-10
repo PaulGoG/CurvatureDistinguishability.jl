@@ -66,8 +66,8 @@ Base.@kwdef struct PipelineSettings
     rng_seed::Int
     # sweep settings
     n_deltas::Int
-    min_log_delta_ratio::Float64
-    max_log_delta_ratio::Float64
+    min_log_delta::Float64
+    max_log_delta::Float64
     sweep_rho_thresh::Float64
     g_uu_degenerate::Float64
     n_starts::Int
@@ -126,7 +126,7 @@ const KNOWN_KEYS = Dict(
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
         "sweep_settings"],
     "pipeline.sweep_settings" =>
-        ["n_deltas", "min_log_delta_ratio", "max_log_delta_ratio",
+        ["n_deltas", "min_log_delta", "max_log_delta",
             "rho_thresh", "g_uu_degenerate", "n_starts",
             "floor_detection_ratio", "secondary_minimum_gain",
             "multi_start_parallel_scale", "multi_start_transverse_scale",
@@ -301,13 +301,17 @@ function parse_sweep_settings(config::AbstractDict)
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 ||
         config_error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
-    min_log_delta_ratio =
-        get_number(sweep_settings, "min_log_delta_ratio", -2.0, "pipeline.sweep_settings")
-    max_log_delta_ratio =
-        get_number(sweep_settings, "max_log_delta_ratio", 0.3, "pipeline.sweep_settings")
-    min_log_delta_ratio < max_log_delta_ratio ||
+    # absolute log-spaced separation grid in Fisher-normalized units (δ = 1 is
+    # one Fisher σ along the direction); the defaults reach below the optimizer
+    # floor of the physical model and above the threshold separation of the
+    # production directions
+    min_log_delta =
+        get_number(sweep_settings, "min_log_delta", -3.0, "pipeline.sweep_settings")
+    max_log_delta =
+        get_number(sweep_settings, "max_log_delta", 2.5, "pipeline.sweep_settings")
+    min_log_delta < max_log_delta ||
         config_error(
-            "[pipeline.sweep_settings]: min_log_delta_ratio ($min_log_delta_ratio) must be < max_log_delta_ratio ($max_log_delta_ratio)",
+            "[pipeline.sweep_settings]: min_log_delta ($min_log_delta) must be < max_log_delta ($max_log_delta)",
         )
     sweep_rho_thresh =
         get_number(sweep_settings, "rho_thresh", 1.0, "pipeline.sweep_settings")
@@ -371,7 +375,7 @@ function parse_sweep_settings(config::AbstractDict)
         sweep_settings, "residual_spectrum_windows", 600, "pipeline.sweep_settings")
     residual_spectrum_windows >= 8 ||
         config_error("[pipeline.sweep_settings].residual_spectrum_windows must be >= 8")
-    return (; n_deltas, min_log_delta_ratio, max_log_delta_ratio, sweep_rho_thresh,
+    return (; n_deltas, min_log_delta, max_log_delta, sweep_rho_thresh,
         g_uu_degenerate,
         n_starts, g_tol, f_reltol, max_iterations, floor_detection_ratio,
         secondary_minimum_gain,

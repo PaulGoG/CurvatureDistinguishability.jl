@@ -718,6 +718,80 @@ end
 const ZONE_BLUE = "#0072B2"
 const WALL_VERMILLION = "#D55E00"
 
+# A same-unit zone whose principal-axis aspect ratio reaches this value is a
+# needle along a null direction and is drawn in its principal frame (see
+# `zone_figure`). Slated for removal with the 2PN spin–spin term, which closes
+# the spin zone (roadmap §1).
+const NEEDLE_ASPECT = 20.0
+
+"""
+$(TYPEDSIGNATURES)
+
+Principal axis of a boundary polygon: the angle `ϑ ∈ (-π/2, π/2]` of the
+major axis of the polygon's second area moments about its centroid (shoelace
+form; vertex moments when the polygon is degenerate) and the aspect ratio
+`extent_∥ / extent_⊥` of the vertices in that frame (`Inf` for a line). Area
+moments are insensitive to how the edges are sampled, but the axis of a band
+cut obliquely by prior walls is off by `O((w/L)²)` — invisible in parameter
+units, visible once the transverse axis is stretched — so when the aspect
+reaches `NEEDLE_ASPECT` the angle is snapped to the longest polygon edge,
+which runs exactly along the null direction of the band.
+"""
+function principal_axis(x::AbstractVector, y::AbstractVector)
+    n = length(x)
+    n == length(y) || throw(DimensionMismatch("x and y must have equal length"))
+    n >= 3 || throw(ArgumentError("a boundary polygon needs at least three vertices"))
+    A = 0.0
+    Cx = 0.0
+    Cy = 0.0
+    Ixx = 0.0
+    Iyy = 0.0
+    Ixy = 0.0
+    for i in 1:n
+        j = mod1(i + 1, n)
+        a = x[i] * y[j] - x[j] * y[i]
+        A += a
+        Cx += a * (x[i] + x[j])
+        Cy += a * (y[i] + y[j])
+        Ixx += a * (x[i]^2 + x[i] * x[j] + x[j]^2)
+        Iyy += a * (y[i]^2 + y[i] * y[j] + y[j]^2)
+        Ixy += a * (x[i] * y[j] + 2x[i] * y[i] + 2x[j] * y[j] + x[j] * y[i])
+    end
+    if A != 0
+        # normalize by the signed area: the covariances of the region are then
+        # independent of the polygon's orientation (a clockwise polygon flips
+        # the sign of every moment, which would rotate the atan2 axis by 90°)
+        A /= 2
+        Cx /= 6A
+        Cy /= 6A
+        Ixx = Ixx / (12A) - Cx^2
+        Iyy = Iyy / (12A) - Cy^2
+        Ixy = Ixy / (24A) - Cx * Cy
+    else
+        Ixx = sum(abs2, x)
+        Iyy = sum(abs2, y)
+        Ixy = sum(x .* y)
+    end
+    ϑ = 0.5 * atan(2Ixy, Ixx - Iyy)
+    aspect = frame_aspect(x, y, ϑ)
+    if aspect >= NEEDLE_ASPECT
+        _, k = findmax(i -> hypot(x[mod1(i + 1, n)] - x[i], y[mod1(i + 1, n)] - y[i]), 1:n)
+        ϑ = atan(y[mod1(k + 1, n)] - y[k], x[mod1(k + 1, n)] - x[k])
+        ϑ > π / 2 && (ϑ -= π)
+        ϑ <= -π / 2 && (ϑ += π)
+        aspect = frame_aspect(x, y, ϑ)
+    end
+    return ϑ, aspect
+end
+
+# extent ratio of the vertices in the frame rotated by ϑ (Inf for a line)
+function frame_aspect(x, y, ϑ)
+    s = x .* cos(ϑ) .+ y .* sin(ϑ)
+    t = y .* cos(ϑ) .- x .* sin(ϑ)
+    span_perp = maximum(t) - minimum(t)
+    return span_perp > 0 ? (maximum(s) - minimum(s)) / span_perp : Inf
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -733,8 +807,13 @@ dashed line with no fill — showing what curvature alone would allow; along
 degenerate directions it is unbounded and simply runs off the frame. The
 prior box itself is not drawn: the red runs mark where a wall is active, and
 the annotation names the active walls with their values (from `box`, e.g.
-"… prior-limited by Δχ₁ = 0.2"). `DataAspect` is applied only for same-unit
-planes (spin–spin).
+"… prior-limited by Δχ₁ = 0.2"). Same-unit planes (spin–spin) are drawn
+with `DataAspect`, except a needle: a zone whose principal-axis aspect
+(`principal_axis`) reaches `NEEDLE_ASPECT` — the exact null spin direction of
+the 1.5PN model — is rotated into the frame of that direction (abscissa along
+it, ordinate transverse, independent scales) so that its transverse width is
+visible; the x label quotes the null slope dχ₂/dχ₁, while wall detection and
+the annotation stay in parameter units.
 """
 function zone_figure(x::AbstractVector, y::AbstractVector,
     prior_limited::AbstractVector{Bool};
@@ -747,15 +826,27 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
     x_math === nothing || length(x_math) == length(y_math) == length(x) ||
         throw(DimensionMismatch("x_math/y_math must match the boundary polygon length"))
     same_units = (px in SPIN_INDICES && py in SPIN_INDICES)
+    # Needle frame (same-unit planes only, where a rotation is meaningful): a
+    # zone drawn as a needle along a null direction is rotated into its
+    # principal frame — abscissa along the needle, ordinate transverse — on
+    # independent scales, so the transverse width shows instead of an edge-on
+    # line. Wall detection below keeps the parameter-unit coordinates. Remove
+    # with the 2PN spin–spin term (roadmap §1), which closes the spin zone and
+    # returns the parameter frame.
+    ϑ, aspect = principal_axis(x, y)
+    needle = same_units && aspect >= NEEDLE_ASPECT
+    rotate(u, v) = (u .* cos(ϑ) .+ v .* sin(ϑ), v .* cos(ϑ) .- u .* sin(ϑ))
+    xd, yd = needle ? rotate(x, y) : (x, y)
+    xm_d, ym_d = (x_math === nothing || !needle) ? (x_math, y_math) : rotate(x_math, y_math)
     with_theme(publication_theme()) do
-        # squarer canvas for same-unit (DataAspect) planes to avoid wide side margins
-        fig = Figure(size = same_units ? (820, 830) : (960, 720))
+        # squarer canvas for equal-aspect same-unit planes to avoid wide side margins
+        fig = Figure(size = (same_units && !needle) ? (820, 830) : (960, 720))
 
         # Limits fit the zone, not a symmetric ±max box: prior-capped zones are
         # strongly asymmetric (e.g. spins live in the lower-left wedge) and
         # symmetric limits waste most of the canvas on empty quadrants.
-        xlo_d, xhi_d = extrema(x)
-        ylo_d, yhi_d = extrema(y)
+        xlo_d, xhi_d = extrema(xd)
+        ylo_d, yhi_d = extrema(yd)
         # extend the view towards the uncapped mathematical contour with a
         # soft clamp: when the full contour lies only modestly beyond the
         # zone (≤ 80% of the zone span per side) include it entirely —
@@ -765,8 +856,8 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
         if x_math !== nothing
             xr = xhi_d - xlo_d
             yr = yhi_d - ylo_d
-            fx = filter(isfinite, x_math)
-            fy = filter(isfinite, y_math)
+            fx = filter(isfinite, xm_d)
+            fy = filter(isfinite, ym_d)
             if !isempty(fx) && !isempty(fy)
                 soft_extension(need, span) = need <= 0.8 * span ? need : 0.4 * span
                 xlo_d -= soft_extension(max(0.0, xlo_d - minimum(fx)), xr)
@@ -778,18 +869,28 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
         x_exponent = axis_exponent(max(abs(xlo_d), abs(xhi_d)))
         y_exponent = axis_exponent(max(abs(ylo_d), abs(yhi_d)))
 
-        ax = Axis(fig[1, 1]; xlabel = deviation_label(px), ylabel = deviation_label(py))
-        same_units && (ax.aspect = DataAspect())
+        if needle
+            xlabel = latexstring(
+                "\\Delta\\chi_{\\parallel}\\ \\ (\\mathrm{null\\ direction},\\ ",
+                "\\mathrm{d}\\chi_2/\\mathrm{d}\\chi_1 = ", @sprintf("%.2f", tan(ϑ)),
+                ")")
+            ylabel = L"\Delta\chi_{\perp}"
+        else
+            xlabel = deviation_label(px)
+            ylabel = deviation_label(py)
+        end
+        ax = Axis(fig[1, 1]; xlabel = xlabel, ylabel = ylabel)
+        same_units && !needle && (ax.aspect = DataAspect())
 
         xlo, xhi = zone_axis_ticks!(fig, ax, :x, px, xlo_d, xhi_d, x_exponent)
         ylo, yhi = zone_axis_ticks!(fig, ax, :y, py, ylo_d, yhi_d, y_exponent)
         # a tall same-unit zone (needle along a null spin direction) leaves the
         # x axis narrow: rotate its tick labels so they cannot collide
-        if same_units && (xhi - xlo) < 0.6 * (yhi - ylo)
+        if same_units && !needle && (xhi - xlo) < 0.6 * (yhi - ylo)
             ax.xticklabelrotation = π / 4
         end
 
-        poly!(ax, Point2f.(x, y); color = (ZONE_BLUE, 0.25), strokewidth = 0)
+        poly!(ax, Point2f.(xd, yd); color = (ZONE_BLUE, 0.25), strokewidth = 0)
 
         # The boundary of the filled (physical) zone is solid throughout:
         # curvature-limited runs in blue, prior-limited runs in red along the
@@ -803,15 +904,15 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
             # dilate the mask by one edge per side so each dashed arc joins the
             # solid contour at the capping crossover (where r_math = r_capped);
             # non-finite (degenerate) points break the polyline
-            xm = [isfinite(v) ? Float64(v) : NaN for v in x_math]
-            ym = [isfinite(v) ? Float64(v) : NaN for v in y_math]
+            xm = [isfinite(v) ? Float64(v) : NaN for v in xm_d]
+            ym = [isfinite(v) ? Float64(v) : NaN for v in ym_d]
             edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
             mx, my = boundary_runs(xm, ym, edge_math, true)
             isempty(mx) || lines!(ax, mx, my; color = (ZONE_BLUE, 0.75),
                 linewidth = 2.4, linestyle = :dash)
         end
-        cx, cy = boundary_runs(x, y, edge_prior, false)
-        bx, by = boundary_runs(x, y, edge_prior, true)
+        cx, cy = boundary_runs(xd, yd, edge_prior, false)
+        bx, by = boundary_runs(xd, yd, edge_prior, true)
         isempty(cx) || lines!(ax, cx, cy; color = ZONE_BLUE, linewidth = 3.0)
         isempty(bx) || lines!(ax, bx, by; color = WALL_VERMILLION, linewidth = 4.5)
 
@@ -835,8 +936,8 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
             lox, hix, loy, hiy = box
             walls = String[]
             for (lo_e, hi_e, vals, tol, idx) in
-                ((lox, hix, prior_x, 1e-6 * (xhi - xlo), px),
-                (loy, hiy, prior_y, 1e-6 * (yhi - ylo), py))
+                ((lox, hix, prior_x, 1e-6 * (maximum(x) - minimum(x)), px),
+                (loy, hiy, prior_y, 1e-6 * (maximum(y) - minimum(y)), py))
                 lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
                 hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
                 isph = idx == PHASE_INDEX

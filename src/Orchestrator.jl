@@ -308,14 +308,26 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, @sprintf("        normalized K(u)          : %.6e", K_norm))
         logline(log_io, @sprintf("        delta_min                : %.6e", delta_min))
 
-        # separation grid in units of δ_min: the same D²/ρ² dynamic range for
-        # every direction and source loudness, and never below the round-off
-        # floor of the fits (the Fisher σ of a loud source is far below the
-        # relative precision of the parameters)
-        deltas =
-            delta_min .*
-            10 .^ range(cfg.min_log_delta_ratio, cfg.max_log_delta_ratio,
-                length = cfg.n_deltas)
+        # absolute separation grid in Fisher-normalized units (δ = 1 is one
+        # Fisher σ along u). It reaches below the optimizer floor of the fits
+        # by design — floor points are detected, struck through in the figure
+        # and excluded from the fits — and must bracket δ_min for the
+        # threshold crossing to lie inside the sweep.
+        deltas = 10 .^ range(cfg.min_log_delta, cfg.max_log_delta, length = cfg.n_deltas)
+        logline(
+            log_io,
+            @sprintf("        separation grid          : [%.3e, %.3e] = [%.2e, %.2e] δ_min",
+                deltas[1], deltas[end], deltas[1] / delta_min, deltas[end] / delta_min)
+        )
+        if !(deltas[1] < delta_min < deltas[end])
+            logline(
+                log_io,
+                "  [WARN] the separation grid does not bracket δ_min; the threshold " *
+                "crossing lies outside the sweep.",
+            )
+            @warn "Sweep '$name': the separation grid [$(deltas[1]), $(deltas[end])] does " *
+                  "not bracket δ_min = $delta_min; the threshold crossing lies outside the sweep."
+        end
 
         # verify the second source stays within the physical bounds at δ_max
         theta_far = second_source(theta0, u_norm, maximum(deltas), amp_ratio)
@@ -562,19 +574,23 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
         Starts = fill(cfg.n_starts, n), MultiStartGain = fits.multi_start_gain)
     CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), results_table)
 
-    # Residual-spectrum evaluation points. Primary δ*: the largest clean
-    # separation still inside the fitted validity window of the
-    # leading-order law (δ ≤ delta_valid), so the plotted residual is the
-    # normal projection the quartic law integrates. Rule-of-thumb
-    # companion: the separation nearest the discernibility threshold on
-    # the swept range (the old rule). The companion is emitted only when
-    # the two points differ — for on-law directions the threshold point
-    # is itself inside the validity window and one panel suffices.
+    # Residual-spectrum evaluation points. Primary δ*: among the clean
+    # separations inside the fitted validity window of the leading-order law
+    # (δ ≤ delta_valid), the one nearest 2 δ_min — D² ≈ 16 ρ², the top of the
+    # perturbative window the law is meant to describe; on an absolute grid
+    # the largest separation may lie far beyond it. The plotted residual is
+    # then the normal projection the quartic law integrates. Rule-of-thumb
+    # companion: the separation nearest the discernibility threshold on the
+    # swept range. The companion is emitted only when the two points differ —
+    # for on-law directions the threshold point is itself inside the validity
+    # window and one panel suffices.
     pos = findall(>(0), D2_num)
     idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
     in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
     valid_pos = findall(clean .& in_validity .& (D2_num .> 0))
-    idx_star = isempty(valid_pos) ? idx_thr : last(valid_pos)
+    idx_star =
+        isempty(valid_pos) ? idx_thr :
+        valid_pos[argmin(abs.(log10.(deltas[valid_pos] ./ (2delta_min))))]
     d_star = deltas[idx_star]
     spec, meta = residual_spectrum(theta0, u_norm, amp_ratio, d_star,
         best_fits[idx_star, :], ctx.freqs, ctx.Sn, ctx.df, wp;

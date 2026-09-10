@@ -12,11 +12,11 @@ optimizer = "ipnewton"
 rng_seed = 42
 
 [pipeline.sweep_settings]
-# log-spaced separations delta/delta_min in [10^min_log_delta_ratio, 10^max_log_delta_ratio]
-# (delta in Fisher-normalized units, delta_min the threshold separation of the direction)
-n_deltas = 12
-min_log_delta_ratio = -2.0
-max_log_delta_ratio = 0.3
+# log-spaced separations delta in [10^min_log_delta, 10^max_log_delta]
+# (Fisher-normalized units: delta = 1 is one Fisher sigma along the direction)
+n_deltas = 14
+min_log_delta = -2.0
+max_log_delta = 2.5
 # max |D2_num/D2_theo - 1| of the points entering the O(delta^5) correction fit (> 0)
 correction_fit_max_departure = 0.3
 # discernibility threshold rho for the 1D sweeps (per-sweep override: rho_thresh)
