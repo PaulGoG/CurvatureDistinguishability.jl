@@ -1,0 +1,33 @@
+# Single-sweep GPU campaign: sweep 5 of seven, 'low_mass_time_shift', at Hessian
+# chunk 2. The sweep parameters are those of the CPU reference
+# campaign (../production_cpu.toml, merged in as base_config); only the
+# [[sweeps]] table is narrowed to one case.
+#
+# One sweep per process bounds the blast radius of a lost GPU dispatch:
+# a hang costs this sweep alone, and sweeps already completed are never
+# recomputed on relaunch. [[sweeps]] belongs to the run identity, so
+# each sweep carries its own run identifier and its four chunk variants
+# land in run_<id>, run_<id>_r2, … in launch order.
+base_config = "../production_cpu.toml"
+
+[pipeline]
+run_2d_mapping = false
+
+[hardware]
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" | "oneapi"
+gpu_backend = "auto"
+# abort before any output when no functional GPU backend resolves (true | false)
+require_gpu = true
+# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+hessian_chunk = 2
+
+[safety]
+# device memory budget and the share reserved for the OS [GB]; 8 GB / 1 GB
+# is the floor of the fleet
+max_vram_gb = 8.0
+os_vram_overhead_gb = 1.0
+
+[[sweeps]]
+name = "low_mass_time_shift"
+theta_0 = [3.0, 0.25, 25.0, 0.0, 0.9, 0.0]
+u_dir = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
