@@ -1,7 +1,6 @@
 # Quickstart configuration — GPU variant of the minutes-scale demonstration
-# (quickstart.toml, merged in as base_config) on the first functional GPU
-# backend (CUDA | AMDGPU | oneAPI | Metal), for smoke tests of the GPU path
-# (not for publication numbers). Scenario rationale: docs/src/parameters.md.
+# run (quickstart.toml, merged in as base_config): first functional backend,
+# Hessian chunk 2. Smoke test of the GPU path on a new host.
 base_config = "quickstart.toml"
 
 [hardware]
@@ -10,7 +9,6 @@ base_config = "quickstart.toml"
 gpu_backend = "auto"
 # abort before any output when no functional GPU backend resolves (true | false)
 require_gpu = true
-# ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
-# nested-dual kernel (0 = full chunk; 3 fits every kernel-argument limit
-# encountered)
-hessian_chunk = 3
+# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6); 2 compiles and
+# runs within every device limit met so far
+hessian_chunk = 2

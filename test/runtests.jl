@@ -913,7 +913,6 @@ enabled = true
         # bases ([hardware], and [safety] for the device budget)
         configs = joinpath(dirname(@__DIR__), "configs")
         for (overlay, base) in (("production_gpu.toml", "production_cpu.toml"),
-            ("production_oneapi.toml", "production_cpu.toml"),
             ("quickstart_gpu.toml", "quickstart.toml"))
             raw = TOML.parsefile(joinpath(configs, overlay))
             @test raw["base_config"] == base
@@ -925,20 +924,45 @@ enabled = true
             @test run_id_from_config(joinpath(configs, overlay)) ==
                   run_id_from_config(joinpath(configs, base))
         end
-        # per-host overlays: thin execution-only files on the production base,
-        # each a complete, validating configuration with the base's identity
-        hosts = joinpath(configs, "hosts")
-        host_files = filter(f -> endswith(f, ".toml"), readdir(hosts))
-        @test !isempty(host_files)
-        production_id = run_id_from_config(joinpath(configs, "production_cpu.toml"))
-        for host in host_files
-            raw = TOML.parsefile(joinpath(hosts, host))
-            @test raw["base_config"] == "../production_cpu.toml"
-            @test collect(keys(raw)) ⊆ ["base_config", "hardware", "safety"]
-            cfg_host = load_and_validate_config(joinpath(hosts, host))
-            @test length(cfg_host.sweeps) == 7 && length(cfg_host.maps) == 7
-            @test run_id_from_config(joinpath(hosts, host)) == production_id
+        # campaign configurations: every shipped file validates, the Hessian
+        # chunk never enters the run identity, and each single-sweep overlay
+        # reproduces exactly one case of the production base
+        campaigns = joinpath(configs, "campaigns")
+        campaign_files = filter(f -> endswith(f, ".toml"), readdir(campaigns))
+        required = vcat(
+            ["cpu_full.toml", "gpu_stress_benchmark.toml", "gpu_stress_chunk0.toml",
+                "gpu_stress_chunk1.toml", "gpu_stress_chunk2.toml",
+                "gpu_sweeps_chunk0.toml", "gpu_sweeps_chunk1.toml",
+                "gpu_sweeps_chunk2.toml", "gpu_sweeps_chunk3.toml"],
+            ["sweep$(n)_chunk$(c).toml" for n in 1:7 for c in 0:3])
+        @test required ⊆ campaign_files
+        for f in campaign_files
+            @test load_and_validate_config(joinpath(campaigns, f)) isa PipelineSettings
         end
+        base_sweeps = TOML.parsefile(joinpath(configs, "production_cpu.toml"))["sweeps"]
+        for n in 1:7
+            ids = [
+                run_id_from_config(joinpath(campaigns, "sweep$(n)_chunk$(c).toml"))
+                for c in 0:3
+            ]
+            @test length(unique(ids)) == 1
+            single = load_and_validate_config(joinpath(campaigns, "sweep$(n)_chunk0.toml"))
+            @test length(single.sweeps) == 1
+            @test single.sweeps[1].name == base_sweeps[n]["name"]
+        end
+        @test length(
+            unique(
+                run_id_from_config(joinpath(campaigns, f)) for f in
+                ("gpu_stress_benchmark.toml", "gpu_stress_chunk0.toml",
+                    "gpu_stress_chunk1.toml", "gpu_stress_chunk2.toml")
+            ),
+        ) == 1
+        @test length(
+            unique(
+                run_id_from_config(joinpath(campaigns,
+                    "gpu_sweeps_chunk$(c).toml")) for c in 0:3
+            ),
+        ) == 1
     end
 
     @testset "Monitoring diagnostic panels" begin

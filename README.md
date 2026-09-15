@@ -25,10 +25,8 @@ CurvatureDistinguishability/
 │   ├── quickstart.toml     # base: minutes-scale demonstration run (the default)
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
-│   ├── production_gpu.toml # [hardware] overlay: portable GPU (gpu_backend = "auto")
-│   ├── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
+│   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
-│   ├── hosts/              # per-hardware execution overlays on the production base
 │   └── campaigns/          # multi-host campaign plans: whole-run and per-sweep chunk variants
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
@@ -101,19 +99,23 @@ backend (`[hardware].gpu_backend = "none"` forces this).
 `[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
 run before any output when no functional GPU backend resolves, so a missing
 vendor package cannot degrade a GPU campaign into a silent CPU run.
-`configs/production_gpu.toml` (portable, backend auto-detection) and
-`configs/production_oneapi.toml` (Intel, `hessian_chunk = 3` — the full
-49-lane nested-dual kernel exceeds the Intel iGPU's kernel-argument size
-limit) are thin overlays on `configs/production_cpu.toml`: each declares
-`base_config = "production_cpu.toml"` and only the `[hardware]` keys that
-differ, so the physics is shared by construction. The pipeline merges base
+`configs/production_gpu.toml` is a thin overlay on
+`configs/production_cpu.toml`: it declares `base_config =
+"production_cpu.toml"` and only the `[hardware]` keys that differ, so the
+physics is shared by construction. It selects the first functional backend
+and `hessian_chunk = 2`, the portable GPU baseline: nine lanes per kernel
+launch fit every device limit met so far, where the full 49-lane nested-dual
+kernel exceeds the Intel iGPU's 2048-byte kernel-argument limit and takes long
+enough per launch elsewhere to spill registers heavily. The pipeline merges base
 and overlay at load (sub-tables recurse; scalars and `[[sweeps]]`/`[[maps]]`
 lists in the overlay replace) and snapshots the merged file into the run
 directory. The run ID hashes only what a run computes — every section
 except `[hardware]`, `[safety]` and `[monitoring]` — so one physical case
 has one identifier on every machine and reruns land in suffixed sibling
-directories with backend, host and timings in `metadata.toml`;
-`configs/hosts/` holds execution-only overlays per hardware model. GPU runs are
+directories with backend, host and timings in `metadata.toml`.
+Execution settings need no per-machine files: thread count, RAM budget and the
+8 GB / 1 GB device-memory budget are taken from the host when absent.
+`configs/campaigns/` holds the multi-host campaign plans. GPU runs are
 pinned to a single task by the pipeline and all GPU
 kernel launches are serialized library-wide — concurrent multi-task access
 to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,

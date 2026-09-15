@@ -12,15 +12,23 @@ interpreting pipeline outputs.
 Two runnable base files ship: `configs/quickstart.toml` (minutes-scale
 demonstration, the pipeline default) and `configs/production_cpu.toml`
 (the reference campaign documented below). The GPU variants —
-`quickstart_gpu.toml`, `production_gpu.toml`, `production_oneapi.toml` —
-are thin overlays: each opens with `base_config = "<base>.toml"` (a path
+`quickstart_gpu.toml` and `production_gpu.toml` — are thin overlays: each
+opens with `base_config = "<base>.toml"` (a path
 relative to the overlay) followed by only the `[hardware]` keys that
 differ. At load the overlay is deep-merged onto its base (sub-tables
 recurse; scalars, arrays and `[[sweeps]]`/`[[maps]]` lists present in the
 overlay replace the base's; one overlay level only), the merged table is
 validated, and the run directory receives the merged, self-contained
 `config.toml`; `metadata.toml` records `config_file` and `base_config`.
-A fourth overlay, `quickstart_maps.toml`, replaces the quickstart work
+Both GPU overlays select the first functional backend and
+`hessian_chunk = 2`. That is the portable baseline: the `[hardware]`
+setting splits the ForwardDiff Hessian so each kernel launch carries
+`(1+c)^2` lanes over `ceil(6/c)^2` launches, and nine lanes fit every
+device limit met so far — the full 49-lane kernel needs 2352 bytes of
+kernel arguments against the 2048-byte limit of the Intel integrated GPU,
+and spills registers heavily on discrete cards.
+
+A third overlay, `quickstart_maps.toml`, replaces the quickstart work
 items by nine maps on the quickstart grid — the seven production planes
 at quickstart-scale base points plus two planes whose base point sits one
 zone half-width from a spin wall — as a minutes-scale visual check of the
@@ -31,10 +39,13 @@ except `[hardware]`, `[safety]` and `[monitoring]`, which describe how a
 run executes rather than what it computes — so one physical case carries
 one identifier on every machine; reruns land in `_r2`, `_r3`, … sibling
 directories and `metadata.toml`/`hardware.txt` record backend, host and
-timings. The per-host files under `configs/hosts/` are execution-only
-overlays on `production_cpu.toml` (backend, thread count, memory budgets,
-Hessian chunking) named by hardware model; they carry no host-specific
-identifiers.
+timings. No per-machine configuration files are needed: `max_threads`,
+`[safety].max_ram_gb` and the device budgets `max_vram_gb` /
+`os_vram_overhead_gb` are all taken from the host when absent (Julia's
+thread count, 80 % of system memory, and 8 GB / 1 GB respectively).
+`configs/campaigns/` holds the multi-host campaign plans, which vary the
+Hessian chunk and, for the single-sweep overlays, narrow `[[sweeps]]` to
+one case.
 
 Execution keys left out of a configuration take host-adaptive defaults:
 `[hardware].max_threads` the Julia thread count, `[safety].max_ram_gb`
