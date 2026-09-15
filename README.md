@@ -28,7 +28,8 @@ CurvatureDistinguishability/
 │   ├── production_gpu.toml # [hardware] overlay: portable GPU (gpu_backend = "auto")
 │   ├── production_oneapi.toml # [hardware] overlay: oneAPI backend, chunked Hessian
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
-│   └── hosts/              # per-hardware execution overlays on the production base
+│   ├── hosts/              # per-hardware execution overlays on the production base
+│   └── private/            # campaign deployment plans: whole-run and per-sweep chunk variants
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions

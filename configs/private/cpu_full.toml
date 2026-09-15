@@ -1,0 +1,8 @@
+# Full CPU campaign, sweeps and maps: the CPU reference configuration
+# (../production_cpu.toml, merged in as base_config) on the CPU backend with
+# host-adaptive concurrency and RAM budget.
+base_config = "../production_cpu.toml"
+
+[hardware]
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" | "oneapi"
+gpu_backend = "none"

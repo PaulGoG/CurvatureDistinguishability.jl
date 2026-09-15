@@ -1,0 +1,87 @@
+# GPU stress benchmark: one deliberately expensive sweep on the first
+# functional GPU backend. Hardware-timing workload, not a scientific case
+# (twice the production grid, 40 separations, 3 starts). Chunk 3 fits every
+# GPU kernel-argument limit met so far.
+[pipeline]
+run_1d_sweeps = true
+run_2d_mapping = false
+# one of: "ipnewton" | "lbfgs_box"
+optimizer = "ipnewton"
+# seed for all stochastic components (multi-start perturbations)
+rng_seed = 42
+
+[pipeline.sweep_settings]
+# log-spaced separations delta in [10^min_log_delta, 10^max_log_delta]
+# (Fisher-normalized units)
+n_deltas = 40
+min_log_delta = -3.0
+max_log_delta = 2.5
+# max |D2_num/D2_theo - 1| of the points entering the O(delta^5) correction fit (> 0)
+correction_fit_max_departure = 0.3
+# discernibility threshold rho for the 1D sweeps
+rho_thresh = 1.0
+# directions with Fisher norm below this are reported as degenerate
+g_uu_degenerate = 1e-6
+# optimizer starts per separation
+n_starts = 3
+# optimizer convergence: projected-gradient norm g_tol, or relative change of
+# D² between Newton steps below f_reltol (either triggers), both > 0
+g_tol = 1e-10
+f_reltol = 1e-8
+max_iterations = 60
+
+[grid]
+# df = 1/T_obs; T_obs in s (two years), frequencies in Hz; 3 149 449 bins
+T_obs = 6.31152e7
+f_min = 1.0e-4
+f_max = 0.05
+
+[physics]
+# chirp-mass unit in geometrised seconds (1 s ≈ 2.03e5 solar masses), > 0
+mass_scale = 1.0
+# coalescence-time unit [s], > 0
+time_scale = 1.0e6
+# luminosity-distance unit in light-seconds (1 Gpc = 1.0293e17 s), > 0
+distance_scale = 1.0293e17
+# symmetric mass ratio in (0, 0.25]; the heavier body carries spin1
+eta = 0.2222
+# source direction in the ecliptic frame [rad]: longitude in [0, 2π),
+# latitude in [-π/2, π/2]
+ecliptic_longitude = 3.1416
+ecliptic_latitude = 0.5236
+# inclination in [0, π] and polarization angle [rad]
+inclination = 0.5236
+polarization = 0.7854
+# constellation orbital and cartwheel phases at t = 0 [rad]
+orbit_phase = 0.0
+constellation_phase = 0.0
+# relative width of the innermost-stable-orbit taper, > 0
+cutoff_width = 0.1
+# the T channel is identically zero in this model (unsupported on GPU backends)
+include_t_channel = false
+
+[noise]
+# Robson, Cornish & Liu (2019) noise model; confusion coefficients from the
+# Table 1 column nearest [grid].T_obs
+confusion_enabled = true
+
+[hardware]
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" | "oneapi"
+gpu_backend = "auto"
+# abort before any output when no functional GPU backend resolves (true | false)
+require_gpu = true
+# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+hessian_chunk = 3
+
+[safety]
+# device memory budget and the share reserved for the OS [GB]; 8 GB / 1 GB
+# is the floor of the fleet (the grid needs 2.9 GB at 1000 bytes per bin)
+max_vram_gb = 8.0
+os_vram_overhead_gb = 1.0
+# per-bin VRAM footprint of the single GPU optimization task, in bytes
+bytes_per_bin_per_task_gpu = 1000
+
+[[sweeps]]
+name = "seed_binary_six_dimensional_diagonal"
+theta_0 = [2.0, 0.1, 20.0, 0.0, 0.7, 0.5]
+u_dir = [0.0, 0.707, -0.5, 0.3, 0.4, -0.1]

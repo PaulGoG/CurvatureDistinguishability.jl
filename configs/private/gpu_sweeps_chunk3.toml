@@ -1,0 +1,23 @@
+# GPU campaign, sweeps only: the CPU reference configuration
+# (../production_cpu.toml, merged in as base_config) on the first functional
+# GPU backend, Hessian chunk 3 (two launches of 28 lanes per Hessian; fits every kernel-argument limit met so far).
+# The three chunk variants share one run identifier ([hardware] is not
+# hashed) and land in run_<id>, run_<id>_r2, run_<id>_r3 in launch order.
+base_config = "../production_cpu.toml"
+
+[pipeline]
+run_2d_mapping = false
+
+[hardware]
+# gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" | "oneapi"
+gpu_backend = "auto"
+# abort before any output when no functional GPU backend resolves (true | false)
+require_gpu = true
+# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+hessian_chunk = 3
+
+[safety]
+# device memory budget and the share reserved for the OS [GB]; 8 GB / 1 GB
+# is the floor of the fleet
+max_vram_gb = 8.0
+os_vram_overhead_gb = 1.0
