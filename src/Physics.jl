@@ -14,7 +14,8 @@ export NoiseParams, robson_confusion_params, analytic_noise_psd,
     harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
 public N_PARAMS, LISA_ARM_LENGTH, GIGAPARSEC_SEC, HARMONICS, C_LIGHT, R_ORBIT_SEC,
-    transfer_frequency, mass_asymmetry, spa_time, inspiral_taper, ResponseGeometry
+    transfer_frequency, mass_asymmetry, spa_time, inspiral_taper, observation_window,
+    ResponseGeometry
 
 """
 Speed of light [m s⁻¹]; converts the arm length and the distance unit to
@@ -236,7 +237,11 @@ Rosetta Stone conventions. `orbit_phase` and `constellation_phase` are the
 orbital and cartwheel phases of the constellation at `t = 0`, `arm_length`
 [m] sets the orbital eccentricity of the spacecraft and the transfer
 frequency, and `cutoff_width` is the relative width of the
-innermost-stable-orbit taper. The active channel count (2, or 3 with the
+innermost-stable-orbit taper. `observation_time` [s] is the duration of the
+observation that starts at `t = 0`: when positive, every harmonic is weighted
+by [`observation_window`](@ref) at its stationary-phase emission time, with
+edges of time scale `window_edge_time` [s]; at the default `0` the signal
+fills the whole frequency band whenever it was emitted. The active channel count (2, or 3 with the
 identically zero T channel, requested through the `include_t_channel`
 keyword) is carried only as the type parameter `NCH`. `geometry` holds the
 derived response constants.
@@ -254,6 +259,8 @@ struct WaveformParams{T<:Real,NCH}
     constellation_phase::T
     arm_length::T
     cutoff_width::T
+    observation_time::T
+    window_edge_time::T
     geometry::ResponseGeometry{T}
 end
 
@@ -287,11 +294,13 @@ function WaveformParams(; mass_scale::Real = 1.0, time_scale::Real = 1.0e6,
     inclination::Real = π / 6, polarization::Real = 0.0,
     orbit_phase::Real = 0.0, constellation_phase::Real = 0.0,
     arm_length::Real = LISA_ARM_LENGTH, cutoff_width::Real = 0.1,
+    observation_time::Real = 0.0, window_edge_time::Real = 1.0e6,
     include_t_channel::Bool = false)
     fields = promote(float(mass_scale), float(time_scale), float(distance_scale),
         float(eta), float(ecliptic_longitude), float(ecliptic_latitude),
         float(inclination), float(polarization), float(orbit_phase),
-        float(constellation_phase), float(arm_length), float(cutoff_width))
+        float(constellation_phase), float(arm_length), float(cutoff_width),
+        float(observation_time), float(window_edge_time))
     T = typeof(fields[1])
     geometry = response_geometry(fields[5], fields[6], fields[8], fields[10], fields[11])
     return WaveformParams{T,include_t_channel ? 3 : 2}(fields..., geometry)
@@ -302,7 +311,8 @@ end
 const WAVEFORM_KEYWORDS = (
     :mass_scale, :time_scale, :distance_scale, :eta, :ecliptic_longitude,
     :ecliptic_latitude, :inclination, :polarization, :orbit_phase,
-    :constellation_phase, :arm_length, :cutoff_width, :include_t_channel,
+    :constellation_phase, :arm_length, :cutoff_width, :observation_time,
+    :window_edge_time, :include_t_channel,
 )
 
 """
@@ -414,6 +424,24 @@ frequency `F`: `t_c − 5𝓜/(256 v⁸)` with `v = (π 𝓜 F)^{1/3}`.
 @inline function spa_time(F, chirp_mass, coalescence_time)
     v = (π * chirp_mass * F)^(1 / 3)
     return coalescence_time - 5 * chirp_mass / (256 * v^8)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Weight of the signal emitted at time `t` for an observation over
+`[0, observation_time]`:
+`W(t) = ½ [tanh(t/Δ) − tanh((t − T)/Δ)]` with `T = observation_time` and
+`Δ = edge_time` — unity inside the observation, ½ at either end, zero outside,
+with edges of time scale `Δ`. In the stationary-phase approximation a window
+that varies slowly against the local chirp time `1/√ḟ` multiplies each
+harmonic at its emission time `t_k(f)` ([`spa_time`](@ref)); `Δ` must
+therefore stay well above `1/√ḟ` at the edges (days for the sources of the
+shipped configurations). Smooth in `t`, hence differentiable in the chirp mass
+and the coalescence time, through which the edges move in frequency.
+"""
+@inline function observation_window(t, observation_time, edge_time)
+    return (tanh(t / edge_time) - tanh((t - observation_time) / edge_time)) / 2
 end
 
 """

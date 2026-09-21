@@ -145,7 +145,8 @@ const KNOWN_KEYS = Dict(
     "grid" => ["T_obs", "f_min", "f_max"],
     "physics" => ["mass_scale", "time_scale", "distance_scale", "eta",
         "ecliptic_longitude", "ecliptic_latitude", "inclination", "polarization",
-        "orbit_phase", "constellation_phase", "cutoff_width", "include_t_channel"],
+        "orbit_phase", "constellation_phase", "cutoff_width", "include_t_channel",
+        "observation_window", "window_edge_time"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
         "confusion_beta", "confusion_kappa", "confusion_gamma",
         "confusion_knee_freq", "arm_length", "oms_amplitude",
@@ -271,7 +272,7 @@ function settings_from_config(config::AbstractDict)
     sweep_settings = parse_sweep_settings(config)
     grid = parse_grid(config)
     noise = parse_noise(config, grid.T_obs)
-    physics = parse_physics(config, noise.noise.arm_length)
+    physics = parse_physics(config, noise.noise.arm_length, grid.T_obs)
     mapping = parse_mapping(config)
     hardware = parse_hardware(config)
     safety = parse_safety(config)
@@ -423,14 +424,28 @@ end
 struct and never restated here. The instrument's `arm_length` (parsed with
 `[noise]`) sets the constellation eccentricity and the transfer frequency of
 the response, so the noise model and the signal response share one arm
-length.
+length. With `observation_window = true` the observation time of `[grid]`
+becomes the duration of the finite-observation window of the response
+(`Physics.observation_window`); without the key the signal fills the band.
 """
-function parse_physics(config::AbstractDict, arm_length::Real)
+function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
     phys = get(config, "physics", Dict{String,Any}())
     reject_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
     number(key, default) = get_number(phys, key, default, "physics")
+    # finite observation [0, T_obs]: off unless requested, so that a
+    # configuration without the key computes what it always computed
+    windowed = get_boolean(phys, "observation_window", false, "physics")
+    window_edge_time = number("window_edge_time", wp_default.window_edge_time)
+    window_edge_time > 0 ||
+        config_error("[physics].window_edge_time must be > 0, got $window_edge_time")
+    (windowed && window_edge_time > T_obs / 8) && config_error(
+        "[physics].window_edge_time = $window_edge_time s must not exceed " *
+        "[grid].T_obs / 8 = $(T_obs / 8) s, or the observation window has no flat top",
+    )
     wp = WaveformParams(
+        observation_time = windowed ? T_obs : 0.0,
+        window_edge_time = window_edge_time,
         mass_scale = number("mass_scale", wp_default.mass_scale),
         time_scale = number("time_scale", wp_default.time_scale),
         distance_scale = number("distance_scale", wp_default.distance_scale),

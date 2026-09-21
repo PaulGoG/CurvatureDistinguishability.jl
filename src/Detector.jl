@@ -10,6 +10,7 @@ module Detector
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics: WaveformParams, ResponseGeometry, SECONDS_PER_YEAR, R_ORBIT_SEC,
     harmonic_amplitudes, harmonic_phase, spa_time, isco_frequency, inspiral_taper,
+    observation_window,
     spin_beta, total_mass, mass_asymmetry, transfer_frequency
 
 export channel_strain, channel_strain_bin, n_channels
@@ -149,7 +150,8 @@ over the harmonics `k` of [`harmonic_amplitudes`](@ref), each with its own
 stationary-phase phase [`harmonic_phase`](@ref), its own emission time
 `t_k = t(2f/k)` ([`spa_time`](@ref)) at which the antenna patterns
 [`channel_patterns`](@ref) and the Doppler phase [`doppler_phase`](@ref) are
-evaluated, the innermost-stable-orbit window `w_k` ([`inspiral_taper`](@ref)
+evaluated, the finite-observation weight ([`observation_window`](@ref), when
+`wp.observation_time > 0`), the innermost-stable-orbit window `w_k` ([`inspiral_taper`](@ref)
 at the harmonic's (2,2) frequency) and the transfer roll-off
 `𝒯 = [1 + 0.6 (f/f★)²]^{-1/2}`. The 0.5PN harmonics are skipped at equal
 mass, where their amplitudes vanish. Generic over `Real` (including
@@ -179,10 +181,16 @@ end
 @inline function harmonic_channel_strain(f, k, distance, chirp_mass, coalescence_time,
     coalescence_phase, beta, f_isco, transfer, geometry, wp)
     F = 2 * f / k
-    window = inspiral_taper(F, f_isco, wp.cutoff_width)
+    taper = inspiral_taper(F, f_isco, wp.cutoff_width)
     a_plus, a_cross = harmonic_amplitudes(f, k, chirp_mass, wp.eta, wp.inclination,
         distance)
     t_k = spa_time(F, chirp_mass, coalescence_time)
+    # finite observation: the harmonic counts only while it is emitted inside
+    # [0, observation_time]; without a window the factor is an exact one
+    window =
+        wp.observation_time > 0 ?
+        taper * observation_window(t_k, wp.observation_time, wp.window_edge_time) :
+        taper * one(t_k)
     FA_plus, FA_cross, FE_plus, FE_cross, cos_alpha, sin_alpha =
         channel_patterns(t_k, geometry, wp.orbit_phase)
     phase =

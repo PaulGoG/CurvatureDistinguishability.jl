@@ -1,0 +1,25 @@
+# Overlay of ../production_cpu.toml: the two maps whose base points radiate in
+# band before the observation starts, with the finite-observation window; CPU
+# backend, no sweeps.
+base_config = "../production_cpu.toml"
+
+[pipeline]
+run_1d_sweeps = false
+
+[physics]
+# weight every harmonic by the observation window over [0, T_obs] (true | false)
+observation_window = true
+# time scale of the window edges [s], > 0 and <= T_obs / 8
+window_edge_time = 1.0e6
+
+[[maps]]
+name = "mass_vs_phase_low_mass"
+param_x = 2
+param_y = 4
+theta_0 = [3.0, 0.25, 25.0, 0.0, 0.9, 0.0]
+
+[[maps]]
+name = "phase_vs_spin1_seed"
+param_x = 4
+param_y = 5
+theta_0 = [2.0, 0.1, 20.0, 0.0, 0.7, 0.5]

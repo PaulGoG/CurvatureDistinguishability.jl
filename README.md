@@ -169,6 +169,10 @@ failed (the remaining stages still run and the failures are listed in
   visibility (`CUDA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`/
   `HIP_VISIBLE_DEVICES`, `ZE_AFFINITY_MASK`) so the discrete device is
   selected; the `backend` line of `metadata.toml` names the device in use.
+- The signal fills the frequency band whatever its emission time unless
+  `[physics].observation_window = true`; for light systems the band below
+  the frequency radiated at `t = 0` then holds decades of inspiral from
+  before the observation (documentation, Waveform Physics, Finite observation).
 
 ## How to cite
 

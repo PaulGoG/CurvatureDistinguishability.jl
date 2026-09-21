@@ -13,7 +13,10 @@ First public release.
 - Frequency-domain inspiral model: TaylorF2 phasing to 1.5PN with spin–orbit
   coupling, (2,2) harmonic plus the 0.5PN amplitude harmonics at unequal
   mass, inspiral taper at the innermost stable orbit.
-- LISA response on analytic orbits in the A and E TDI channels; the
+- Optional finite-observation window (`[physics].observation_window`): every
+  harmonic is weighted at its stationary-phase emission time, so that signal
+  emitted before the observation starts does not contribute.
+- LISA response on analytic orbits in the A and E channel combinations; the
   Robson–Cornish–Liu (2019) instrument and galactic-confusion noise model.
 - Signal-manifold geometry: tangent basis, Fisher norm and extrinsic
   curvature K(u) along a direction, by nested forward-mode differentiation.

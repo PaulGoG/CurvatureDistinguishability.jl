@@ -101,7 +101,16 @@ and its console output in `logs/attempt_<k>.console.log`.
 ## 1. Global Simulation Grid
 
 *   **Observation Time (``T_{\mathrm{obs}}``):** ``3.15576 \times 10^7`` s
-    (1 Julian year — the same constant that drives the orbital motion).
+    (1 Julian year — the same constant that drives the orbital motion). It
+    sets the frequency resolution and the confusion-noise level; it limits the
+    signal in time only with `[physics].observation_window = true`
+    (`window_edge_time` [s], default ``10^6``, at most ``T_{\mathrm{obs}}/8``),
+    which weights every harmonic by the window of an observation over
+    ``[0, T_{\mathrm{obs}}]`` at its emission time
+    ([Waveform Physics](physics.md), Finite observation). The key belongs to
+    the run identity. The production base leaves it out;
+    `configs/campaigns/windowed_low_mass_maps.toml` recomputes with it the two
+    maps whose base points radiate in band before ``t = 0``.
 *   **Frequency Range:** ``10^{-4}`` Hz to ``0.05`` Hz.
 *   **Resolution:** at a spacing of ``1/T_{\mathrm{obs}}`` the grid spans
     ``\approx 1.57`` million frequency bins. The `[safety].max_ram_gb` budget

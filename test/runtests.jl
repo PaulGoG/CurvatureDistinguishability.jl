@@ -434,6 +434,65 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test_throws ArgumentError bounds_from_config(Dict("spin1" => [1.0, -1.0]))
     end
 
+    @testset "Finite-observation window" begin
+        W = CD.Physics.observation_window
+        T, Δ = 3.0e7, 1.0e6
+        @test W(0.0, T, Δ) ≈ 0.5 atol = 1e-12
+        @test W(T, T, Δ) ≈ 0.5 atol = 1e-12
+        @test W(T / 2, T, Δ) ≈ 1.0 atol = 1e-12
+        @test W(-10Δ, T, Δ) < 1e-8 && W(T + 10Δ, T, Δ) < 1e-8
+        @test W(T / 2 - 1.2e7, T, Δ) ≈ W(T / 2 + 1.2e7, T, Δ) rtol = 1e-12 # symmetric
+        @test all(diff(W.(range(-5Δ, T / 2, 200), T, Δ)) .>= 0)             # monotone edge
+
+        f = collect(1.0e-4:1.0e-5:5.0e-2)
+        wp_off = WaveformParams(eta = 0.2222)
+        wp_on = WaveformParams(eta = 0.2222, observation_time = 3.15576e7)
+        @test wp_off.observation_time == 0 # absent by default
+        # light system: τ(f_min) = 63 yr against t_c = 0.63 yr. The window removes
+        # the band emitted before t = 0 and leaves the rest untouched
+        seed = [2.0, 0.1, 20.0, 0.0, 0.7, 0.5]
+        a_off = abs.(channel_strain(seed, f, wp_off)[1])
+        a_on = abs.(channel_strain(seed, f, wp_on)[1])
+        @test a_on[1] < 1e-12 * a_off[1]
+        𝓜, t_c = 0.1, 2.0e7
+        F0 = (5𝓜 / (256t_c))^(3 / 8) / (π * 𝓜) # τ(F0) = t_c for the (2,2) harmonic
+        @test 5.5e-4 < F0 < 5.7e-4
+        @test 0.35 < a_on[argmin(abs.(f .- F0))] / a_off[argmin(abs.(f .- F0))] < 0.65
+        above = f .> 2.0e-3
+        @test maximum(abs.(a_on[above] ./ a_off[above] .- 1)) < 1e-9
+        # heavy system: the whole band is emitted inside the observation
+        heavy = [5.0, 4.0, 20.0, 0.0, 0.8, 0.8]
+        h_off = channel_strain(heavy, f, wp_off)[1]
+        h_on = channel_strain(heavy, f, wp_on)[1]
+        @test maximum(abs.(h_on .- h_off)) <= 1e-6 * maximum(abs.(h_off))
+        # differentiable through the moving edge, and the kernel path agrees
+        # with the scalar loop with the window on
+        Sn = analytic_noise_psd.(f)
+        data = channel_strain(seed, f, wp_on)
+        loop = loss_function(data, f, Sn, 1.0e-5, wp_on, CPU())
+        p = seed .+ [0.0, 1.0e-7, 1.0e-4, 1.0e-3, 1.0e-4, 0.0]
+        g = ForwardDiff.gradient(loop, p)
+        @test all(isfinite, g) && any(!iszero, g)
+        kern = CD.Inference.device_loss(p, f, Sn, data[1], data[2], 1.0e-5, wp_on, CPU())
+        @test kern ≈ loop(p) rtol = 1e-12
+
+        mktempdir() do dir
+            base = "[grid]\nT_obs = 1.0e7\nf_min = 1.0e-3\nf_max = 2.0e-3\n"
+            plain = joinpath(dir, "plain.toml")
+            write(plain, base)
+            @test load_and_validate_config(plain).wp.observation_time == 0
+            windowed = joinpath(dir, "windowed.toml")
+            write(windowed, base * "[physics]\nobservation_window = true\n")
+            cfg = load_and_validate_config(windowed)
+            @test cfg.wp.observation_time == 1.0e7 && cfg.wp.window_edge_time == 1.0e6
+            # the window changes what is computed: it belongs to the run identity
+            @test run_id_from_config(windowed) != run_id_from_config(plain)
+            write(windowed,
+                base * "[physics]\nobservation_window = true\nwindow_edge_time = 2.0e6\n")
+            @test_throws "window_edge_time" load_and_validate_config(windowed)
+        end
+    end
+
     @testset "Inference: kernel ≡ loop, optimizers, bounds" begin
         θ2 = THETA0 .+ [0.0, 0.01, 0.02, 0.01, 0.0, 0.0]
         c1 = channel_strain(THETA0, FIX_FREQS, FIX_WP)

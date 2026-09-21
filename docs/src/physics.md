@@ -196,6 +196,34 @@ length is shared with the noise model and the orbit eccentricity through
 stationary-phase image of ``h_\times \propto \sin k\varphi`` against
 ``h_+ \propto \cos k\varphi``.
 
+### Finite observation
+
+The frequency-domain signal contains every frequency of the band, whenever
+it was emitted: harmonic ``k`` at frequency ``f`` left the source at
+``t_k(f) = t_c - \tau(2f/k)`` with
+``\tau(F) = 5\mathcal{M}/[256\,(\pi\mathcal{M}F)^{8/3}]``, which for a light
+system lies far before the observation. At the lower band edge
+``\tau(10^{-4}\,\mathrm{Hz})`` is 0.13 yr for ``\mathcal{M} = 4`` s, 14 yr for
+``\mathcal{M} = 0.25`` s and 63 yr for ``\mathcal{M} = 0.1`` s. With
+`[physics].observation_window = true` each harmonic is weighted by the window
+of an observation over ``[0, T_{\mathrm{obs}}]`` at its emission time,
+```math
+w_k(f) \;\to\; w_k(f)\, W\!\left(t_k(f)\right), \qquad
+W(t) = \tfrac{1}{2}\left[\tanh\frac{t}{\Delta} - \tanh\frac{t - T_{\mathrm{obs}}}{\Delta}\right],
+```
+unity inside the observation, one half at either end and zero outside, with
+edges of time scale ``\Delta`` = `window_edge_time`. In the stationary-phase
+approximation a time-domain window that varies slowly against the local
+chirp time ``1/\sqrt{\dot f}`` multiplies the harmonic at ``t_k(f)``;
+``\Delta = 10^{6}`` s is two to three times ``1/\sqrt{\dot f}`` at ``t = 0``
+for the lightest shipped systems (3.6 and 5.5 days). The window is smooth in
+``t_k``, hence in ``\mathcal{M}`` and ``t_c``, through which its edges move in
+frequency; a hard cut would not be differentiable. It removes the band below
+``F_0`` with ``\tau(F_0) = t_c`` — 0.56 mHz for ``\mathcal{M} = 0.1`` s and
+``t_c = 0.63`` yr — and leaves the signal above about ``2F_0`` unchanged to
+``10^{-10}``. Without the key the window is absent and ``T_{\mathrm{obs}}``
+only sets the frequency resolution and the confusion-noise level.
+
 ## 7. Noise model
 
 Inner products are weighted by the one-sided PSD ``S_n(f)`` of
@@ -231,6 +259,15 @@ the long-wavelength limit of the detector. Consequences:
   approximant would add is absent. The lightest base point
   (``\mathcal{M} = 0.1`` s) has ``f_{\mathrm{ISCO}} = 88`` mHz, above the
   band edge.
+- Without `observation_window` the signal fills the band from
+  ``f_{\mathrm{min}}`` whatever its emission time. For base points with
+  ``\tau(f_{\mathrm{min}}) > t_c`` (the two lightest of the production
+  configuration) the Fisher norm and the zone along directions that involve
+  the chirp mass or the spins then include decades of inspiral before
+  ``t = 0``: along the mass–spin direction of the ``\mathcal{M} = 0.1`` s
+  system the window lowers ``g(u,u)`` by a factor 9.6 and doubles
+  ``\delta_{\mathrm{min}}``; coalescence-time and phase directions, and every
+  heavier system, are unchanged.
 - The long-wavelength response is used up to ``2.6 f_\star``; the finite-arm
   transfer function of the TDI observables is represented only by the
   Robson roll-off factor, not by the full arm-dependent transfer.
