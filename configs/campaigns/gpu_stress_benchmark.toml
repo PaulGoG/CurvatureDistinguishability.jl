@@ -1,7 +1,5 @@
-# GPU stress benchmark: one deliberately expensive sweep on the first
-# functional GPU backend. Hardware-timing workload, not a scientific case
-# (twice the production grid, 40 separations, 3 starts). Chunk 3 fits every
-# GPU kernel-argument limit met so far.
+# GPU timing benchmark, not a scientific case: one sweep on a two-year grid,
+# 40 separations, 3 starts, Hessian chunk 3.
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = false
@@ -31,7 +29,7 @@ f_reltol = 1e-8
 max_iterations = 60
 
 [grid]
-# df = 1/T_obs; T_obs in s (two years), frequencies in Hz; 3 149 449 bins
+# df = 1/T_obs; T_obs [s] > 0, 0 < f_min < f_max [Hz]
 T_obs = 6.31152e7
 f_min = 1.0e-4
 f_max = 0.05
@@ -70,12 +68,11 @@ confusion_enabled = true
 gpu_backend = "auto"
 # abort before any output when no functional GPU backend resolves (true | false)
 require_gpu = true
-# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+# ForwardDiff Hessian chunk: 0 (full 6-parameter chunk) | 1–6; (1+c)² lanes per launch
 hessian_chunk = 3
 
 [safety]
-# device memory budget and the share reserved for the OS [GB]; 8 GB / 1 GB
-# is the floor of the fleet (the grid needs 2.9 GB at 1000 bytes per bin)
+# device memory budget and the share reserved for the OS [GB], > 0
 max_vram_gb = 8.0
 os_vram_overhead_gb = 1.0
 # per-bin VRAM footprint of the single GPU optimization task, in bytes

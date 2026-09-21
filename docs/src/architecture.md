@@ -24,7 +24,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   `PipelineSettings` (per-section parse helpers feeding a keyword
   constructor; an overlay's `base_config` is merged in first). Guardrails: descriptive hard errors for unusable input
   (bad ranges, duplicate names, base points outside the physical bounds),
-  warnings for suspicious values, and warnings on **unknown keys** (typo
+  warnings for suspicious values, and hard errors on **unknown keys** (typo
   protection). Physical parameters live *only* in the TOML; the source
   carries physical constants (arm length, AU, year) and published-fit
   defaults.
@@ -107,7 +107,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   TTY-gated progress bars (detached runs produce ANSI-free logs), a
   structured `run.log` via LoggingExtras, and **per-stage try/catch**: a
   failing sweep or map is logged with its backtrace and the remaining stages
-  continue; failures are listed in `metadata.toml`.
+  continue; failures are listed in `metadata.toml`, and `run_pipeline` then
+  throws a `PipelineStageError`, which `scripts/run_pipeline.jl` turns into
+  exit status 3.
 - **`RunFigures.jl`** — display-time figure regeneration from persisted run
   artifacts, the single implementation behind `scripts/replot.jl` and
   `scripts/collect_plots.jl`: point classification and display refits reuse

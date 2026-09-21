@@ -3,7 +3,7 @@
 # src/RunFigures.jl (shared with collect_plots.jl); this script only selects
 # the run and writes {pdf,png} pairs back into it with backup semantics.
 #
-#   julia --project scripts/replot.jl <run_dir> [--rho R]
+#   julia scripts/replot.jl <run_dir> [--rho R]
 #
 # With --rho R the discernibility threshold is changed WITHOUT recomputation:
 # the boundary radius is r = (16ρ²/K)^{1/4} and K is persisted per direction,
@@ -25,7 +25,7 @@ function parse_arguments(argv)
         deleteat!(args, idx:(idx+1))
     end
     length(args) == 1 ||
-        error("Usage: julia --project scripts/replot.jl <run_dir> [--rho R]")
+        error("Usage: julia scripts/replot.jl <run_dir> [--rho R]")
     run_dir = abspath(args[1])
     isdir(run_dir) || error("Run directory not found: $run_dir")
     return run_dir, rho

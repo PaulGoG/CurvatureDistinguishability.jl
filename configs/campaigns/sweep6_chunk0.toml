@@ -1,13 +1,5 @@
-# Single-sweep GPU campaign: sweep 6 of seven, 'seed_binary_mass_spin_compensation', at Hessian
-# chunk 0. The sweep parameters are those of the CPU reference
-# campaign (../production_cpu.toml, merged in as base_config); only the
-# [[sweeps]] table is narrowed to one case.
-#
-# One sweep per process bounds the blast radius of a lost GPU dispatch:
-# a hang costs this sweep alone, and sweeps already completed are never
-# recomputed on relaunch. [[sweeps]] belongs to the run identity, so
-# each sweep carries its own run identifier and its four chunk variants
-# land in run_<id>, run_<id>_r2, … in launch order.
+# Single-sweep overlay of ../production_cpu.toml: sweep 6 of 7,
+# 'seed_binary_mass_spin_compensation', Hessian chunk 0; GPU backend required, no maps.
 base_config = "../production_cpu.toml"
 
 [pipeline]
@@ -18,12 +10,11 @@ run_2d_mapping = false
 gpu_backend = "auto"
 # abort before any output when no functional GPU backend resolves (true | false)
 require_gpu = true
-# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+# ForwardDiff Hessian chunk: 0 (full 6-parameter chunk) | 1–6; (1+c)² lanes per launch
 hessian_chunk = 0
 
 [safety]
-# device memory budget and the share reserved for the OS [GB]; 8 GB / 1 GB
-# is the floor of the fleet
+# device memory budget and the share reserved for the OS [GB], > 0
 max_vram_gb = 8.0
 os_vram_overhead_gb = 1.0
 

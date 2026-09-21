@@ -111,21 +111,22 @@ iGPU):** if a backend's compiler rejects the full 49-lane Hessian kernel,
 the Hessian is evaluated in chunks: the config key
 `[hardware].hessian_chunk` (0 = full chunk) threads
 `ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk{c}())` through
-`calculate_numerical_distance`'s `h!`, so each kernel launch carries
-(1+c)·(1+6) lanes. The failure mechanism was isolated on the iGPU
-(2026-08-13 probe): the nested-dual parameter tuple enters the kernel as an
-argument of 6 × 49 × 8 = 2352 bytes, exceeding the device's 2048-byte
-kernel-argument limit — IGC reports "Total size of kernel arguments exceeds
-limit" and fails the module build (`ZE_RESULT_ERROR_MODULE_BUILD_FAILURE`).
-Value (1-lane) and gradient (7-lane) kernels fit comfortably; chunk 3
-carries 28 lanes = 1344 bytes and builds everywhere tested. (Meteor Lake
-Xe-LPG executes FP64 natively — an earlier attribution of this failure to
-FP64 software emulation was incorrect; the Level Zero driver reports
-`ZE_DEVICE_MODULE_FLAG_FP64` without any IGC emulation flags.) Measured on
-the iGPU at chunk 3: Hessian in 0.91 s at the production grid with
-machine-epsilon agreement (2e-16) against the CPU reference — a full
-production-size IPNewton solve ≈ 16 s on the iGPU versus 161 s on 22 CPU
-threads. The chunked path is exercised in the test suite.
+`calculate_numerical_distance`'s `h!`, so each kernel launch carries (1+c)²
+lanes and a Hessian costs ⌈6/c⌉² launches (ForwardDiff applies the chunk to
+the outer and the inner dual: c = 3 gives 16 lanes × 4 launches, c = 2 gives
+9 × 9, c = 1 gives 4 × 36). The failure mechanism was isolated on the iGPU:
+the nested-dual parameter tuple enters the kernel as an argument of
+6 × 49 × 8 = 2352 bytes, exceeding the device's 2048-byte kernel-argument
+limit — IGC reports "Total size of kernel arguments exceeds limit" and fails
+the module build (`ZE_RESULT_ERROR_MODULE_BUILD_FAILURE`). Value (1-lane)
+and gradient (7-lane) kernels fit comfortably; chunk 3 carries 16 lanes =
+768 bytes. Meteor Lake Xe-LPG executes FP64 natively
+(`ZE_DEVICE_MODULE_FLAG_FP64` is reported without emulation flags). On the
+production grid a 16-lane launch takes about 4.3 s on the Meteor Lake iGPU,
+against the 7.5 s i915 preempt timeout; 9 lanes (chunk 2) take about 0.9 s,
+which is why chunk 2 is the shipped GPU baseline. Agreement with the CPU
+reference is at machine epsilon (2×10⁻¹⁶) for every chunk. The chunked path
+is exercised in the test suite.
 
 ## 4. Float32 + compensated summation (closed — will not be implemented)
 

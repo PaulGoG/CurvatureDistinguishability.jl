@@ -23,10 +23,11 @@ validated, and the run directory receives the merged, self-contained
 Both GPU overlays select the first functional backend and
 `hessian_chunk = 2`. That is the portable baseline: the `[hardware]`
 setting splits the ForwardDiff Hessian so each kernel launch carries
-`(1+c)^2` lanes over `ceil(6/c)^2` launches, and nine lanes fit every
-device limit met so far — the full 49-lane kernel needs 2352 bytes of
-kernel arguments against the 2048-byte limit of the Intel integrated GPU,
-and spills registers heavily on discrete cards.
+`(1+c)^2` lanes over `ceil(6/c)^2` launches, and nine lanes fit the
+kernel-argument and per-launch time limits of every supported backend — the
+full 49-lane kernel needs 2352 bytes of kernel arguments against the
+2048-byte limit of the Intel integrated GPU, and spills registers heavily on
+discrete cards.
 
 A third overlay, `quickstart_maps.toml`, replaces the quickstart work
 items by nine maps on the quickstart grid — the seven production planes
@@ -39,18 +40,19 @@ except `[hardware]`, `[safety]` and `[monitoring]`, which describe how a
 run executes rather than what it computes — so one physical case carries
 one identifier on every machine; reruns land in `_r2`, `_r3`, … sibling
 directories and `metadata.toml`/`hardware.txt` record backend, host and
-timings. No per-machine configuration files are needed: `max_threads`,
-`[safety].max_ram_gb` and the device budgets `max_vram_gb` /
-`os_vram_overhead_gb` are all taken from the host when absent (Julia's
-thread count, 80 % of system memory, and 8 GB / 1 GB respectively).
+timings. No per-machine configuration files are needed: `max_threads` and
+`[safety].max_ram_gb` are taken from the host when absent (Julia's thread
+count and 80 % of system memory); the device budgets `max_vram_gb` /
+`os_vram_overhead_gb` default to the fixed values 8 GB / 1 GB and are not
+queried from the device.
 `configs/campaigns/` holds the multi-host campaign plans, which vary the
 Hessian chunk and, for the single-sweep overlays, narrow `[[sweeps]]` to
 one case.
 
 Execution keys left out of a configuration take host-adaptive defaults:
 `[hardware].max_threads` the Julia thread count, `[safety].max_ram_gb`
-80 % of system memory, `[safety].max_vram_gb` / `os_vram_overhead_gb`
-8 GB / 1 GB (the floor of the discrete-GPU fleet). The production base
+80 % of system memory, `[safety].max_vram_gb` / `os_vram_overhead_gb` the
+fixed defaults 8 GB / 1 GB. The production base
 sets none of them, so it runs unmodified on any host. `[hardware]
 .require_gpu = true` (default `false`) aborts a run before any output is
 written when no functional GPU backend resolves for the requested

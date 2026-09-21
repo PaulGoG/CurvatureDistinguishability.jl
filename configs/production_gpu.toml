@@ -1,7 +1,5 @@
-# Production configuration — GPU variant of the CPU reference campaign
-# (production_cpu.toml, merged in as base_config): first functional backend,
-# Hessian chunk 2. This is the portable GPU baseline for every device.
-# Case rationale and the chunk choice: docs/src/parameters.md.
+# GPU overlay of production_cpu.toml: first functional backend, Hessian chunk 2.
+# Chunk semantics: docs/src/parameters.md.
 base_config = "production_cpu.toml"
 
 [hardware]
@@ -10,6 +8,5 @@ base_config = "production_cpu.toml"
 gpu_backend = "auto"
 # abort before any output when no functional GPU backend resolves (true | false)
 require_gpu = true
-# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6); 2 compiles and
-# runs within every device limit met so far
+# ForwardDiff Hessian chunk: 0 (full 6-parameter chunk) | 1–6; (1+c)² lanes per launch
 hessian_chunk = 2

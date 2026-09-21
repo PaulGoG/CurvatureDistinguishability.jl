@@ -18,8 +18,171 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 
 ```text
 CurvatureDistinguishability/
+├── Project.toml        # dependencies, GPU weak dependencies, [compat]
+├── activate.jl         # activates and instantiates the package environment
+├── configs/            # TOML scenarios: quickstart*, production_*, campaigns/
+├── src/                # library: physics, geometry, inference, orchestration, plotting
+├── ext/                # GPU package extensions (CUDA, AMDGPU, Metal, oneAPI)
+├── scripts/            # entry points: run_pipeline, launch_run, replot, collect_plots
+├── test/               # unit, physics-validation, static-QA and end-to-end tests
+├── bench/              # BenchmarkTools suite (own environment)
+├── docs/               # Documenter.jl sources (own environment)
+├── data/               # run outputs, one run_<hash>/ per run (git-ignored)
+└── plots/              # flat PNG browsing view (git-ignored)
+```
+
+The full annotated tree is in [Full file tree](#full-file-tree) below.
+
+## Environment setup
+
+Julia ≥ 1.12 (`[compat]`), installed through `juliaup`; development and
+verification run on Julia 1.13. `Manifest.toml` is not version-controlled:
+each environment resolves on first activation, and every run directory
+receives a copy of the resolved manifest for provenance. Each environment
+ships a pure-Julia activation script that activates and instantiates it
+silently; every entry point includes the script of its environment, so no
+`--project` flag is needed, and `julia -i` on one opens a REPL in it:
+
+```bash
+julia -i activate.jl        # package environment
+julia -i docs/activate.jl   # documentation environment (package by path)
+julia -i bench/activate.jl  # benchmark environment (package by path)
+julia -i test/activate.jl   # test sandbox through TestEnv.jl (installed into a shared environment on first use)
+```
+
+To use the package as a library from another environment (unregistered):
+
+```julia
+Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
+```
+
+GPU support is optional: install the vendor package matching the hardware
+(`CUDA`, `AMDGPU`, `Metal` or `oneAPI`) into the default (stacked)
+environment; the pipeline loads it according to `[hardware].gpu_backend` and
+the matching package extension activates. Without one the pipeline runs on
+the multi-threaded CPU backend (`gpu_backend = "none"` forces this).
+`[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
+run before any output when no functional GPU backend resolves.
+Configuration layering, run identity and the execution defaults are
+described in the documentation page `docs/src/parameters.md`.
+
+## Entry points
+
+```bash
+# main pipeline, foreground; without --config the minutes-scale configs/quickstart.toml runs
+julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml
+
+# detached run with ANSI-free logs (forwards --config / --output-dir)
+julia scripts/launch_run.jl --config configs/production_cpu.toml
+
+# regenerate every figure of a finished run from its CSVs; --rho R rescales maps and
+# threshold markers to another discernibility threshold without recomputation
+julia scripts/replot.jl data/run_<hash> [--rho R]
+
+# render all figures of one or more runs as a flat PNG view (plots/ by default)
+julia scripts/collect_plots.jl [dest_dir] [run_id ...]
+
+# test suite (unit, physics validation, static QA, end-to-end)
+julia -e 'include("activate.jl"); Pkg.test()'
+
+# benchmarks (own environment; the package resolves by path)
+julia --threads=auto bench/run_benchmarks.jl
+
+# documentation build, strict mode (own environment)
+julia docs/make.jl
+```
+
+Everything tunable lives in the `configs/` scenario files (grid, physics, the full
+Robson-2019 noise model — confusion and instrumental parameters alike —
+mapping resolution/refinement, `[parameter_bounds]`, optimizer, `[safety]`
+memory budgets). `[monitoring].enabled = true` additionally prints an
+in-terminal UnicodePlots diagnostic after each completed sweep and map (TTY
+sessions only; detached logs stay clean). The configuration is validated up front: unusable
+values and **unknown keys** abort with an error naming the offending key,
+suspicious values warn. Each run lands in
+`data/run_<confighash>/` with a config snapshot, `metadata.toml`
+(git commit, backend, timings), `hardware.txt`, a copy of the resolved
+`Manifest.toml` and a structured, ANSI-free `run.log`; reruns
+get suffixed directories and `safesave`-style backups — results are never
+overwritten. `scripts/run_pipeline.jl` exits with status 0 only when every
+stage completed, 2 on a configuration error and 3 when one or more stages
+failed (the remaining stages still run and the failures are listed in
+`metadata.toml`).
+
+## Outputs
+
+- **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
+  parameters, convergence diagnostics, active-bound flags, multi-start gain),
+  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
+  the O(δ⁵) correction coefficients c₁/c₂ — fitted on the points within
+  `correction_fit_max_departure` of the law — with a 10%-validity radius,
+  optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log
+  panel plus a D²_num/D²_theo ratio panel with the correction-fit overlay),
+  `residual_plot.{pdf,png}` (d(SNR²)/df and d(D²)/df densities for channels
+  A and E; the bottom panel integrates to D²). Sweeps support unequal
+  amplitudes (`amp_ratio`, the A_harm law) and opt-in multi-start seeding
+  (`n_starts`, seeded by `[pipeline].rng_seed`).
+- **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
+  boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
+  `confusion_zone.{pdf,png}` with prior-limited boundary segments (wall
+  color, active wall values annotated) visually distinct from
+  curvature-limited ones; the uncapped mathematical contour continues past
+  each wall as a dashed curve. Directions are sampled uniformly in the
+  Fisher-normalized plane (each axis in its own σ) so that strongly
+  anisotropic planes are resolved uniformly; K is computed on [0, π) only
+  and mirrored (K(u) is exactly even), with adaptive angular refinement
+  near boundary spikes.
+
+## Status of components
+
+| Component | Status |
+|---|---|
+| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
+| Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
+| Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
+| 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
+| GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware (agreement ≤ 5×10⁻⁵ relative above the optimizer floor); see Known limitations |
+| Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
+
+## Known limitations
+
+- ROCm 7.1 on gfx1100/gfx1101 (Radeon PRO W7900, RX 7700 XT): a kernel
+  dispatch intermittently never completes; the process stays alive at
+  near-zero CPU load with no error. Unresolved upstream; long GPU campaigns
+  on these devices need external supervision and relaunch.
+- Intel integrated GPUs driven by i915: the kernel resets the compute
+  context when a single launch exceeds the engine preempt timeout (7.5 s by
+  default). `hessian_chunk = 2` keeps launches well below it on the shipped
+  grids; `hessian_chunk = 3` is marginal on the production grid and fails on
+  longer grids, and `hessian_chunk = 0` exceeds the device's 2048-byte
+  kernel-argument limit.
+- Hosts with an integrated GPU beside a discrete one: restrict device
+  visibility (`CUDA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`/
+  `HIP_VISIBLE_DEVICES`, `ZE_AFFINITY_MASK`) so the discrete device is
+  selected; the `backend` line of `metadata.toml` names the device in use.
+
+## How to cite
+
+Citation metadata is in `CITATION.cff`; a BibTeX entry:
+
+```bibtex
+@software{Gogita_CurvatureDistinguishability,
+  author  = {Gogîță, Paul-Adrian},
+  title   = {CurvatureDistinguishability.jl},
+  version = {1.0.0-DEV},
+  year    = {2026},
+  url     = {https://github.com/PaulGoG/CurvatureDistinguishability.jl}
+}
+```
+
+## Full file tree
+
+<details>
+<summary>Annotated tree</summary>
+
+```text
+CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
-├── Manifest.toml           # version-controlled — portability guarantee
 ├── activate.jl             # silent activation of the package environment (included by every script)
 ├── configs/
 │   ├── quickstart.toml     # base: minutes-scale demonstration run (the default)
@@ -65,136 +228,4 @@ CurvatureDistinguishability/
 └── plots/                  # flat regenerable PNG browsing view (git-ignored)
 ```
 
-## Environment setup
-
-Julia ≥ 1.12 (`[compat]`), installed through `juliaup`; the committed
-`Manifest.toml` is resolved on Julia 1.13, on which the test suite,
-documentation build and benchmarks are verified (a 1.12 session re-resolves
-the stdlib JLLs with a warning). Each environment ships a pure-Julia
-activation script that activates and instantiates it silently; every entry
-point includes the script of its environment, and `julia -i` on one opens a
-REPL in it:
-
-```bash
-julia -i activate.jl        # package environment
-julia -i docs/activate.jl   # documentation environment (package by path)
-julia -i bench/activate.jl  # benchmark environment (package by path)
-julia -i test/activate.jl   # test sandbox through TestEnv.jl (installed into a shared environment on first use)
-```
-
-To use the package as a library from another environment (unregistered;
-the repository requires authenticated access while private):
-
-```julia
-Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
-```
-
-`Project.toml` + `Manifest.toml` are authoritative and version-controlled.
-GPU support is optional and never a hard dependency: install the package
-matching your hardware (`Pkg.add("CUDA")`, `AMDGPU`, `Metal` or `oneAPI`)
-into your default (stacked) environment — the pipeline resolves it through
-the load path and the corresponding package extension activates
-automatically; without one, the pipeline runs on the multi-threaded CPU
-backend (`[hardware].gpu_backend = "none"` forces this).
-`[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
-run before any output when no functional GPU backend resolves, so a missing
-vendor package cannot degrade a GPU campaign into a silent CPU run.
-`configs/production_gpu.toml` is a thin overlay on
-`configs/production_cpu.toml`: it declares `base_config =
-"production_cpu.toml"` and only the `[hardware]` keys that differ, so the
-physics is shared by construction. It selects the first functional backend
-and `hessian_chunk = 2`, the portable GPU baseline: nine lanes per kernel
-launch fit every device limit met so far, where the full 49-lane nested-dual
-kernel exceeds the Intel iGPU's 2048-byte kernel-argument limit and takes long
-enough per launch elsewhere to spill registers heavily. The pipeline merges base
-and overlay at load (sub-tables recurse; scalars and `[[sweeps]]`/`[[maps]]`
-lists in the overlay replace) and snapshots the merged file into the run
-directory. The run ID hashes only what a run computes — every section
-except `[hardware]`, `[safety]` and `[monitoring]` — so one physical case
-has one identifier on every machine and reruns land in suffixed sibling
-directories with backend, host and timings in `metadata.toml`.
-Execution settings need no per-machine files: thread count, RAM budget and the
-8 GB / 1 GB device-memory budget are taken from the host when absent.
-`configs/campaigns/` holds the multi-host campaign plans. GPU runs are
-pinned to a single task by the pipeline and all GPU
-kernel launches are serialized library-wide — concurrent multi-task access
-to GPU drivers is unsafe (observed Level Zero segfault) and buys nothing,
-since the device serializes kernels anyway.
-
-## Usage
-
-```bash
-# foreground run (progress bars on a TTY); --output-dir overrides data/.
-# Without --config the minutes-scale configs/quickstart.toml runs;
-# production campaigns are selected explicitly:
-julia --project --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml
-
-# detached long run with ANSI-free logs (forwards --config/--output-dir)
-julia --project scripts/launch_run.jl
-
-# regenerate every figure of a finished run from its CSVs (no recomputation);
-# --rho R additionally rescales all maps/threshold markers to a new
-# discernibility threshold using the persisted per-direction curvature
-julia --project scripts/replot.jl data/run_<hash> [--rho R]
-
-# re-render all figures of one or more runs as a flat PNG browsing view
-# (plots/ by default)
-julia --project scripts/collect_plots.jl [dest_dir] [run_id ...]
-
-# test suite (unit + physics validation + static QA + end-to-end)
-julia --project -e 'using Pkg; Pkg.test()'
-
-# performance benchmarks (own environment; the package resolves by path)
-julia --threads=auto bench/run_benchmarks.jl
-
-# documentation build (strict mode; own environment)
-julia docs/make.jl
-```
-
-Everything tunable lives in the `configs/` scenario files (grid, physics, the full
-Robson-2019 noise model — confusion and instrumental parameters alike —
-mapping resolution/refinement, `[parameter_bounds]`, optimizer, `[safety]`
-memory budgets). `[monitoring].enabled = true` additionally prints an
-in-terminal UnicodePlots diagnostic after each completed sweep and map (TTY
-sessions only; detached logs stay clean). The configuration is validated up front: unusable
-values abort with a descriptive error, suspicious ones warn, and **unknown
-keys warn** (typo protection). Each run lands in
-`data/run_<confighash>/` with a config snapshot, `metadata.toml`
-(git commit, backend, timings) and a structured, ANSI-free `run.log`; reruns
-get suffixed directories and `safesave`-style backups — results are never
-overwritten.
-
-## Outputs
-
-- **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
-  parameters, convergence diagnostics, active-bound flags, multi-start gain),
-  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
-  the O(δ⁵) correction coefficients c₁/c₂ — fitted on the points within
-  `correction_fit_max_departure` of the law — with a 10%-validity radius,
-  optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log
-  panel plus a D²_num/D²_theo ratio panel with the correction-fit overlay),
-  `residual_plot.{pdf,png}` (d(SNR²)/df and d(D²)/df densities for channels
-  A and E; the bottom panel integrates to D²). Sweeps support unequal
-  amplitudes (`amp_ratio`, the A_harm law) and opt-in multi-start seeding
-  (`n_starts`, seeded by `[pipeline].rng_seed`).
-- **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
-  boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
-  `confusion_zone.{pdf,png}` with prior-limited boundary segments (wall
-  color, active wall values annotated) visually distinct from
-  curvature-limited ones; the uncapped mathematical contour continues past
-  each wall as a dashed curve. Directions are sampled uniformly in the
-  Fisher-normalized plane (each axis in its own σ) so that strongly
-  anisotropic planes are resolved uniformly; K is computed on [0, π) only
-  and mirrored (K(u) is exactly even), with adaptive angular refinement
-  near boundary spikes.
-
-## Status of components
-
-| Component | Status |
-|---|---|
-| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
-| Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
-| Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
-| 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | production-validated on an Intel iGPU with native FP64 (cross-validated ≡ CPU at the 1e-8 level) and on CUDA/ROCm workstation hardware; every GPU failure mode encountered is fixed in code, with the operational hardening summarized in the documentation roadmap (`docs/src/roadmap.md`) |
-| Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
+</details>

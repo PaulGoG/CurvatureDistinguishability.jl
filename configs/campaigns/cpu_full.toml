@@ -1,6 +1,4 @@
-# Full CPU campaign, sweeps and maps: the CPU reference configuration
-# (../production_cpu.toml, merged in as base_config) on the CPU backend with
-# host-adaptive concurrency and RAM budget.
+# Overlay of ../production_cpu.toml: all sweeps and maps on the CPU backend.
 base_config = "../production_cpu.toml"
 
 [hardware]

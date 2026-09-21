@@ -5,7 +5,7 @@
 # modified, and the source run directories are not touched. All rebuild
 # logic lives in src/RunFigures.jl (shared with replot.jl).
 #
-#   julia --project scripts/collect_plots.jl [dest_dir] [run ...]
+#   julia scripts/collect_plots.jl [dest_dir] [run ...]
 #
 # A run selector is either a run id under data/ (run_<hash>) or a path to a
 # run directory (e.g. one produced with --output-dir elsewhere); selectors

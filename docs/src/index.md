@@ -37,7 +37,7 @@ deeper layers:
 - [Roadmap](roadmap.md) — deferred features with design sketches.
 - [API Reference](api.md) — every public symbol.
 
-Quickest start: `julia --project --threads=auto scripts/run_pipeline.jl`
+Quickest start: `julia --threads=auto scripts/run_pipeline.jl`
 runs the minutes-scale `configs/quickstart.toml` scenario end to end and
 demonstrates the scaling law, the optimizer floor, and the prior-limited
 spin wedge.

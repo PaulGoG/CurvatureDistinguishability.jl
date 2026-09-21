@@ -1,9 +1,4 @@
-# GPU stress benchmark (gpu_stress_benchmark.toml, merged in as base_config),
-# Hessian chunk 1 (four lanes per launch, 36 launches per Hessian).
-# Hardware-timing workload, not a scientific case. The chunk variants share
-# the benchmark's run identifier ([hardware] is not hashed) and land in
-# run_<id>, run_<id>_r2, … in launch order; gpu_stress_benchmark.toml itself
-# is the chunk-3 member of this family.
+# Overlay of gpu_stress_benchmark.toml: Hessian chunk 1.
 base_config = "gpu_stress_benchmark.toml"
 
 [hardware]
@@ -11,5 +6,5 @@ base_config = "gpu_stress_benchmark.toml"
 gpu_backend = "auto"
 # abort before any output when no functional GPU backend resolves (true | false)
 require_gpu = true
-# ForwardDiff Hessian chunk (0 = full 6-parameter chunk; 1-6)
+# ForwardDiff Hessian chunk: 0 (full 6-parameter chunk) | 1–6; (1+c)² lanes per launch
 hessian_chunk = 1
