@@ -1,7 +1,7 @@
 name = "CurvatureDistinguishability"
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
 version = "1.0.0-DEV"
-authors = ["Paul-Adrian Gogîță <gogitapaul@yahoo.ro>"]
+authors = ["Paul-Adrian Gogîță"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"

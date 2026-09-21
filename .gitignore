@@ -11,9 +11,6 @@ plots/
 !test/fixtures/**
 .DS_Store
 docs/build/
-# the package Manifest.toml IS version-controlled (portability guarantee);
-# the benchmarks environment regenerates its own on demand
-bench/Manifest.toml
-docs/Manifest.toml
-test/Manifest.toml
+# manifests are resolved per host; each run directory keeps a copy of its own
+Manifest*.toml
 docs/src/generated/
