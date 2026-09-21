@@ -15,7 +15,8 @@ export run_id_from_config, effective_config, identity_config,
     unique_run_dir, resolve_run_dir, snapshot_config, snapshot_manifest,
     backup_existing!, write_run_metadata, read_run_metadata,
     write_hardware_fingerprint, git_state,
-    stage_key, completed_stages, mark_stage_complete!, abandoned_stages
+    stage_key, completed_stages, mark_stage_complete!, abandoned_stages,
+    note_figure_failure!
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
@@ -129,14 +130,21 @@ directory already exists (a rerun of the same configuration), a `_r2`,
 `_r3`, … suffix is appended — existing results are never overwritten.
 """
 function unique_run_dir(base_dir::AbstractString, run_id::AbstractString)
+    mkpath(base_dir)
     dir = joinpath(base_dir, run_id)
     k = 1
-    while isdir(dir)
+    while true
+        # mkdir fails on an existing directory, so two launches of one
+        # configuration can never end up sharing a run directory
+        try
+            mkdir(dir)
+            return dir
+        catch err
+            (err isa Base.IOError && ispath(dir)) || rethrow()
+        end
         k += 1
         dir = joinpath(base_dir, "$(run_id)_r$k")
     end
-    mkpath(dir)
-    return dir
 end
 
 """
@@ -318,6 +326,20 @@ function mark_stage_complete!(run_dir::AbstractString, key::AbstractString)
     key in done || push!(done, String(key))
     write_run_metadata(run_dir; completed_stages = done)
     return done
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Record in `metadata.toml` (`figure_failures`) that the figures of stage `key`
+could not be rendered; the numerical outputs of the stage are complete and the
+figures can be rebuilt from them.
+"""
+function note_figure_failure!(run_dir::AbstractString, key::AbstractString)
+    failed = String.(get(read_run_metadata(run_dir), "figure_failures", String[]))
+    key in failed || push!(failed, String(key))
+    write_run_metadata(run_dir; figure_failures = failed)
+    return failed
 end
 
 """

@@ -40,13 +40,12 @@ between the 2-channel (A, E) data and the single-source model at parameters
     end
 end
 
-# GPU execution is serialized library-wide and device buffers are cached:
-# GPU drivers are not reliably safe under concurrent multi-task access
-# (observed Level Zero segmentation fault), and per-evaluation device
-# allocation at ~10³–10⁴ calls per sweep destabilizes long sessions
-# (observed oneAPI freed-reference failure). The lock is never taken on CPU
-# paths and adds no GPU-side cost, since the device serializes kernels; the
-# cache reduces device allocations to one buffer per (backend, eltype, shape).
+# Kernel launches are serialized library-wide and device buffers are cached.
+# Vendor runtimes are not safe under concurrent multi-task access, and
+# allocating device buffers per evaluation (10³–10⁴ per sweep) destabilises
+# long sessions. The lock is never taken on CPU paths and costs nothing on a
+# GPU, where the device serializes kernels anyway; the cache holds one buffer
+# per (backend, element type, shape).
 const GPU_LOCK = ReentrantLock()
 const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
 
@@ -76,14 +75,17 @@ end
 
 # --- allocation-free device reductions ---------------------------------------
 # GPU `sum`/`sum(…; dims)` allocates its result and internal partial buffers on
-# the device on every call; at 10³–10⁴ loss evaluations per sweep this churn
-# destabilizes long campaigns (observed: CUDA pool exhaustion following
-# "Failed to query free GPU memory", oneAPI freed-reference failure). The
-# fixed two-stage reduction below touches only cached device buffers: a
-# strided partial-sums kernel writes a (P × M) buffer, and the host finishes
-# the P-row sum. The CPU lanes path keeps `Base.sum` (pairwise, deterministic;
-# pinned by the CPU-equivalence regression tests).
+# the device on every call; at 10³–10⁴ loss evaluations per sweep that churn
+# exhausts the device memory pool. The fixed-size two-stage reduction below touches
+# only cached device buffers: a strided partial-sums kernel writes a (P × M)
+# buffer, and the host finishes the P-row sum. The CPU lanes path keeps
+# `Base.sum` (pairwise, deterministic; pinned by the CPU-equivalence
+# regression tests).
 
+"""
+Number of partial sums per column (the P rows of the partial buffer) in the
+two-stage device reduction; the host sums the P rows.
+"""
 const REDUCTION_PARTIAL_ROWS = 256
 
 reduction_rows(nrows::Int) = min(REDUCTION_PARTIAL_ROWS, nrows)
@@ -146,12 +148,13 @@ function device_loss(p::AbstractVector, freqs, Sn_vals, data_A, data_E, df::Real
 end
 
 # --- dual-number lanes path --------------------------------------------------
-# Device arrays with Dual eltypes break some GPU runtimes (observed: Level Zero
-# rejects the 56-byte-eltype reduction with ZE_RESULT_ERROR_INVALID_SIZE), so
-# under ForwardDiff the kernel computes with Duals internally but stores the
-# contribution as scalar Float64 "lanes" (value + partials, recursively) in a
-# plain n × M matrix; the M standard reductions then run on every backend and
-# the scalar Dual is reassembled on the host.
+# Device arrays carry primitive element types only, because reductions over
+# dual-number element types are not supported by every GPU runtime (large
+# composite element types are rejected outright). Under ForwardDiff the kernel
+# therefore computes with Duals internally but stores the contribution as
+# scalar Float64 "lanes" (value + partials, recursively) in a plain n × M
+# matrix; the M standard reductions then run on every backend and the scalar
+# Dual is reassembled on the host.
 
 rebuild_dual(::Type{Float64}, s, i::Int) = (s[i], i + 1)
 function rebuild_dual(::Type{ForwardDiff.Dual{T,V,N}}, s, i::Int) where {T,V,N}
@@ -167,8 +170,8 @@ function _rebuild_partials(::Type{V}, s, i::Int, ::Val{K}) where {V,K}
 end
 
 # Direct recursive per-scalar stores (no intermediate NTuple{M}): materializing
-# the 49-lane tuple of a nested Hessian dual makes some GPU compilers fall back
-# to heap allocation (`gpu_malloc` InvalidIRError on IGC); writing each lane as
+# the 49-lane tuple of a nested Hessian dual makes some GPU compilers emit a
+# heap allocation, which is not permitted in device code; writing each lane as
 # it is produced keeps the kernel allocation-free. Lane order matches
 # `rebuild_dual`: value first, then partials 1..N, recursively.
 @inline function _store_dual!(out, i, k::Int, x::Float64)
@@ -301,6 +304,21 @@ identically zero, for GPU runs). Differentiable with `ForwardDiff`.
 """
 function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::AbstractVector,
     df::Real, wp::WaveformParams, backend)
+    length(Sn_vals) == length(freqs) || throw(
+        DimensionMismatch(
+            "loss_function: Sn_vals has $(length(Sn_vals)) entries for " *
+            "$(length(freqs)) frequency bins",
+        ),
+    )
+    for (c, d) in enumerate(data_stream)
+        length(d) == length(freqs) || throw(
+            DimensionMismatch(
+                "loss_function: data channel $c has $(length(d)) entries for " *
+                "$(length(freqs)) frequency bins",
+            ),
+        )
+    end
+    df > 0 || throw(ArgumentError("loss_function: df must be > 0, got $df"))
     if backend isa KernelAbstractions.CPU
         return p -> cpu_loss(p, freqs, Sn_vals, data_stream, df, wp)
     end
@@ -340,7 +358,21 @@ physical `bounds`:
 
 The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
 keyword (defaults to the model defaults). Returns
-`(D², best_fit, optim_result)`.
+`(D², best_fit, optim_result)`. Throws `DimensionMismatch`/`ArgumentError` on
+inconsistent arguments.
+
+Keywords:
+
+- `g_tol`: gradient-norm tolerance of the optimizer, > 0.
+- `f_reltol`: relative decrease of the distance that ends the fit, > 0.
+- `iterations`: iteration cap, ≥ 1.
+- `backend`: KernelAbstractions backend of the loss; default
+  `get_best_backend()`.
+- `optimizer`: `:ipnewton` | `:lbfgs_box`.
+- `bounds`: physical parameter box.
+- `hessian_chunk`: ForwardDiff chunk of both dual levels: 0 = full, `c > 0`
+  gives `(1+c)²` lanes per launch and `⌈6/c⌉²` launches per Hessian.
+- `wp`: waveform and response constants.
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
     freqs::AbstractVector, Sn_vals::AbstractVector, df::Real;
@@ -350,6 +382,29 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     bounds::Union{Nothing,ParameterBounds} = default_bounds(),
     hessian_chunk::Int = 0,
     wp::WaveformParams = WaveformParams())
+    length(theta_guess) == N_PARAMS || throw(
+        DimensionMismatch(
+            "calculate_numerical_distance: theta_guess must have $N_PARAMS entries, " *
+            "got $(length(theta_guess))",
+        ),
+    )
+    hessian_chunk >= 0 || throw(
+        ArgumentError(
+            "calculate_numerical_distance: hessian_chunk must be >= 0, " *
+            "got $hessian_chunk",
+        ),
+    )
+    iterations >= 1 || throw(
+        ArgumentError(
+            "calculate_numerical_distance: iterations must be >= 1, got $iterations",
+        ),
+    )
+    (g_tol > 0 && f_reltol > 0) || throw(
+        ArgumentError(
+            "calculate_numerical_distance: g_tol and f_reltol must be > 0, " *
+            "got $g_tol and $f_reltol",
+        ),
+    )
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
     # ForwardDiff configs are constructed once per solve (they depend only on

@@ -61,6 +61,12 @@ function main(argv)
         file_logger = FormatLogger(io) do stream, record
             println(stream, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
                 uppercase(string(record.level)), " ", record.message)
+            for (key, value) in record.kwargs
+                key === :exception || continue
+                err, trace = value isa Tuple ? value : (value, nothing)
+                trace === nothing ? showerror(stream, err) : showerror(stream, err, trace)
+                println(stream)
+            end
             flush(stream)
         end
         with_logger(

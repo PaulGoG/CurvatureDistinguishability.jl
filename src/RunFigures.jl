@@ -27,9 +27,8 @@ rho_tag(rho) = "_rho" * replace(string(rho), "." => "p")
 $(TYPEDSIGNATURES)
 
 Read a persisted run table. The tables are kilobytes to megabytes, so
-parsing is single-task by construction: CSV.jl's chunked multithreaded
-parser fails its row-boundary check on the residual-spectrum tables under
-many threads and falls back with an error-level log entry.
+parsing is single-task by construction: the chunked multithreaded parser
+mis-detects row boundaries on the wide residual-spectrum tables.
 """
 read_run_table(path::AbstractString) = CSV.read(path, DataFrame; ntasks = 1)
 
@@ -66,6 +65,13 @@ function run_config(run_dir::AbstractString)
     return load_and_validate_config(snapshot)
 end
 
+# required key of a run's sweep_meta.toml
+function meta_value(meta::AbstractDict, key::AbstractString, path::AbstractString)
+    haskey(meta, key) ||
+        throw(ArgumentError("$path lacks the key '$key'; the run predates this version"))
+    return Float64(meta[key])
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -87,7 +93,13 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     dir = joinpath(run_dir, "sweeps", case)
     res = read_run_table(joinpath(dir, "results.csv"))
     meta_path = joinpath(dir, "sweep_meta.toml")
-    meta = isfile(meta_path) ? TOML.parsefile(meta_path) : Dict{String,Any}()
+    isfile(meta_path) || throw(
+        ArgumentError(
+            "No sweep_meta.toml in $dir — the sweep did not complete; " *
+            "its figures cannot be rebuilt.",
+        ),
+    )
+    meta = TOML.parsefile(meta_path)
     floor_level = Float64(get(meta, "floor_level", -1.0))
     floor_level < 0 && (floor_level = NaN)
     clean = above_floor_mask(res.D2_Numerical, floor_level)
@@ -105,13 +117,13 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         c1 = Float64(get(meta, "c1", NaN))
         c2 = Float64(get(meta, "c2", NaN))
     end
-    rho_sq = rho === nothing ? Float64(get(meta, "rho_sq", 1.0)) : Float64(rho)^2
+    rho_sq = rho === nothing ? meta_value(meta, "rho_sq", meta_path) : Float64(rho)^2
     # D² = (p/16) K δ⁴ with p = (2q/(1+q))², q = A₂/A₁ (as in run_sweep)
-    amp_ratio = Float64(get(meta, "amp_ratio", 1.0))
+    amp_ratio = meta_value(meta, "amp_ratio", meta_path)
     amp_prefactor = (2amp_ratio / (1 + amp_ratio))^2
     delta_min =
-        rho === nothing ? Float64(get(meta, "delta_min", NaN)) :
-        (16.0 * rho_sq / (amp_prefactor * Float64(get(meta, "K_u_norm", NaN))))^(1 / 4)
+        rho === nothing ? meta_value(meta, "delta_min", meta_path) :
+        (16.0 * rho_sq / (amp_prefactor * meta_value(meta, "K_u_norm", meta_path)))^(1 / 4)
     scaling = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
         rho_sq = rho_sq, delta_min = delta_min,
         slope = slope, slope_err = slope_err,
@@ -122,10 +134,10 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     if rho === nothing && isfile(spec_path)
         spec = read_run_table(spec_path)
         residual = residual_figure(spec,
-            ResidualFigureMeta(Float64(get(meta, "delta_star", NaN)),
-                Float64(get(meta, "df", 1.0)),
-                Float64(get(meta, "d2_num_star", NaN)),
-                Float64(get(meta, "d2_theo_star", NaN))))
+            ResidualFigureMeta(meta_value(meta, "delta_star", meta_path),
+                meta_value(meta, "df", meta_path),
+                meta_value(meta, "d2_num_star", meta_path),
+                meta_value(meta, "d2_theo_star", meta_path)))
     end
     # threshold companion (persisted only when the threshold point lies
     # outside the validity window of the leading-order fit)
@@ -134,10 +146,10 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     if rho === nothing && isfile(thr_path) && haskey(meta, "delta_thr")
         spec_thr = read_run_table(thr_path)
         residual_threshold = residual_figure(spec_thr,
-            ResidualFigureMeta(Float64(get(meta, "delta_thr", NaN)),
-                Float64(get(meta, "df", 1.0)),
-                Float64(get(meta, "d2_num_thr", NaN)),
-                Float64(get(meta, "d2_theo_thr", NaN)));
+            ResidualFigureMeta(meta_value(meta, "delta_thr", meta_path),
+                meta_value(meta, "df", meta_path),
+                meta_value(meta, "d2_num_thr", meta_path),
+                meta_value(meta, "d2_theo_thr", meta_path));
             delta_symbol = "\\delta_{\\mathrm{thr}}")
     end
     return (scaling = scaling, residual = residual,

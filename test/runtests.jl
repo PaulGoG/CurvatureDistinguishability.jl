@@ -454,6 +454,15 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test ForwardDiff.gradient(dl, p) ≈ g_loop rtol = 1e-12
         # lanes path: nested (Hessian) duals through the same kernel layout
         @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
+        # chunked Hessians through the lanes layout equal the full 49-lane one on
+        # a non-zero residual (two-source data, off the optimum): every chunk
+        # size, including those that leave a remainder chunk (4, 5)
+        H_full = ForwardDiff.hessian(dl, p)
+        @test maximum(abs, H_full) > 1.0
+        for c in 1:6
+            chunked = ForwardDiff.HessianConfig(dl, p, ForwardDiff.Chunk(c))
+            @test ForwardDiff.hessian(dl, p, chunked) ≈ H_full rtol = 1e-10
+        end
         # flatten/rebuild round-trip on a nested dual (lane-order contract);
         # the local reference flattening states the contract the kernel's
         # per-scalar stores and `rebuild_dual` must both follow: value first,
@@ -498,6 +507,36 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         struct FakeGPU <: KernelAbstractions.GPU end
         @test_throws ArgumentError loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
             FIX_WP, FakeGPU())
+
+        # inconsistent arguments are refused at the interface, not read out of
+        # bounds under @inbounds
+        @test_throws DimensionMismatch loss_function(data, FIX_FREQS, FIX_SN[1:(end-1)],
+            FIX_DF, FIX_WP, CPU())
+        @test_throws DimensionMismatch loss_function((data[1], data[2][1:(end-1)]),
+            FIX_FREQS, FIX_SN, FIX_DF, FIX_WP, CPU())
+        @test_throws ArgumentError loss_function(data, FIX_FREQS, FIX_SN, 0.0, FIX_WP,
+            CPU())
+        fit(; θ = copy(THETA0), kwargs...) = calculate_numerical_distance(
+            (c1[1], c1[2]), θ, FIX_FREQS, FIX_SN, FIX_DF; wp = FIX_WP, backend = CPU(),
+            kwargs...)
+        @test_throws DimensionMismatch fit(; θ = THETA0[1:5])
+        @test_throws ArgumentError fit(; hessian_chunk = -1)
+        @test_throws ArgumentError fit(; iterations = 0)
+        @test_throws ArgumentError fit(; g_tol = 0.0)
+        h3 = ComplexF64[1, 2, 3]
+        @test inner_product(h3, h3, ones(3), 0.5) ≈ 4 * 0.5 * 14
+        @test_throws DimensionMismatch inner_product(h3, h3[1:2], ones(3), 1.0)
+        @test_throws DimensionMismatch inner_product(h3, h3, ones(2), 1.0)
+        @test_throws DimensionMismatch multi_channel_inner_product((h3, h3), (h3,),
+            ones(3), 1.0)
+        @test boundary_radius(16.0, 1.0) ≈ 1.0 && boundary_radius(0.0, 1.0) == Inf
+        @test_throws DomainError boundary_radius(NaN, 1.0)
+        @test_throws DomainError boundary_radius(1.0, 0.0)
+        # a named backend that is not available is an error; :auto falls back
+        @test get_best_backend(prefer = :none) isa CPU
+        @test_throws ArgumentError get_best_backend(prefer = :no_such_backend)
+        get_best_backend(prefer = :auto) isa CPU &&
+            @test_throws ArgumentError get_best_backend(prefer = :cuda)
 
         # buffer-cache eviction API empties the cache and is safe to call
         # with no GPU present

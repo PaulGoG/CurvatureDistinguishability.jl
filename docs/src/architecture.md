@@ -107,7 +107,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   TTY-gated progress bars (detached runs produce ANSI-free logs), a
   structured `run.log` via LoggingExtras, and **per-stage try/catch**: a
   failing sweep or map is logged with its backtrace and the remaining stages
-  continue; failures are listed in `metadata.toml`, and `run_pipeline` then
+  continue; failures are listed in `metadata.toml` (a degenerate sweep direction is such a failure; figures that could not be rendered are listed separately and do not fail the stage), and `run_pipeline` then
   throws a `PipelineStageError`, which `scripts/run_pipeline.jl` turns into
   exit status 3.
 - **`RunFigures.jl`** — display-time figure regeneration from persisted run

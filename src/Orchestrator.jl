@@ -38,7 +38,7 @@ using ..Fitting:
     perturbative_mask, ratio_correction_fit
 
 export run_pipeline
-public ResourceBudgetError, PipelineStageError, DEFAULT_CONFIG
+public ResourceBudgetError, PipelineStageError, DegenerateDirectionError, DEFAULT_CONFIG
 
 """
 Configuration the pipeline scripts run without an explicit `--config`: the
@@ -79,6 +79,25 @@ end
 function Base.showerror(io::IO, err::PipelineStageError)
     print(io, "PipelineStageError: stage(s) ", join(err.failed_stages, ", "),
         " failed; backtraces in ", joinpath(err.run_dir, "run.log"))
+end
+
+"""
+    DegenerateDirectionError(sweep, g_uu, threshold)
+
+The Fisher norm `g(u,u)` of a sweep direction lies below
+`[pipeline.sweep_settings].g_uu_degenerate`: the two sources cannot be
+separated along it and no separation in Fisher units exists. The sweep is
+recorded as a failed stage.
+"""
+struct DegenerateDirectionError <: Exception
+    sweep::String
+    g_uu::Float64
+    threshold::Float64
+end
+
+function Base.showerror(io::IO, err::DegenerateDirectionError)
+    print(io, "DegenerateDirectionError: sweep '", err.sweep, "' has g(u,u) = ",
+        err.g_uu, " below the degeneracy threshold ", err.threshold)
 end
 
 const ANGLE_DEDUPE_TOL = 1e-10
@@ -174,13 +193,10 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
     map_tasks = threads
     sweep_tasks = threads
     if !(backend isa KernelAbstractions.CPU)
-        # GPU sweep execution is single-task by design: GPU drivers are not
-        # reliably safe under concurrent multi-task access (observed Level
-        # Zero segmentation fault), the library-level GPU lock serializes
-        # kernel launches, and the device itself serializes kernels —
-        # additional tasks provide no throughput. The pin applies to the
-        # sweep stage only: 2D mapping never dispatches kernels, and pinning
-        # it single-threaded quadrupled its wall time in production.
+        # One task per GPU sweep: vendor runtimes are not safe under concurrent
+        # multi-task access, the library lock serializes kernel launches and the
+        # device serializes kernels, so further tasks add no throughput. The
+        # mapping stage never dispatches kernels and keeps its CPU concurrency.
         sweep_tasks = 1
         map_tasks > 1 &&
             @info "GPU backend active: sweep-stage concurrency pinned to 1 task " *
@@ -337,11 +353,9 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         if g_uu < cfg.g_uu_degenerate
             logline(
                 log_io,
-                "  [WARN] direction is degenerate (g(u,u) below " *
-                "$(cfg.g_uu_degenerate)); the sources cannot be separated " *
-                "along it. Skipping sweep.",
+                "  [ERROR] degenerate direction: g(u,u) below $(cfg.g_uu_degenerate)",
             )
-            return nothing
+            throw(DegenerateDirectionError(name, g_uu, cfg.g_uu_degenerate))
         end
         norm_scale = 1.0 / sqrt(g_uu)
         u_norm = u_raw .* norm_scale
@@ -704,7 +718,7 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
             "residual_thr_d2_integral_A" => meta_thr.int_A,
             "residual_thr_d2_integral_E" => meta_thr.int_E)
     end
-    open(joinpath(out_dir, "sweep_meta.toml"), "w") do io
+    open(backup_existing!(joinpath(out_dir, "sweep_meta.toml")), "w") do io
         TOML.print(
             io,
             Dict(
@@ -744,8 +758,10 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
             save_figure(rfig_thr, joinpath(out_dir, "residual_plot_threshold"))
         end
     catch err
+        err isa Union{InterruptException,OutOfMemoryError} && rethrow()
         @warn "Sweep '$name': figure generation failed; numerical results are saved." exception =
             (err, catch_backtrace())
+        note_figure_failure!(ctx.out_base, stage_key(:sweep, name))
     end
     return nothing
 end
@@ -1277,8 +1293,11 @@ function persist_map_results(out_dir::AbstractString, map_spec::MapSpec,
             y_math = polar.r_math .* polar.dir_sin)
         save_figure(fig, joinpath(out_dir, "confusion_zone"))
     catch err
+        err isa Union{InterruptException,OutOfMemoryError} && rethrow()
         @warn "Map '$name': figure generation failed; numerical results are saved." exception =
             (err, catch_backtrace())
+        # out_dir is <run>/maps/<name>
+        note_figure_failure!(dirname(dirname(out_dir)), stage_key(:map, name))
     end
     return nothing
 end
@@ -1349,6 +1368,13 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     file_logger = FormatLogger(log_stream) do io, args
         println(io, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
             uppercase(string(args.level)), " ", args.message)
+        # the exception of a failed stage and its backtrace belong in the file
+        for (key, value) in args.kwargs
+            key === :exception || continue
+            err, trace = value isa Tuple ? value : (value, nothing)
+            trace === nothing ? showerror(io, err) : showerror(io, err, trace)
+            println(io)
+        end
     end
     tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
     beat =
@@ -1490,6 +1516,10 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         elapsed_seconds = round(elapsed_before + elapsed, digits = 1),
         failed_stages = join(failures, ","))
     println("=" ^ 78)
+    unrendered = String.(get(read_run_metadata(out_base), "figure_failures", String[]))
+    isempty(unrendered) ||
+        @warn "Figures of $(join(unrendered, ", ")) were not rendered; rebuild them with " *
+              "scripts/replot.jl once the cause in run.log is resolved."
     if isempty(failures)
         @info "Pipeline complete in $(format_time(elapsed)); results in $out_base"
     else

@@ -159,6 +159,7 @@ CurvatureDistinguishability.Provenance.stage_key
 CurvatureDistinguishability.Provenance.completed_stages
 CurvatureDistinguishability.Provenance.mark_stage_complete!
 CurvatureDistinguishability.Provenance.abandoned_stages
+CurvatureDistinguishability.Provenance.note_figure_failure!
 CurvatureDistinguishability.Provenance.write_hardware_fingerprint
 CurvatureDistinguishability.Provenance.git_state
 ```
@@ -203,6 +204,7 @@ CurvatureDistinguishability.Orchestrator.run_pipeline
 CurvatureDistinguishability.Orchestrator.plan_resources
 CurvatureDistinguishability.Orchestrator.ResourceBudgetError
 CurvatureDistinguishability.Orchestrator.PipelineStageError
+CurvatureDistinguishability.Orchestrator.DegenerateDirectionError
 CurvatureDistinguishability.Orchestrator.DEFAULT_CONFIG
 ```
 

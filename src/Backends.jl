@@ -31,6 +31,12 @@ function register_backend!(name::Symbol, probe::Function)
 end
 
 """
+GPU backends a configuration may name. A backend becomes available when its
+package extension loads and registers a probe.
+"""
+const GPU_BACKEND_NAMES = (:cuda, :amdgpu, :metal, :oneapi)
+
+"""
 $(TYPEDSIGNATURES)
 
 Return the best available compute backend. GPU backends become available by
@@ -38,20 +44,32 @@ loading their package (e.g. `using CUDA`) in the session, which activates the
 corresponding package extension.
 `prefer` may name a specific backend (`:cuda`, `:amdgpu`, `:metal`,
 `:oneapi`), request `:none` to force the CPU, or `:auto` to take the first
-functional GPU. Falls back to the multi-threaded `CPU()` backend.
+functional GPU. `:auto` falls back to the multi-threaded `CPU()` backend; a
+named backend that is unavailable is an `ArgumentError`.
 """
 function get_best_backend(; prefer::Symbol = :auto)
     prefer === :none && return CPU()
+    prefer === :auto ||
+        prefer in GPU_BACKEND_NAMES ||
+        throw(
+            ArgumentError(
+                "unknown backend :$prefer; one of :auto, :none, " *
+                "$(join(GPU_BACKEND_NAMES, ", "))",
+            ),
+        )
     for (name, probe) in BACKEND_PROBES
         (prefer === :auto || prefer === name) || continue
         backend = probe()
         backend !== nothing && return backend
     end
-    if prefer ∉ (:auto, :none)
-        @warn "Requested GPU backend :$prefer is not available (package not loaded " *
-              "or device not functional); falling back to CPU." registered =
-            first.(BACKEND_PROBES)
-    end
+    prefer === :auto || throw(
+        ArgumentError(
+            "GPU backend :$prefer was requested but is not available (its package " *
+            "is not loaded or its device is not functional); loaded backends: " *
+            "$(isempty(BACKEND_PROBES) ? "none" : join(first.(BACKEND_PROBES), ", ")). " *
+            "Use gpu_backend = \"auto\" to fall back to the CPU.",
+        ),
+    )
     return CPU()
 end
 

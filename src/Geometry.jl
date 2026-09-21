@@ -38,18 +38,22 @@ $(TYPEDSIGNATURES)
 
 Mathematical boundary radius `(16 ρ²/K)^{1/4}` of the leading-order law
 `D² = K r⁴/16` at the threshold `rho_sq`; `Inf` for curvatures at or below
-[`K_UNDERFLOW`](@ref) (exactly flat directions).
+[`K_UNDERFLOW`](@ref) (exactly flat directions). A `NaN` curvature or a
+non-positive threshold is a `DomainError`.
 """
-boundary_radius(K::Real, rho_sq::Real) =
-    K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+function boundary_radius(K::Real, rho_sq::Real)
+    isnan(K) && throw(DomainError(K, "boundary_radius: the curvature is NaN"))
+    rho_sq > 0 ||
+        throw(DomainError(rho_sq, "boundary_radius: the threshold ρ² must be > 0"))
+    return K > K_UNDERFLOW ? (16.0 * rho_sq / K)^(1 / 4) : Inf
+end
 
 """
 Relative tolerance of the prior-wall test: a direction whose mathematical
 radius reaches the prior box within this fraction is capped exactly at the
-wall and flagged prior-limited. The crossover vertices located by
-bisection satisfy `r_math = r_box` only to round-off, and the plain
-comparison `r_math >= r_box` left them on the curvature side, which cut
-the drawn wall segment short of its corners.
+wall and flagged prior-limited. Bisected crossover vertices satisfy
+`r_math = r_box` only to round-off, so the exact comparison misclassifies
+them as curvature-limited.
 """
 const WALL_RTOL = 1e-9
 
@@ -97,6 +101,12 @@ function inner_product(
     Sn_vals::AbstractVector,
     df::Real,
 )
+    length(h1) == length(h2) == length(Sn_vals) || throw(
+        DimensionMismatch(
+            "inner_product: h1, h2 and Sn_vals must have equal lengths, got " *
+            "$(length(h1)), $(length(h2)), $(length(Sn_vals))",
+        ),
+    )
     return 4.0 * df * mapreduce((x, y, s) -> real(conj(x) * y) / s, +, h1, h2, Sn_vals)
 end
 
@@ -112,6 +122,12 @@ function multi_channel_inner_product(
     Sn_vals::AbstractVector,
     df::Real,
 )
+    length(H1) == length(H2) || throw(
+        DimensionMismatch(
+            "multi_channel_inner_product: channel counts differ, got " *
+            "$(length(H1)) and $(length(H2))",
+        ),
+    )
     total_ip = 0.0
     for (h1, h2) in zip(H1, H2)
         total_ip += inner_product(h1, h2, Sn_vals, df)
@@ -223,7 +239,8 @@ Directional extrinsic curvature `K(u) = ‖P⊥ ∂²_u h‖²` and Fisher norm
 `g(u,u) = ‖∂_u h‖²` at `theta_0` along `u_dir`, projecting the directional
 second derivative against the precomputed tangent `basis`. Both first and
 second derivatives come from one fused nested-dual evaluation. `K` and `g`
-are exactly even in `u_dir`.
+are exactly even in `u_dir`. Throws a `DomainError` when `K` or `g` is not
+finite.
 """
 function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
     u_dir::AbstractVector,
@@ -251,6 +268,12 @@ function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
     dh_u = unflatten_channels(dh_flat, n_bins, Val(NCH))
     g_uu = multi_channel_inner_product(dh_u, dh_u, Sn_vals, df)
 
+    (isfinite(K_u) && isfinite(g_uu)) || throw(
+        DomainError((K_u, g_uu),
+            "non-finite curvature or Fisher norm (K, g) at theta_0 = $theta_0 along " *
+            "u_dir = $u_dir: the waveform or its derivatives are not finite on the grid",
+        ),
+    )
     return K_u, g_uu
 end
 

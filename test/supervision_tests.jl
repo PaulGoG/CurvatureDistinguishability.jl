@@ -290,6 +290,36 @@ gpu_backend = "none"
             fresh_dir, state = CD.Provenance.resolve_run_dir(joinpath(dir, "a"), variant)
             @test state === :fresh && fresh_dir == reference * "_r2"
 
+            # a degenerate direction is a failed stage with a named error, and
+            # concurrent launches never share a run directory
+            flat = joinpath(dir, "flat.toml")
+            write(flat,
+                replace(read(cfg_path, String),
+                    "u_dir = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]" => "u_dir = [0.0, 0.0, 0.0, 0.0, 1.0e-9, 0.0]",
+                    "n_starts = 2" => "n_starts = 2\ng_uu_degenerate = 1.0e3"))
+            err = try
+                run_pipeline(flat, dir, "flat")
+                nothing
+            catch caught
+                caught
+            end
+            @test err isa CD.PipelineStageError && err.failed_stages == ["resumable"]
+            @test occursin(
+                "DegenerateDirectionError",
+                read(joinpath(err.run_dir, "run.log"), String),
+            )
+            @test isempty(CD.Provenance.completed_stages(err.run_dir))
+            claimed = [
+                Threads.@spawn(
+                    CD.Provenance.unique_run_dir(joinpath(dir, "race"), "run_x")
+                ) for _ in 1:16
+            ]
+            @test allunique(fetch.(claimed))
+            @test CD.Provenance.note_figure_failure!(reference, "sweep:resumable") ==
+                  ["sweep:resumable"]
+            @test TOML.parsefile(joinpath(reference, "metadata.toml"))["figure_failures"] ==
+                  ["sweep:resumable"]
+
             # the supervisor drives the real worker; a second call is a no-op
             worker = joinpath(dirname(@__DIR__), "scripts", "run_pipeline.jl")
             write(variant,
