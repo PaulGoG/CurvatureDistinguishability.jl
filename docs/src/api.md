@@ -49,6 +49,7 @@ CurvatureDistinguishability.Physics.harmonic_phase
 CurvatureDistinguishability.Physics.spa_time
 CurvatureDistinguishability.Physics.harmonic_amplitudes
 CurvatureDistinguishability.Physics.inspiral_taper
+CurvatureDistinguishability.Physics.observation_window
 CurvatureDistinguishability.Physics.second_source
 CurvatureDistinguishability.Physics.N_PARAMS
 CurvatureDistinguishability.Physics.HARMONICS
