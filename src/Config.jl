@@ -11,6 +11,7 @@ using ..Detector: n_channels
 using ..Bounds
 using ..Bounds: PARAM_KEYS
 using ..Provenance: effective_config
+using ..Supervision: SupervisionSettings
 
 export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
 
@@ -102,6 +103,7 @@ Base.@kwdef struct PipelineSettings
     hessian_chunk::Int
     require_gpu::Bool
     gc_between_stages::Bool
+    heap_size_hint_gb::Float64
     # safety
     max_ram_gb::Float64
     bytes_per_bin_per_task_gpu::Int
@@ -110,6 +112,8 @@ Base.@kwdef struct PipelineSettings
     # monitoring
     monitoring_enabled::Bool
     progress_log_fraction::Float64
+    # supervision
+    supervision::SupervisionSettings
     # bounds & work items
     bounds::ParameterBounds
     sweeps::Vector{SweepSpec}
@@ -122,8 +126,12 @@ Recognized configuration keys per `[section]` context — the whitelist behind
 """
 const KNOWN_KEYS = Dict(
     "" => ["base_config", "pipeline", "grid", "physics", "noise", "mapping",
-        "hardware", "safety", "monitoring", "parameter_bounds", "sweeps", "maps"],
+        "hardware", "safety", "monitoring", "supervision", "parameter_bounds",
+        "sweeps", "maps"],
     "monitoring" => ["enabled", "progress_log_fraction"],
+    "supervision" => ["max_retries", "max_stalled_retries", "poll_interval_s",
+        "startup_grace_s", "idle_stall_s", "busy_stall_s", "cpu_idle_cores",
+        "term_grace_s", "kill_wait_s", "backoff_s"],
     "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
         "sweep_settings"],
     "pipeline.sweep_settings" =>
@@ -271,9 +279,10 @@ function settings_from_config(config::AbstractDict)
     work_items = parse_work_items(config, bounds.bounds, sweep_settings.sweep_rho_thresh,
         mapping.map_n_angles, pipeline.run_1d_sweeps, pipeline.run_2d_mapping)
     monitoring = parse_monitoring(config)
+    supervision = parse_supervision(config)
     return PipelineSettings(; pipeline..., sweep_settings..., grid..., physics...,
         noise..., mapping..., hardware..., safety..., bounds..., work_items...,
-        monitoring...)
+        monitoring..., supervision...)
 end
 
 """
@@ -515,8 +524,8 @@ end
 
 """
 `[hardware]`: backend selection and requirement, concurrency cap, Hessian
-chunking and inter-stage memory maintenance. `heap_size_hint_gb` is validated here but
-consumed only by the detached launcher.
+chunking and inter-stage memory maintenance. `heap_size_hint_gb` is stored in the
+settings and applied to the worker process by the launchers.
 """
 function parse_hardware(config::AbstractDict)
     hardware = get(config, "hardware", Dict{String,Any}())
@@ -548,7 +557,8 @@ function parse_hardware(config::AbstractDict)
         config_error(
             "[hardware].heap_size_hint_gb must be >= 0 (0 = no hint), got $heap_size_hint_gb",
         )
-    return (; gpu_backend, max_threads, hessian_chunk, require_gpu, gc_between_stages)
+    return (; gpu_backend, max_threads, hessian_chunk, require_gpu, gc_between_stages,
+        heap_size_hint_gb = Float64(heap_size_hint_gb))
 end
 
 """
@@ -685,6 +695,35 @@ function parse_monitoring(config::AbstractDict)
             "stage-progress log lines), got $progress_log_fraction",
         )
     return (; monitoring_enabled, progress_log_fraction)
+end
+
+"""
+`[supervision]`: watchdog thresholds and retry budget of supervised runs
+([`SupervisionSettings`](@ref)); every key is optional.
+"""
+function parse_supervision(config::AbstractDict)
+    table = get(config, "supervision", Dict{String,Any}())
+    reject_unknown_keys(table, "supervision")
+    max_retries = get_integer(table, "max_retries", 5, "supervision")
+    max_stalled_retries = get_integer(table, "max_stalled_retries", 2, "supervision")
+    poll_interval_s = get_number(table, "poll_interval_s", 15.0, "supervision")
+    startup_grace_s = get_number(table, "startup_grace_s", 1800.0, "supervision")
+    idle_stall_s = get_number(table, "idle_stall_s", 300.0, "supervision")
+    busy_stall_s = get_number(table, "busy_stall_s", 7200.0, "supervision")
+    cpu_idle_cores = get_number(table, "cpu_idle_cores", 0.05, "supervision")
+    term_grace_s = get_number(table, "term_grace_s", 60.0, "supervision")
+    kill_wait_s = get_number(table, "kill_wait_s", 120.0, "supervision")
+    backoff_s = get_number(table, "backoff_s", 30.0, "supervision")
+    # the bounds live in the constructor, which names the offending key
+    supervision = try
+        SupervisionSettings(; max_retries, max_stalled_retries, poll_interval_s,
+            startup_grace_s, idle_stall_s, busy_stall_s, cpu_idle_cores, term_grace_s,
+            kill_wait_s, backoff_s)
+    catch err
+        err isa ArgumentError || rethrow()
+        config_error(err.msg)
+    end
+    return (; supervision)
 end
 
 """

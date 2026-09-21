@@ -2,7 +2,8 @@
 
 Core functionality exported by `CurvatureDistinguishability.jl`, decoupled
 into physics, detector response, residual diagnostics, bounds, geometry,
-inference, backends, configuration, provenance, plotting and orchestration.
+inference, backends, configuration, provenance, plotting, orchestration and
+run supervision.
 
 ```@docs
 CurvatureDistinguishability
@@ -23,6 +24,10 @@ CurvatureDistinguishability.Config
 CurvatureDistinguishability.Provenance
 CurvatureDistinguishability.Plotting
 CurvatureDistinguishability.Orchestrator
+CurvatureDistinguishability.Checkpoint
+CurvatureDistinguishability.Heartbeat
+CurvatureDistinguishability.Supervision
+CurvatureDistinguishability.Campaign
 CurvatureDistinguishability.RunFigures
 ```
 
@@ -144,10 +149,16 @@ CurvatureDistinguishability.Provenance.effective_config
 CurvatureDistinguishability.Provenance.identity_config
 CurvatureDistinguishability.Provenance.EXECUTION_SECTIONS
 CurvatureDistinguishability.Provenance.unique_run_dir
+CurvatureDistinguishability.Provenance.resolve_run_dir
 CurvatureDistinguishability.Provenance.snapshot_config
 CurvatureDistinguishability.Provenance.snapshot_manifest
 CurvatureDistinguishability.Provenance.backup_existing!
 CurvatureDistinguishability.Provenance.write_run_metadata
+CurvatureDistinguishability.Provenance.read_run_metadata
+CurvatureDistinguishability.Provenance.stage_key
+CurvatureDistinguishability.Provenance.completed_stages
+CurvatureDistinguishability.Provenance.mark_stage_complete!
+CurvatureDistinguishability.Provenance.abandoned_stages
 CurvatureDistinguishability.Provenance.write_hardware_fingerprint
 CurvatureDistinguishability.Provenance.git_state
 ```
@@ -193,6 +204,40 @@ CurvatureDistinguishability.Orchestrator.plan_resources
 CurvatureDistinguishability.Orchestrator.ResourceBudgetError
 CurvatureDistinguishability.Orchestrator.PipelineStageError
 CurvatureDistinguishability.Orchestrator.DEFAULT_CONFIG
+```
+
+## Work-item checkpoints
+
+```@docs
+CurvatureDistinguishability.Checkpoint.CheckpointRow
+CurvatureDistinguishability.Checkpoint.SweepCheckpoint
+CurvatureDistinguishability.Checkpoint.open_checkpoint
+CurvatureDistinguishability.Checkpoint.record_item!
+CurvatureDistinguishability.Checkpoint.count_items
+```
+
+## Heartbeat
+
+```@docs
+CurvatureDistinguishability.Heartbeat.tick!
+CurvatureDistinguishability.Heartbeat.note_item!
+CurvatureDistinguishability.Heartbeat.start_heartbeat
+CurvatureDistinguishability.Heartbeat.stop_heartbeat!
+CurvatureDistinguishability.Heartbeat.read_heartbeat
+```
+
+## Supervision
+
+```@docs
+CurvatureDistinguishability.Supervision.SupervisionSettings
+CurvatureDistinguishability.Supervision.WorkerSpec
+CurvatureDistinguishability.Supervision.supervise
+CurvatureDistinguishability.Supervision.AttemptRecord
+CurvatureDistinguishability.Supervision.SupervisionResult
+CurvatureDistinguishability.Supervision.cpu_seconds
+CurvatureDistinguishability.Supervision.EXIT_CONFIG_ERROR
+CurvatureDistinguishability.Campaign.supervise_pipeline
+CurvatureDistinguishability.Campaign.requested_stages
 ```
 
 ## Run figure regeneration

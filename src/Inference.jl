@@ -15,6 +15,7 @@ using ..Physics: N_PARAMS
 using ..Detector
 using ..Backends
 using ..Bounds
+using ..Heartbeat: tick!
 
 export calculate_numerical_distance, optimization_diagnostics, loss_function
 public clear_device_buffers!, column_sums_via!
@@ -118,6 +119,7 @@ end
 function launch_loss!(out, partial, backend, freqs, Sn_vals, data_A, data_E, θ, wp, df)
     loss_bins!(backend)(out, freqs, Sn_vals, data_A, data_E, θ, wp; ndrange = length(freqs))
     KernelAbstractions.synchronize(backend)
+    tick!() # liveness: one completed launch
     s =
         partial === nothing ? sum(out) :
         column_sums_via!(partial, backend, reshape(out, length(out), 1), length(out))[1]
@@ -213,6 +215,7 @@ function launch_loss_lanes!(out, partial, backend, freqs, Sn_vals, data_A, data_
         ndrange = length(freqs),
     )
     KernelAbstractions.synchronize(backend)
+    tick!() # liveness: one completed launch
     s =
         partial === nothing ? Array(vec(sum(out; dims = 1))) :
         column_sums_via!(partial, backend, out, size(out, 1))
@@ -283,6 +286,7 @@ function cpu_loss(p::AbstractVector, freqs, Sn_vals, data_stream::Tuple, df::Rea
             c / Sn_vals[i]
         end
     end
+    tick!() # liveness: one completed evaluation
     return 4.0 * df * dist_sq
 end
 

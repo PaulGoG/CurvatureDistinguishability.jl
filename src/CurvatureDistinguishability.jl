@@ -12,10 +12,22 @@ box-constrained inference (`Inference`), physical parameter bounds
 (`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
 shared fit statistics (`Fitting`), publication plotting (`Plotting`), the
-pipeline driver (`Orchestrator`) and figure regeneration from persisted
-run artifacts (`RunFigures`).
+pipeline driver (`Orchestrator`), work-item checkpoints (`Checkpoint`), worker
+liveness telemetry (`Heartbeat`), process supervision with a retry budget
+(`Supervision`, wired to the pipeline by `Campaign`) and figure regeneration
+from persisted run artifacts (`RunFigures`).
 """
 module CurvatureDistinguishability
+
+include("Heartbeat.jl")
+using .Heartbeat
+
+include("Supervision.jl")
+using .Supervision
+export SupervisionSettings, WorkerSpec, supervise
+
+include("Checkpoint.jl")
+using .Checkpoint
 
 include("Backends.jl")
 using .Backends
@@ -76,6 +88,10 @@ using .Orchestrator
 using .Orchestrator: DEFAULT_CONFIG, PipelineStageError, ResourceBudgetError
 export run_pipeline
 public DEFAULT_CONFIG, PipelineStageError, ResourceBudgetError
+
+include("Campaign.jl")
+using .Campaign
+export supervise_pipeline
 
 include("RunFigures.jl")
 using .RunFigures

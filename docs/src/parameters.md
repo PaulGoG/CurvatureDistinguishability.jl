@@ -36,7 +36,7 @@ zone half-width from a spin wall — as a minutes-scale visual check of the
 mapping stage (wall segments, corners, null-direction needles).
 
 The run identifier hashes only the *identity* of a run — every section
-except `[hardware]`, `[safety]` and `[monitoring]`, which describe how a
+except `[hardware]`, `[safety]`, `[monitoring]` and `[supervision]`, which describe how a
 run executes rather than what it computes — so one physical case carries
 one identifier on every machine; reruns land in `_r2`, `_r3`, … sibling
 directories and `metadata.toml`/`hardware.txt` record backend, host and
@@ -58,6 +58,45 @@ sets none of them, so it runs unmodified on any host. `[hardware]
 written when no functional GPU backend resolves for the requested
 `gpu_backend`; every shipped GPU overlay sets it, so a missing vendor
 package can never turn a GPU campaign into a silent CPU run.
+
+### Supervised runs
+
+`scripts/run_supervised.jl` runs one or more configurations under a second
+Julia process that never loads a GPU package. The worker publishes a
+heartbeat (one tick per loss evaluation, so the interval between ticks is
+bounded by one kernel launch) and checkpoints every finished work item; the
+supervisor samples the heartbeat and the worker's CPU time from
+`/proc/<pid>/stat`. No progress for `idle_stall_s` with a CPU utilisation
+below `cpu_idle_cores` is a hang: the worker is terminated (`SIGTERM`, then
+`SIGKILL` after `term_grace_s`) and relaunched into the same run directory,
+where finished stages and work items are skipped. A worker that is slow but
+busy is left alone until `busy_stall_s`.
+
+The retry budget has two parts. `max_retries` bounds the relaunches of a run.
+`max_stalled_retries` bounds consecutive attempts that finish no new work
+item: a deterministic failure therefore ends after a few attempts — the stage
+is recorded as abandoned and the remaining stages run — while failures that
+arrive after some progress only draw on `max_retries`. For a failure process
+with an expected number μ of events per run, the smallest budget R with
+P(N > R) < ε follows from the Poisson tail; μ ≈ 1 needs R = 5 for ε ≈ 4×10⁻⁴,
+μ ≈ 10 needs R = 20 for ε ≈ 10⁻³.
+
+| Key | Default | Bounds |
+|---|---|---|
+| `max_retries` | 5 | integer ≥ 0 |
+| `max_stalled_retries` | 2 | integer ≥ 1 |
+| `poll_interval_s` | 15 | 0.05–600 s |
+| `startup_grace_s` | 1800 | > 0 s |
+| `idle_stall_s` | 300 | ≥ 4 `poll_interval_s` |
+| `busy_stall_s` | 7200 | ≥ `idle_stall_s` |
+| `cpu_idle_cores` | 0.05 | (0, 1] cores |
+| `term_grace_s` | 60 | > 0 s |
+| `kill_wait_s` | 120 | > 0 s |
+| `backoff_s` | 30 | ≥ 0 s |
+
+Every attempt is recorded in `supervision.toml` in the run directory (verdict,
+exit status or signal, CPU seconds, stall time, work items before and after),
+and its console output in `logs/attempt_<k>.console.log`.
 
 ## 1. Global Simulation Grid
 

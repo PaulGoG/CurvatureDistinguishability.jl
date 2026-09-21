@@ -118,6 +118,28 @@ enabled = true
 # (0 disables intra-stage progress logging)
 progress_log_fraction = 0.25
 
+[supervision]
+# relaunches of a supervised run after its first attempt, integer >= 0
+max_retries = 5
+# consecutive attempts without a new finished work item before the blocking
+# stage is abandoned, integer >= 1
+max_stalled_retries = 2
+# sampling period of worker progress and CPU time [s], in [0.05, 600]
+poll_interval_s = 15.0
+# deadline for the worker's first heartbeat [s], > 0
+startup_grace_s = 1800.0
+# no progress with idle CPU for this long is a hang [s], >= 4 poll_interval_s
+idle_stall_s = 300.0
+# no progress with busy CPU for this long ends the attempt [s], >= idle_stall_s
+busy_stall_s = 7200.0
+# CPU utilisation below which the worker counts as idle [cores], in (0, 1]
+cpu_idle_cores = 0.05
+# wait between SIGTERM and SIGKILL, and for the process to disappear [s], > 0
+term_grace_s = 60.0
+kill_wait_s = 120.0
+# pause before a relaunch [s], >= 0
+backoff_s = 30.0
+
 # 1D sweeps and 2D maps; scenario rationale: docs/src/parameters.md
 
 [[sweeps]]

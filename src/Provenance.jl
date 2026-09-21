@@ -12,8 +12,10 @@ using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 
 export run_id_from_config, effective_config, identity_config,
-    unique_run_dir, snapshot_config, snapshot_manifest, backup_existing!,
-    write_run_metadata, write_hardware_fingerprint, git_state
+    unique_run_dir, resolve_run_dir, snapshot_config, snapshot_manifest,
+    backup_existing!, write_run_metadata, read_run_metadata,
+    write_hardware_fingerprint, git_state,
+    stage_key, completed_stages, mark_stage_complete!, abandoned_stages
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
@@ -21,10 +23,14 @@ const BASE_CONFIG_KEY = "base_config"
 """
 Configuration sections that describe how a run executes rather than what it
 computes: backend and concurrency (`[hardware]`), memory budgets
-(`[safety]`) and diagnostics (`[monitoring]`). They are excluded from the
-run identifier and recorded in `metadata.toml` and `hardware.txt` instead.
+(`[safety]`), diagnostics (`[monitoring]`) and the watchdog of supervised runs
+(`[supervision]`). They are excluded from the run identifier and recorded in
+`metadata.toml` and `hardware.txt` instead.
 """
-const EXECUTION_SECTIONS = ("hardware", "safety", "monitoring")
+const EXECUTION_SECTIONS = ("hardware", "safety", "monitoring", "supervision")
+
+# ledger written by the supervisor into the run directory
+const SUPERVISION_LEDGER = "supervision.toml"
 
 """
 $(TYPEDSIGNATURES)
@@ -136,6 +142,40 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Run directory for `config_path` under `base_dir` when an interrupted run is to
+be continued. The siblings `run_<id>`, `run_<id>_r2`, … are searched in order
+for one whose `config.toml` snapshot equals the effective configuration,
+execution sections included — so variants that share an identifier (another
+Hessian chunk, another backend) never continue each other. Returns
+`(directory, state)` with `state`
+
+  - `:complete` — that run finished with every stage complete,
+  - `:resume` — that run is unfinished, or finished with failed or abandoned stages,
+  - `:fresh` — no sibling matches; a new one was created ([`unique_run_dir`](@ref)).
+"""
+function resolve_run_dir(base_dir::AbstractString, config_path::AbstractString)
+    run_id = run_id_from_config(config_path)
+    config = effective_config(config_path)
+    k = 1
+    dir = joinpath(base_dir, run_id)
+    while isdir(dir)
+        snapshot = joinpath(dir, "config.toml")
+        if isfile(snapshot) && effective_config(snapshot) == config
+            meta = read_run_metadata(dir)
+            finished =
+                haskey(meta, "finished") && get(meta, "failed_stages", "") == "" &&
+                isempty(abandoned_stages(dir))
+            return dir, finished ? :complete : :resume
+        end
+        k += 1
+        dir = joinpath(base_dir, "$(run_id)_r$k")
+    end
+    return unique_run_dir(base_dir, run_id), :fresh
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Write the configuration into the run directory as `config.toml`, so every
 result set carries the exact configuration that produced it. A plain file
 is copied verbatim; an overlay (`base_config`) is written as its merged
@@ -222,20 +262,74 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Contents of `metadata.toml` in the run directory (empty when absent).
+"""
+function read_run_metadata(run_dir::AbstractString)
+    path = joinpath(run_dir, "metadata.toml")
+    return isfile(path) ? TOML.parsefile(path) : Dict{String,Any}()
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Write (or update) `metadata.toml` in the run directory with provenance
 information passed as keyword pairs (git state, Julia version, backend,
-threads, timings, …). Values are stored as strings for TOML robustness.
+threads, timings, …). Numbers, booleans, strings and string vectors are stored
+natively, anything else through `string`. The file is replaced by a rename, so
+an interrupted update leaves the previous record intact.
 """
 function write_run_metadata(run_dir::AbstractString; kwargs...)
     path = joinpath(run_dir, "metadata.toml")
-    meta = isfile(path) ? TOML.parsefile(path) : Dict{String,Any}()
+    meta = read_run_metadata(run_dir)
     for (k, v) in kwargs
-        meta[String(k)] = v isa Union{Real,Bool,String} ? v : string(v)
+        meta[String(k)] = v isa Union{Real,Bool,String,Vector{String}} ? v : string(v)
     end
-    open(path, "w") do io
-        TOML.print(io, meta)
+    tmp = path * ".tmp"
+    open(tmp, "w") do io
+        TOML.print(io, meta; sorted = true)
     end
+    mv(tmp, path; force = true)
     return path
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Key of a pipeline stage in the run records: `"sweep:<name>"` or `"map:<name>"`.
+"""
+stage_key(kind::Symbol, name::AbstractString) = string(kind, ':', name)
+
+"""
+$(TYPEDSIGNATURES)
+
+Stages recorded as complete in `metadata.toml` ([`mark_stage_complete!`](@ref)).
+"""
+completed_stages(run_dir::AbstractString) =
+    String.(get(read_run_metadata(run_dir), "completed_stages", String[]))
+
+"""
+$(TYPEDSIGNATURES)
+
+Record stage `key` as complete. Called after the stage's outputs are written,
+so a stage interrupted during persistence is redone on the next attempt.
+"""
+function mark_stage_complete!(run_dir::AbstractString, key::AbstractString)
+    done = completed_stages(run_dir)
+    key in done || push!(done, String(key))
+    write_run_metadata(run_dir; completed_stages = done)
+    return done
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Stages a supervisor gave up on (`abandoned` in the run's `supervision.toml`);
+a resumed run skips them.
+"""
+function abandoned_stages(run_dir::AbstractString)
+    path = joinpath(run_dir, SUPERVISION_LEDGER)
+    isfile(path) || return String[]
+    return String.(get(TOML.parsefile(path), "abandoned", String[]))
 end
 
 """

@@ -72,7 +72,8 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         if isempty(VERSION.prerelease)
             jet_modules = (CD, CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
                 CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
-                CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures)
+                CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures,
+                CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
             jet = JET.report_package(CD; target_modules = jet_modules,
                 toplevel_logger = nothing)
             @test length(JET.get_reports(jet)) == 3
@@ -1553,5 +1554,7 @@ corner_bisect_iters = 0
             @test !isdir(joinpath(out3, "sweeps"))
         end
     end
+
+    include("supervision_tests.jl")
 
 end

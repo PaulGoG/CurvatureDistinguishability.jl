@@ -29,6 +29,8 @@ using ..Inference
 using ..Bounds
 using ..Config
 using ..Provenance
+using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!
+using ..Checkpoint: CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!
 using ..Plotting
 using ..Plotting: map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
@@ -101,6 +103,7 @@ Timestamped, ANSI-free line to a stage log file, mirrored to the console.
 """
 function logline(io::IO, msg::AbstractString)
     stamped = "[" * Dates.format(now(), "yyyy-mm-dd HH:MM:SS") * "] " * msg
+    tick!()
     println(stdout, msg)
     flush(stdout)
     println(io, stamped)
@@ -244,11 +247,33 @@ function stage_progress_hook(label::String, total::Int, fraction::Real)
 end
 
 """
+$(TYPEDSIGNATURES)
+
+Whether `backend` still executes work: a small allocation, a reduction and a
+synchronization. After a context reset or a lost device every one of them
+throws, and so would every remaining GPU stage of the process. Always `true`
+on the CPU backend.
+"""
+function device_responds(backend)
+    backend isa KernelAbstractions.CPU && return true
+    try
+        probe = to_backend(ones(Float64, 16), backend)
+        KernelAbstractions.synchronize(backend)
+        return sum(Array(probe)) == 16.0
+    catch err
+        err isa Union{InterruptException,OutOfMemoryError} && rethrow()
+        @debug "device probe failed" exception = err
+        return false
+    end
+end
+
+"""
 Immutable per-run context threaded through the sweep and map stages:
 validated configuration, output base directory, frequency grid and PSD
 (host and device copies), and the planned stage concurrencies (the sweep
 stage is pinned to one task on GPU backends; the CPU-only mapping stage is
-not). Parametric over the backend and device-array types so every per-δ
+not), and the number of the process launch working on the run directory
+(`attempt`, above 1 when an interrupted run is continued). Parametric over the backend and device-array types so every per-δ
 solve closure captures concrete fields.
 """
 struct RunContext{B,FD,SD}
@@ -262,6 +287,7 @@ struct RunContext{B,FD,SD}
     backend::B
     sweep_tasks::Int
     map_tasks::Int
+    attempt::Int
 end
 
 # -----------------------------------------------------------------------------
@@ -290,7 +316,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
 
     out_dir = joinpath(ctx.out_base, "sweeps", name)
     mkpath(out_dir)
-    log_io = open(joinpath(out_dir, "sweep.log"), "w")
+    log_io = open(joinpath(out_dir, "sweep.log"), "a")
     t0 = time()
     try
         logline(log_io, "─"^78)
@@ -365,8 +391,13 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
             "$(ctx.sweep_tasks) concurrent, optimizer = $(cfg.optimizer)" *
             (cfg.n_starts > 1 ? ", $(cfg.n_starts) starts" : "") * ")",
         )
+        checkpoint = open_checkpoint(joinpath(out_dir, "checkpoint.csv"),
+            sweep_signature(sweep, deltas, u_norm, cfg))
+        isempty(checkpoint.rows) || logline(log_io,
+            "        continuing: $(length(checkpoint.rows))/$n separations in the checkpoint",
+        )
         fits = optimize_separations(sweep, deltas, u_norm, "Sweep '$name' ($idx/$total)",
-            ctx)
+            ctx, checkpoint)
         law = fit_sweep_law(deltas, fits.D2_num, K_norm, amp_prefactor, cfg, log_io)
 
         if cfg.n_starts > 1 && maximum(fits.multi_start_gain) > cfg.secondary_minimum_gain
@@ -411,11 +442,14 @@ the two-source data (second source at `θ₀ + δ u_norm` with the sweep's
 amplitude ratio) is fitted from the degenerate-source guess and, with
 `n_starts > 1`, from seeded perturbations of it, keeping the lowest
 distance. Runs `ctx.sweep_tasks` fits concurrently; `label` names the
-stage in the run-log progress lines. Returns the per-δ distances, best-fit
-parameters and optimizer diagnostics as a NamedTuple.
+stage in the run-log progress lines. Separations already in `checkpoint` are
+taken from it; every other one is recorded there as soon as it is fitted, so
+an interrupted sweep loses the items in flight only. Returns the per-δ
+distances, best-fit parameters and optimizer diagnostics as a NamedTuple.
 """
 function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
-    u_norm::AbstractVector, label::String, ctx::RunContext)
+    u_norm::AbstractVector, label::String, ctx::RunContext,
+    checkpoint::SweepCheckpoint)
     cfg = ctx.cfg
     wp = cfg.wp
     name = sweep.name
@@ -434,7 +468,25 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
 
     prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
     note_progress = stage_progress_hook(label, n, cfg.progress_log_fraction)
+    store!(row::CheckpointRow) = begin
+        i = row.index
+        D2_num[i] = row.D2
+        best_fits[i, :] .= row.best_fit
+        converged[i] = row.converged
+        iteration_counts[i] = row.iterations
+        gradient_norms[i] = row.g_norm
+        at_bound[i] = row.at_bound
+        multi_start_gain[i] = row.multi_start_gain
+    end
+    finished = copy(checkpoint.rows)
     parallel_foreach(n, ctx.sweep_tasks) do i
+        if haskey(finished, i)
+            store!(finished[i])
+            next!(prog)
+            note_progress()
+            return nothing
+        end
+        t_item = time()
         d = deltas[i]
         p2 = second_source(theta0, u_norm, d, amp_ratio)
         ch1 = channel_strain(theta0, ctx.freqs, wp)
@@ -475,19 +527,42 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
             end
         end
         diagnostics = optimization_diagnostics(res, best, cfg.bounds)
-        D2_num[i] = dist
-        multi_start_gain[i] = dist > 0 ? dist_canonical / dist : 1.0
-        best_fits[i, :] .= best
-        converged[i] = diagnostics.converged
-        iteration_counts[i] = diagnostics.iterations
-        gradient_norms[i] = diagnostics.g_norm
-        at_bound[i] = diagnostics.at_bound
+        row = CheckpointRow(i, dist, collect(Float64, best), diagnostics.converged,
+            diagnostics.iterations, diagnostics.g_norm, diagnostics.at_bound,
+            dist > 0 ? dist_canonical / dist : 1.0, time() - t_item, ctx.attempt)
+        record_item!(checkpoint, row)
+        store!(row)
+        note_item!()
         next!(prog)
         note_progress()
+        return nothing
     end
     finish!(prog)
     return (; D2_num, best_fits, converged, iteration_counts, gradient_norms, at_bound,
         multi_start_gain)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Identifier of the fitting problem behind a sweep checkpoint: SHA-256 of the
+sweep definition, the separation grid, the normalized direction and every
+setting that enters a fit. Rows written under another signature are refused.
+"""
+function sweep_signature(sweep::SweepSpec, deltas::AbstractVector,
+    u_norm::AbstractVector, cfg::PipelineSettings)
+    parts = (sweep.name, sweep.theta_0, sweep.amp_ratio, collect(deltas), collect(u_norm),
+        cfg.optimizer, cfg.n_starts, cfg.rng_seed, cfg.g_tol, cfg.f_reltol,
+        cfg.max_iterations, cfg.multi_start_parallel_scale,
+        cfg.multi_start_transverse_scale, cfg.hessian_chunk, cfg.T_obs, cfg.f_min,
+        cfg.f_max)
+    text = sprint() do io
+        for part in parts
+            show(io, part)
+            print(io, '|')
+        end
+    end
+    return first(bytes2hex(sha256(text)), 16)
 end
 
 """
@@ -702,7 +777,7 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
 
     out_dir = joinpath(ctx.out_base, "maps", name)
     mkpath(out_dir)
-    log_io = open(joinpath(out_dir, "mapping.log"), "w")
+    log_io = open(joinpath(out_dir, "mapping.log"), "a")
     t0 = time()
     try
         box = deviation_box(cfg.bounds, theta0, px, py)
@@ -754,6 +829,7 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 K, g = compute_extrinsic_curvature_from_basis(theta0, dir, basis,
                     ctx.freqs, ctx.Sn, ctx.df, wp)
                 out[i] = (K, g)
+                note_item!()
                 next!(prog)
                 note_progress()
             end
@@ -1225,9 +1301,22 @@ Returns the run directory when every stage completed. When stages failed, the
 run is finished first (metadata written, log closed) and a
 [`PipelineStageError`](@ref) naming them is thrown. `InterruptException` and
 `OutOfMemoryError` are never absorbed by the stage guards.
+
+Keywords:
+
+  - `resume = false`: continue the unfinished run of this configuration
+    (`Provenance.resolve_run_dir`) instead of creating a new sibling
+    directory. Stages recorded as complete are skipped, a sweep continues from
+    its work-item checkpoint, stages abandoned by a supervisor are skipped, and
+    the logs are appended to. A run that is already complete is returned as is.
+  - `run_dir = nothing`: use exactly this run directory (created when absent);
+    implies `resume`.
+  - `heartbeat_period_s = 0`: when positive, publish `heartbeat.toml` in the
+    run directory at this period for a supervising process.
 """
 function run_pipeline(config_path::AbstractString, project_root::AbstractString,
-    output_dir::AbstractString)
+    output_dir::AbstractString; resume::Bool = false,
+    run_dir::Union{Nothing,AbstractString} = nothing, heartbeat_period_s::Real = 0)
     cfg = load_and_validate_config(config_path)
     # a required GPU is checked before any output exists: the probe is
     # idempotent and repeated inside _run_pipeline
@@ -1240,22 +1329,37 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
                 "the default environment and its device functional); no run directory was created.",
             ),
         )
-    run_id = run_id_from_config(config_path)
-    out_base = unique_run_dir(joinpath(project_root, output_dir), run_id)
-    snapshot_config(config_path, out_base)
-    snapshot_manifest(out_base)
+    base_dir = joinpath(project_root, output_dir)
+    if run_dir !== nothing
+        out_base = String(run_dir)
+        mkpath(out_base)
+    elseif resume
+        out_base, state = resolve_run_dir(base_dir, config_path)
+        if state === :complete
+            @info "Run already complete: $out_base"
+            return out_base
+        end
+    else
+        out_base = unique_run_dir(base_dir, run_id_from_config(config_path))
+    end
+    isfile(joinpath(out_base, "config.toml")) || snapshot_config(config_path, out_base)
+    isfile(joinpath(out_base, "Manifest.toml")) || snapshot_manifest(out_base)
 
-    log_stream = open(joinpath(out_base, "run.log"), "w")
+    log_stream = open(joinpath(out_base, "run.log"), "a")
     file_logger = FormatLogger(log_stream) do io, args
         println(io, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
             uppercase(string(args.level)), " ", args.message)
     end
     tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
+    beat =
+        heartbeat_period_s > 0 ?
+        start_heartbeat(joinpath(out_base, "heartbeat.toml"), heartbeat_period_s) : nothing
     failures = try
         with_logger(tee) do
             _run_pipeline(cfg, project_root, out_base, config_path)
         end
     finally
+        beat === nothing || stop_heartbeat!(beat)
         close(log_stream)
     end
     isempty(failures) || throw(PipelineStageError(out_base, failures))
@@ -1286,15 +1390,20 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
 
     freqs_dev = backend isa KernelAbstractions.CPU ? freqs : to_backend(freqs, backend)
     Sn_dev = backend isa KernelAbstractions.CPU ? Sn : to_backend(Sn, backend)
+    previous = read_run_metadata(out_base)
+    attempt = Int(get(previous, "attempts", 0)) + 1
     ctx = RunContext(cfg, out_base, freqs, Sn, freqs_dev, Sn_dev, df, backend,
-        sweep_tasks, map_tasks)
+        sweep_tasks, map_tasks, attempt)
+    elapsed_before = Float64(get(previous, "elapsed_seconds", 0.0))
 
     write_run_metadata(out_base;
+        attempts = attempt,
+        started = get(previous, "started", string(now())),
         run_id = basename(out_base), git = git_state(project_root),
         config_file = basename(config_path),
         base_config = string(get(TOML.parsefile(config_path), "base_config", "")),
         julia_version = string(VERSION), hostname = gethostname(),
-        started = string(now()), backend = backend_name(backend),
+        backend = backend_name(backend),
         cpu_model = Backends.cpu_model(),
         cpu_threads = Sys.CPU_THREADS,
         total_memory_gb = round(Sys.total_memory() / 2^30, digits = 1),
@@ -1305,7 +1414,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         optimizer = string(cfg.optimizer),
         n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
         confusion_noise = cfg.noise.confusion_enabled)
-    write_hardware_fingerprint(out_base;
+    isfile(joinpath(out_base, "hardware.txt")) || write_hardware_fingerprint(out_base;
         device_report = Backends.device_fingerprint(backend))
 
     println("=" ^ 78)
@@ -1319,29 +1428,52 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
     @info "Noise: instrumental Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14" : "disabled")"
     @info "Optimizer: $(cfg.optimizer) with physical bounds"
 
+    attempt > 1 && @info "Continuing the run: attempt $attempt."
     failures = String[]
+    done = Set(completed_stages(out_base))
+    abandoned = Set(abandoned_stages(out_base))
+    skip_stage(key) =
+        key in done ? (@info "Stage '$key' is complete; skipped."; true) :
+        key in abandoned ?
+        (@warn "Stage '$key' was abandoned by the supervisor; skipped."; true) :
+        false
+    device_lost = false
     if cfg.run_1d_sweeps && !isempty(cfg.sweeps)
         @info ">>> 1D parameter sweeps ($(length(cfg.sweeps)) configurations)"
         for (i, s) in enumerate(cfg.sweeps)
+            key = stage_key(:sweep, s.name)
+            skip_stage(key) && continue
             try
                 run_sweep(s, i, length(cfg.sweeps), ctx)
+                mark_stage_complete!(out_base, key)
             catch err
                 err isa Union{InterruptException,OutOfMemoryError} && rethrow()
                 push!(failures, s.name)
                 @error "Sweep '$(s.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
+                # a reset or wedged device context fails every later launch of
+                # this process: end the attempt instead of failing the rest
+                if !device_responds(ctx.backend)
+                    device_lost = true
+                    @error "The device no longer responds; the remaining GPU stages " *
+                           "need a new process."
+                    break
+                end
             end
             maintain_memory!(ctx.backend, cfg.gc_between_stages)
         end
     end
-    if cfg.run_2d_mapping && !isempty(cfg.maps)
+    if cfg.run_2d_mapping && !isempty(cfg.maps) && !device_lost
         @info ">>> 2D confusion mapping ($(length(cfg.maps)) configurations)"
         ctx.map_tasks != ctx.sweep_tasks &&
             @info "2D mapping evaluates host-side automatic differentiation " *
                   "(no GPU kernels): concurrency restored to $(ctx.map_tasks) tasks."
         for (i, m) in enumerate(cfg.maps)
+            key = stage_key(:map, m.name)
+            skip_stage(key) && continue
             try
                 run_map(m, i, length(cfg.maps), ctx)
+                mark_stage_complete!(out_base, key)
             catch err
                 err isa Union{InterruptException,OutOfMemoryError} && rethrow()
                 push!(failures, m.name)
@@ -1353,8 +1485,9 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
     end
 
     elapsed = time() - start_time
+    # elapsed_seconds accumulates over the attempts of a continued run
     write_run_metadata(out_base; finished = string(now()),
-        elapsed_seconds = round(elapsed, digits = 1),
+        elapsed_seconds = round(elapsed_before + elapsed, digits = 1),
         failed_stages = join(failures, ","))
     println("=" ^ 78)
     if isempty(failures)
