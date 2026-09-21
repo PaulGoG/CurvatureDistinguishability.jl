@@ -169,14 +169,12 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
    reduced with standard per-column sums; device arrays never carry Dual
    eltypes (some GPU runtimes reject them), and no intermediate lane tuple
    is materialized (large tuples trip `gpu_malloc` on some compilers).
-   Two production-hardening measures are enforced **in code**, not left to
-   configuration: all GPU kernel launches are serialized through a
-   library-wide lock and the orchestrator pins GPU runs to a single task
-   (concurrent multi-task driver access segfaulted Level Zero in production;
-   the device serializes kernels regardless, so concurrency adds only crash
-   surface), and device output buffers are cached and reused instead of
-   allocated per evaluation (per-call allocation churn triggered a
-   long-session oneAPI "freed reference" failure).
+   Two measures are enforced in code, not left to configuration: kernel
+   launches are serialized through a library-wide lock and the orchestrator
+   pins a GPU run to a single task (vendor runtimes are not safe under
+   concurrent multi-task access, and the device serializes kernels anyway),
+   and device output buffers are cached and reused (allocating them per
+   evaluation destabilises long sessions).
 4. Changing `[noise]`, the optimizer, or the mapping algorithm invalidates
    comparisons with earlier runs — the config snapshot plus `metadata.toml`
    in every run directory is the provenance chain; rely on it.
