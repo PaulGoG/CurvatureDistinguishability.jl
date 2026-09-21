@@ -34,7 +34,8 @@ deeper layers:
   response and noise model.
 - [Complex Run Parameters](parameters.md) — the physical rationale of the
   production configuration's sweeps and maps.
-- [Roadmap](roadmap.md) — deferred features with design sketches.
+- [Roadmap](roadmap.md) — planned extensions with design sketches, and GPU
+  operational notes.
 - [API Reference](api.md) — every public symbol.
 
 Quickest start: `julia --threads=auto scripts/run_pipeline.jl`

@@ -4,10 +4,14 @@ Equation-level description of the model implemented in `Physics.jl` and
 `Detector.jl`: a frequency-domain aligned-spin inspiral of a massive
 black-hole binary, complete to 1.5PN order in the phase and 0.5PN order in
 the amplitude, observed through the long-wavelength response of the LISA
-constellation on its analytic orbits. The conventions follow the LISA
-Rosetta Stone (Fourier transform, sky frame, polarization basis) so that
-the parameters mean what they mean in the LISA Data Challenge catalogues.
-§8 states the domain of validity.
+constellation on its analytic orbits. The Fourier-transform sign, the
+ecliptic sky frame, the polarization basis and the A, E, T combinations
+follow the LISA Rosetta Stone [LISARosettaStone2025](@cite); the masses are
+detector-frame and the time and phase parameters are the TaylorF2
+coalescence values ``t_c``, ``\varphi_c`` rather than the reference-frequency
+parameters of that document. Arm length and single-link noise levels are those
+of the mission definition [LISADefinitionStudy2023](@cite). §8 states the domain
+of validity.
 
 ## 1. Parameters
 
@@ -28,8 +32,7 @@ The symmetric mass ratio ``\eta \in (0, 1/4]`` is a fixed property of the
 scenario (`[physics].eta`), not a fitted parameter: the total mass follows
 as ``M = \mathcal{M}\eta^{-3/5}`` and the mass asymmetry as
 ``\delta_m = (m_1 - m_2)/M = \sqrt{1 - 4\eta}``. The production campaign uses
-``\eta = 2/9`` (mass ratio 2:1), a typical value of the LDC massive-binary
-catalogues. Sky position (ecliptic longitude ``\lambda`` and latitude
+``\eta = 2/9`` (mass ratio 2:1). Sky position (ecliptic longitude ``\lambda`` and latitude
 ``\beta``), inclination ``\iota`` and polarization angle ``\psi`` are
 likewise scenario constants.
 
@@ -150,7 +153,7 @@ stationary-phase time ``t_k`` of each harmonic.
 The wave-frame basis follows the Rosetta Stone: with
 ``\hat e_\lambda = (-\sin\lambda, \cos\lambda, 0)`` and
 ``\hat e_\beta = (-\sin\beta\cos\lambda, -\sin\beta\sin\lambda, \cos\beta)``,
-``\hat u = -\hat e_\lambda``, ``\hat v = -\hat e_\beta``, and the polarization
+``\hat u = -\hat e_\lambda``, ``\hat v = \hat e_\beta``, and the polarization
 angle rotates them into ``\hat p = \hat u\cos\psi + \hat v\sin\psi``,
 ``\hat q = -\hat u\sin\psi + \hat v\cos\psi``; the polarization tensors are
 ``e^+ = \hat p\otimes\hat p - \hat q\otimes\hat q`` and

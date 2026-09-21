@@ -1,8 +1,4 @@
 name: CI
-# Private-repository phase: manual dispatch only and a single Linux leg, so
-# no billed minutes are spent on pushes. At the public release restore the
-# push/pull_request/tag triggers, the macOS and Windows legs and the
-# pre-release Linux leg (see docs/src/roadmap.md, release checklist).
 on:
   workflow_dispatch:
 concurrency:
@@ -19,9 +15,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # '1' = current stable; the Julia floor is the declared [compat]
-        # julia = "1.12"
-        version: ['1']
+        # declared floor and current stable
+        version: ['1.12', '1']
         os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
@@ -63,10 +58,7 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v3
-      # build-only strict gate (warnonly = false); deploydocs/Pages is added
-      # when the repository goes public (Pages sites from private repos are
-      # publicly reachable on non-Enterprise plans). Until then the built
-      # site is attached to each run as a private artifact.
+      # strict build; the site is attached to the run as an artifact
       - run: julia docs/make.jl
       - uses: actions/upload-artifact@v4
         with:

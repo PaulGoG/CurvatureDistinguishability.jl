@@ -17,10 +17,7 @@ makedocs(
     plugins = [bib],
     sitename = "CurvatureDistinguishability.jl",
     format = Documenter.HTML(
-        # directory-style URLs break file:// browsing of the CI artifact and
-        # of local builds; restore the CI-conditional form when the site is
-        # deployed to GitHub Pages (at repository publication)
-        prettyurls = false,
+        prettyurls = get(ENV, "CI", nothing) == "true",
         assets = String[],
     ),
     modules = [CurvatureDistinguishability],

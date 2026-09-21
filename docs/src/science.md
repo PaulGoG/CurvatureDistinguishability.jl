@@ -70,10 +70,12 @@ analytic orbits, documented equation by equation in
     ``\sqrt{1 - 4\eta}``, and break the distance–mass–time degeneracies of a
     single-harmonic model without any phenomenological factor.
 
-## 4. Detector Dynamics: Time Delay Interferometry (TDI)
+## 4. Detector Response: the A and E Channels
 
-`Detector.jl` projects the source-frame strain into the noise-orthogonal
-A and E channels of the constellation — Michelson antenna patterns on the
+`Detector.jl` projects the source-frame strain into the A and E channel
+combinations of the constellation (noise-orthogonal for equal arms and equal
+link noise) — long-wavelength Michelson antenna patterns, not a time-delay
+interferometry simulation, on the
 analytic spacecraft orbits, the orbital Doppler phase and the finite-arm
 roll-off — evaluated per frequency bin and per harmonic at the
 stationary-phase emission time. The full detector model is documented in

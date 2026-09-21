@@ -1,13 +1,10 @@
-# Roadmap — deferred features
+# Roadmap — planned extensions
 
-Design sketches for features deliberately **not** implemented yet (user
-decision, 2026-07), so future work starts warm. None of these block the
-production campaign.
-
-**Scope decision (2026-08):** the current publication is complete with the
-1.5PN waveform model and the noiseless-baseline validation. Every item on
-this page is post-publication follow-up work; items 4 and 5 are closed
-and will not be implemented.
+This page lists the extensions planned beyond the current model, in order of
+priority, each with the design sketch it would follow. None of them is
+implemented; the pipeline ships the 1.5PN waveform model with the
+noiseless-baseline validation. The last section documents the operational
+behaviour of the GPU backends.
 
 ## 1. 2PN spin–spin phase term
 
@@ -32,8 +29,7 @@ curvature-limited.
   model stay bit-identical when disabled. The term is a toggle, not a
   replacement: the 1.5PN model remains the default and stays selectable.
 - Consequences when enabled: K values change everywhere and spin maps gain
-  genuine structure — the paper would need a model-variant note and
-  regenerated figures. The A/B fixture tests must assert the *disabled*
+  genuine structure. The A/B fixture tests must assert the *disabled*
   path only.
 - Display: `Plotting.zone_figure` draws a same-unit zone whose
   principal-axis aspect reaches `NEEDLE_ASPECT` in the frame of its null
@@ -67,9 +63,9 @@ phenomenological approximant is the natural next step for realism.
 ## 2. Noise-realization study (distribution of the distance statistic)
 
 **Why.** The pipeline currently validates the noiseless-baseline geometry.
-The paper's likelihood interpretation (``\Delta \ln L_{\max} = D^2/2``)
-invites the follow-up question: how is ``\hat D^2`` distributed under real
-noise, and how sharp is the confusion boundary operationally?
+The likelihood interpretation (``\Delta \ln L_{\max} = D^2/2``) invites the
+follow-up question: how is ``\hat D^2`` distributed under real noise, and how
+sharp is the confusion boundary operationally?
 
 **How.**
 - New pipeline stage (config-gated, e.g. `[noise_study] n_realizations`,
@@ -81,40 +77,37 @@ noise, and how sharp is the confusion boundary operationally?
   ``\chi^2`` expectation with non-centrality ``D^2_{\rm noiseless}`` and
   effective dimension set by the residual normal space; persist per-realization
   results and a QQ-style figure.
-- This is the largest deferred item (new science section in the paper).
 
-## 3. Datacenter-GPU campaign notes
+## 3. GPU backends: operational notes
 
-The lanes kernel (value + per-partial Float64 stores, see
+**Device sizing.** The lanes kernel (value + per-partial Float64 stores, see
 src/Inference.jl `loss_bins_lanes!`) is vendor-portable by construction; the
 consumer-GPU bottleneck is FP64 throughput (1/64 rate on recent consumer
 NVIDIA parts — only ~2× end-to-end campaign gain over a good CPU). On
 FP64-strong hardware (A100/H100/MI200-class, 10–60× more FP64) the sweep
 stage becomes GPU-dominated; the map stage remains CPU by design
-(`ForwardDiff.jacobian` on host) and would then dominate — parallelize maps
+(`ForwardDiff.jacobian` on host) and then dominates — parallelize maps
 across CPU cores concurrently with GPU sweeps if the campaign time matters.
 Validate with `bench/` + a single-δ solve before committing a queue
 allocation.
 
-**Production-hardening now enforced in code (2026-07-21 lessons):** GPU
-kernel launches are serialized through a library-wide lock and GPU runs are
-pinned to one task by `plan_resources` (concurrent multi-task Level Zero
-access segfaulted); device output buffers are cached across evaluations
-(per-call allocation churn triggered a long-session oneAPI
-"freed reference" failure — the cache reduces device allocations by ~10³;
-if the driver bug still bites in very long sessions, split the campaign
-into shorter per-sweep processes, which the per-stage guardrails and
-config-hash run directories make lossless).
+**Launch serialization and device-buffer cache.** Kernel launches are
+serialized through a library-wide lock and `plan_resources` pins a GPU run to
+a single task, because the vendor runtimes are not safe under concurrent
+multi-task access. Device output buffers are cached per backend, element type
+and shape, because allocating them per evaluation destabilises long sessions;
+the cache reduces device allocations by ~10³. A run interrupted at any point
+continues from its completed stages and work-item checkpoints
+(`scripts/run_pipeline.jl --resume`).
 
-**Compiler-limit fallback (implemented; validated on the Meteor Lake
-iGPU):** if a backend's compiler rejects the full 49-lane Hessian kernel,
-the Hessian is evaluated in chunks: the config key
+**Chunked Hessian.** If a backend's compiler rejects the full 49-lane Hessian
+kernel, the Hessian is evaluated in chunks: the config key
 `[hardware].hessian_chunk` (0 = full chunk) threads
 `ForwardDiff.HessianConfig(loss, x, ForwardDiff.Chunk{c}())` through
 `calculate_numerical_distance`'s `h!`, so each kernel launch carries (1+c)²
 lanes and a Hessian costs ⌈6/c⌉² launches (ForwardDiff applies the chunk to
 the outer and the inner dual: c = 3 gives 16 lanes × 4 launches, c = 2 gives
-9 × 9, c = 1 gives 4 × 36). The failure mechanism was isolated on the iGPU:
+9 × 9, c = 1 gives 4 × 36). The mechanism on the Meteor Lake iGPU:
 the nested-dual parameter tuple enters the kernel as an argument of
 6 × 49 × 8 = 2352 bytes, exceeding the device's 2048-byte kernel-argument
 limit — IGC reports "Total size of kernel arguments exceeds limit" and fails
@@ -128,59 +121,6 @@ which is why chunk 2 is the shipped GPU baseline. Agreement with the CPU
 reference is at machine epsilon (2×10⁻¹⁶) for every chunk. The chunked path
 is exercised in the test suite.
 
-## 4. Float32 + compensated summation (closed — will not be implemented)
-
-FP32 would raise consumer-GPU throughput ~64× for this kernel, but ``D^2``
-spans ``10^{-21}``–``10^{-3}`` relative to the signal norm, so naive FP32 is
-unusable and a viable scheme would need compensated bin reductions plus an
-error model validated against FP64 on the target grid. Closed: the
-pipeline stays FP64 throughout.
-
-## 5. Derivative-free optimizer fallback (closed — will not be implemented)
-
-**Closed by decision (2026-08):** no derivative-free fallback will be
-implemented. The analysis below is retained for the record: the loss is
-smooth with exact AD derivatives, the fallback would raise the optimizer
-floor by many decades at higher cost, and the trigger condition (an
-AD-impenetrable objective) is not on the project's path.
-
-Original analysis — deliberately **not** part of v1.0. The current loss is a C^∞ pure-Julia
-least-squares objective in six dimensions with exact ForwardDiff gradients
-and Hessians; the exact-Hessian interior-point Newton locates minima
-precisely enough to resolve ``D^2 \sim 10^{-19}`` in 16–40 iterations. A
-simplex-type method converges linearly, stalls near parameter accuracy
-``\sqrt{\varepsilon} \approx 10^{-8}``, and would raise the optimizer floor
-by roughly eight to ten decades while costing *more* wall time (hundreds of
-1.57M-bin evaluations vs ~30 Hessian steps). Robustness is already covered
-elsewhere: AD correctness is A/B-locked against the committed fixtures, and
-basin robustness is handled by seeded multi-start.
-
-**Trigger condition:** an objective the AD cannot penetrate — production
-waveform families called through external C libraries (LALSuite-style), or
-non-smooth statistics from the noise-realization study (item 2).
-
-**Chosen candidates (in order):** `PRIMA.jl` **BOBYQA** — registered,
-actively maintained modern reimplementation of Powell's methods, natively
-bound-constrained, quadratic-model-based (far superior to Nelder–Mead on
-smooth-ish low-dimensional problems); and, for a zero-new-dependency sanity
-cross-check available today, `Fminbox(NelderMead())` from Optim.jl (already
-in the dependency tree). Wire either through the existing
-`[pipeline].optimizer` validation and the `calculate_numerical_distance`
-dispatch; expect and document a raised floor in the scaling figures.
-
-## 6. Public-release checklist (repository is private until then)
-
-Deferred deliberately while Actions minutes are billed and the manuscript
-is under revision; every item is mechanical.
-
-- CI: restore the `push`/`pull_request`/tag triggers and the macOS,
-  Windows and pre-release Linux legs removed from `.github/workflows/CI.yml`
-  for the private phase.
-- Dependency automation: CompatHelper (weekly `[compat]` bumps) and
-  TagBot (release tags) workflows; the Dependabot GitHub-Actions ecosystem
-  stays.
-- Documentation: `deploydocs` to GitHub Pages with `prettyurls` restored
-  to the CI-conditional form in `docs/make.jl`.
-- Citation: DOI (Zenodo archive of the tagged release) in `CITATION.cff`
-  and the README.
-- Registration in the General registry after the v1.0.0 tag.
+Long GPU campaigns should run under `scripts/run_supervised.jl`, which detects
+a stalled device from the worker's heartbeat and CPU time and continues the run
+in a new process (see Complex Run Parameters, Supervised runs).

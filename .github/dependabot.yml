@@ -5,3 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "julia"
+    directories:
+      - "/"
+      - "/docs"
+      - "/test"
+      - "/bench"
+    schedule:
+      interval: "weekly"

@@ -262,7 +262,7 @@ $(TYPEDSIGNATURES)
 
 Response constants of a source and constellation (see
 [`ResponseGeometry`](@ref)). The reference polarization vectors of the
-ecliptic frame are `u = −e_λ` and `v = −e_β`; the wave-frame vectors are
+ecliptic frame are `u = −e_λ` and `v = e_β`; the wave-frame vectors are
 their rotation by the polarization angle about the propagation direction,
 `p = u cos ψ + v sin ψ`, `q = −u sin ψ + v cos ψ`, so that `(p, q, k)` with
 `k = −n̂` is right-handed and `e⁺ = p⊗p − q⊗q`, `e× = p⊗q + q⊗p`.

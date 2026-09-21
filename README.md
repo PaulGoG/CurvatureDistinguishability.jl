@@ -23,7 +23,7 @@ CurvatureDistinguishability/
 ├── configs/            # TOML scenarios: quickstart*, production_*, campaigns/
 ├── src/                # library: physics, geometry, inference, orchestration, plotting
 ├── ext/                # GPU package extensions (CUDA, AMDGPU, Metal, oneAPI)
-├── scripts/            # entry points: run_pipeline, launch_run, replot, collect_plots
+├── scripts/            # entry points: run_pipeline, run_supervised, launch_run, replot, collect_plots
 ├── test/               # unit, physics-validation, static-QA and end-to-end tests
 ├── bench/              # BenchmarkTools suite (own environment)
 ├── docs/               # Documenter.jl sources (own environment)
@@ -72,8 +72,15 @@ described in the documentation page `docs/src/parameters.md`.
 # main pipeline, foreground; without --config the minutes-scale configs/quickstart.toml runs
 julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml
 
-# detached run with ANSI-free logs (forwards --config / --output-dir)
-julia scripts/launch_run.jl --config configs/production_cpu.toml
+# supervised run(s): hang detection, continuation in a new process, retry budget;
+# re-running the same command continues what is unfinished
+julia scripts/run_supervised.jl configs/production_gpu.toml configs/production_cpu.toml
+
+# the same, detached from the terminal (console output in data/logs/)
+julia scripts/launch_run.jl configs/production_gpu.toml configs/production_cpu.toml
+
+# continue an interrupted unsupervised run instead of starting run_<id>_rN
+julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.toml --resume
 
 # regenerate every figure of a finished run from its CSVs; --rho R rescales maps and
 # threshold markers to another discernibility threshold without recomputation
@@ -102,7 +109,8 @@ values and **unknown keys** abort with an error naming the offending key,
 suspicious values warn. Each run lands in
 `data/run_<confighash>/` with a config snapshot, `metadata.toml`
 (git commit, backend, timings), `hardware.txt`, a copy of the resolved
-`Manifest.toml` and a structured, ANSI-free `run.log`; reruns
+`Manifest.toml`, per-sweep work-item checkpoints (`checkpoint.csv`) and a
+structured, ANSI-free `run.log`; reruns
 get suffixed directories and `safesave`-style backups — results are never
 overwritten. `scripts/run_pipeline.jl` exits with status 0 only when every
 stage completed, 2 on a configuration error and 3 when one or more stages
@@ -148,8 +156,9 @@ failed (the remaining stages still run and the failures are listed in
 
 - ROCm 7.1 on gfx1100/gfx1101 (Radeon PRO W7900, RX 7700 XT): a kernel
   dispatch intermittently never completes; the process stays alive at
-  near-zero CPU load with no error. Unresolved upstream; long GPU campaigns
-  on these devices need external supervision and relaunch.
+  near-zero CPU load with no error. Unresolved upstream; run long GPU
+  campaigns on these devices under `scripts/run_supervised.jl`, which ends
+  the stalled process and continues the run.
 - Intel integrated GPUs driven by i915: the kernel resets the compute
   context when a single launch exceeds the engine preempt timeout (7.5 s by
   default). `hessian_chunk = 2` keeps launches well below it on the shipped
@@ -204,16 +213,22 @@ CurvatureDistinguishability/
 │   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
 │   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata
 │   ├── Plotting.jl         # CairoMakie figures; family-wide tick policy
+│   ├── Heartbeat.jl        # worker liveness counter and heartbeat file
+│   ├── Supervision.jl      # process watchdog: CPU/progress hang detection, retry budget
+│   ├── Checkpoint.jl       # durable per-separation sweep checkpoints
 │   ├── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
+│   ├── Campaign.jl         # supervised execution of pipeline configurations
 │   └── RunFigures.jl       # figure regeneration from persisted run CSVs
 ├── ext/                    # CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext
 ├── scripts/
 │   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)
-│   ├── launch_run.jl       # detached launcher via Base.julia_cmd()
+│   ├── run_supervised.jl   # supervisor entry point (one or more configurations)
+│   ├── launch_run.jl       # detached launcher of run_supervised.jl
 │   ├── replot.jl           # regenerate all figures from a run's CSVs
 │   └── collect_plots.jl    # flat PNG browsing view of one or more runs
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
+│   ├── supervision_tests.jl  # watchdog, checkpoint and continuation tests
 │   ├── Project.toml
 │   ├── activate.jl         # interactive test sandbox via TestEnv.jl
 │   └── fixtures/
@@ -221,6 +236,7 @@ CurvatureDistinguishability/
 │       └── reference/      # committed golden-value regression fixtures
 ├── bench/                  # BenchmarkTools scripts (own environment: activate.jl)
 ├── docs/                   # Documenter.jl sources (own environment: activate.jl, make.jl, src/)
+├── CHANGELOG.md
 ├── CITATION.cff
 ├── data/
 │   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
