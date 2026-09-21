@@ -6,7 +6,7 @@ using CurvatureDistinguishability
 const USAGE = """
 Curvature-Distinguishability Unified Pipeline
 
-    julia --project scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
+    julia --threads=auto scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
 
     --config PATH       TOML configuration, relative to the project root
                         (shipped scenarios live in configs/; the default is
@@ -15,7 +15,14 @@ Curvature-Distinguishability Unified Pipeline
                         configs/production_cpu.toml)
     --output-dir DIR    output directory relative to the project root
                         (default: data)
+
+Exit status: 0 every stage completed; 2 configuration or resource-budget
+error (nothing was computed); 3 one or more stages failed (the others ran;
+see failed_stages in metadata.toml); 1 any other error.
 """
+
+const EXIT_CONFIG_ERROR = 2
+const EXIT_STAGE_FAILURE = 3
 
 function parse_commandline(argv)
     options = Dict("config" => CurvatureDistinguishability.DEFAULT_CONFIG,
@@ -37,9 +44,26 @@ function parse_commandline(argv)
     return options
 end
 
+"""
+Report a configuration or resource-budget error and end with `EXIT_CONFIG_ERROR`;
+any other exception propagates.
+"""
+function exit_on_config_error(err)
+    err isa Union{ArgumentError,CurvatureDistinguishability.ResourceBudgetError} || return
+    showerror(stderr, err)
+    println(stderr)
+    exit(EXIT_CONFIG_ERROR)
+end
+
 args = parse_commandline(ARGS)
 config_path = joinpath(PROJECT_ROOT, args["config"])
-isfile(config_path) || error("Configuration file not found: $config_path")
+# validated before any GPU package loads, so an unusable file costs seconds
+try
+    load_and_validate_config(config_path)
+catch err
+    exit_on_config_error(err)
+    rethrow()
+end
 
 # Load a GPU package only when the configuration asks for one AND it is
 # installed in this environment — no blind try/catch, loud diagnostics. The
@@ -69,4 +93,11 @@ let hw = get(effective_config(config_path), "hardware", Dict{String,Any}())
     end
 end
 
-run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])
+try
+    run_pipeline(config_path, PROJECT_ROOT, args["output-dir"])
+catch err
+    # stage failures are already in run.log with their backtraces
+    err isa CurvatureDistinguishability.PipelineStageError && exit(EXIT_STAGE_FAILURE)
+    exit_on_config_error(err)
+    rethrow()
+end

@@ -77,8 +77,10 @@ annotated slope and correction coefficients are the persisted run-time
 values from `sweep_meta.toml`; with `refit = true` they are refitted from
 the CSV with the current fitting code (persisted metadata is never
 modified). With `rho` the discernibility threshold is rescaled exactly from
-the persisted normalized curvature: `suffix` carries the `_rho…` tag and
-`residual` is `nothing` (the residual spectrum is threshold-independent).
+the persisted normalized curvature and the sweep's amplitude ratio: `suffix`
+carries the `_rho…` tag and `residual` is `nothing` (the residual spectrum is
+threshold-independent). `delta_min` is the threshold separation drawn in the
+scaling figure.
 """
 function sweep_figures(run_dir::AbstractString, case::AbstractString;
     refit::Bool = false, rho::Union{Nothing,Real} = nothing)
@@ -104,9 +106,12 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         c2 = Float64(get(meta, "c2", NaN))
     end
     rho_sq = rho === nothing ? Float64(get(meta, "rho_sq", 1.0)) : Float64(rho)^2
+    # D² = (p/16) K δ⁴ with p = (2q/(1+q))², q = A₂/A₁ (as in run_sweep)
+    amp_ratio = Float64(get(meta, "amp_ratio", 1.0))
+    amp_prefactor = (2amp_ratio / (1 + amp_ratio))^2
     delta_min =
         rho === nothing ? Float64(get(meta, "delta_min", NaN)) :
-        (16.0 * rho_sq / Float64(get(meta, "K_u_norm", NaN)))^(1 / 4)
+        (16.0 * rho_sq / (amp_prefactor * Float64(get(meta, "K_u_norm", NaN))))^(1 / 4)
     scaling = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
         rho_sq = rho_sq, delta_min = delta_min,
         slope = slope, slope_err = slope_err,
@@ -137,7 +142,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     end
     return (scaling = scaling, residual = residual,
         residual_threshold = residual_threshold,
-        suffix = rho === nothing ? "" : rho_tag(rho))
+        suffix = rho === nothing ? "" : rho_tag(rho), delta_min = delta_min)
 end
 
 """

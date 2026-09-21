@@ -36,7 +36,7 @@ using ..Fitting:
     perturbative_mask, ratio_correction_fit
 
 export run_pipeline
-public ResourceBudgetError, DEFAULT_CONFIG
+public ResourceBudgetError, PipelineStageError, DEFAULT_CONFIG
 
 """
 Configuration the pipeline scripts run without an explicit `--config`: the
@@ -62,6 +62,23 @@ Base.showerror(io::IO, e::ResourceBudgetError) = print(io, "ResourceBudgetError:
 # -----------------------------------------------------------------------------
 
 # angular tolerance below which two map directions are the same vertex
+"""
+    PipelineStageError(run_dir, failed_stages)
+
+Thrown by [`run_pipeline`](@ref) once the run has finished when one or more
+stages failed: the remaining stages have run, `metadata.toml` lists the
+failures and `run.log` carries their backtraces.
+"""
+struct PipelineStageError <: Exception
+    run_dir::String
+    failed_stages::Vector{String}
+end
+
+function Base.showerror(io::IO, err::PipelineStageError)
+    print(io, "PipelineStageError: stage(s) ", join(err.failed_stages, ", "),
+        " failed; backtraces in ", joinpath(err.run_dir, "run.log"))
+end
+
 const ANGLE_DEDUPE_TOL = 1e-10
 # prior-limited boundary fraction above which the spin-plane null-direction
 # advisory is logged
@@ -407,10 +424,12 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
     n = length(deltas)
     D2_num = zeros(n)
     best_fits = zeros(n, N_PARAMS)
-    converged = falses(n)
+    # Vector{Bool}, not BitVector: elements are written from concurrent tasks and
+    # neighbouring bits of a BitVector share one machine word
+    converged = fill(false, n)
     iteration_counts = zeros(Int, n)
     gradient_norms = zeros(n)
-    at_bound = falses(n)
+    at_bound = fill(false, n)
     multi_start_gain = ones(n)
 
     prog = Progress(n; desc = "  optimizing: ", enabled = progress_enabled())
@@ -1201,6 +1220,11 @@ snapshots the configuration and provenance metadata into a
 configuration-hashed run directory, then executes the 1D sweep and 2D
 mapping modules. Each sweep/map is guarded individually — a failing stage is
 logged with its backtrace and the remaining stages continue.
+
+Returns the run directory when every stage completed. When stages failed, the
+run is finished first (metadata written, log closed) and a
+[`PipelineStageError`](@ref) naming them is thrown. `InterruptException` and
+`OutOfMemoryError` are never absorbed by the stage guards.
 """
 function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     output_dir::AbstractString)
@@ -1219,6 +1243,7 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     run_id = run_id_from_config(config_path)
     out_base = unique_run_dir(joinpath(project_root, output_dir), run_id)
     snapshot_config(config_path, out_base)
+    snapshot_manifest(out_base)
 
     log_stream = open(joinpath(out_base, "run.log"), "w")
     file_logger = FormatLogger(log_stream) do io, args
@@ -1226,13 +1251,14 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
             uppercase(string(args.level)), " ", args.message)
     end
     tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
-    try
+    failures = try
         with_logger(tee) do
             _run_pipeline(cfg, project_root, out_base, config_path)
         end
     finally
         close(log_stream)
     end
+    isempty(failures) || throw(PipelineStageError(out_base, failures))
     return out_base
 end
 
@@ -1300,6 +1326,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
             try
                 run_sweep(s, i, length(cfg.sweeps), ctx)
             catch err
+                err isa Union{InterruptException,OutOfMemoryError} && rethrow()
                 push!(failures, s.name)
                 @error "Sweep '$(s.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
@@ -1316,6 +1343,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
             try
                 run_map(m, i, length(cfg.maps), ctx)
             catch err
+                err isa Union{InterruptException,OutOfMemoryError} && rethrow()
                 push!(failures, m.name)
                 @error "Map '$(m.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
@@ -1336,7 +1364,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
               "$(join(failures, ", ")) — see run.log for backtraces. Results in $out_base"
     end
     println("=" ^ 78)
-    return nothing
+    return failures
 end
 
 end # module

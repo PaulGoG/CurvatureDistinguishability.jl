@@ -621,9 +621,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                     dir,
                     "[[maps]]\nname = \"m\"\nparam_x = 5\nparam_y = 6\ntheta_0 = [1,1,1,0,1.5,0]\n",
                 ))
-            # unknown keys warn (typo protection), odd n_angles warns and rounds
-            @test_logs (:warn, r"Unknown configuration key 'n_anglse'") match_mode = :any load_and_validate_config(
+            # unknown keys abort and the message names the key (typo protection);
+            # odd n_angles warns and rounds
+            @test_throws "Unknown configuration key 'n_anglse'" load_and_validate_config(
                 write_cfg(dir, "[mapping]\nn_anglse = 100\n"))
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[hardware]\nrequire_gp = true\n"))
             cfg_odd =
                 @test_logs (:warn, r"odd; rounding up") match_mode = :any load_and_validate_config(
                     write_cfg(dir, "[mapping]\nn_angles = 33\n"))
@@ -939,17 +942,28 @@ enabled = true
         for f in campaign_files
             @test load_and_validate_config(joinpath(campaigns, f)) isa PipelineSettings
         end
-        base_sweeps = TOML.parsefile(joinpath(configs, "production_cpu.toml"))["sweeps"]
+        base = load_and_validate_config(joinpath(configs, "production_cpu.toml"))
+        same_sweep(a, b) =
+            all(getfield(a, f) == getfield(b, f) for f in fieldnames(SweepSpec))
+        sweep_ids = String[]
         for n in 1:7
             ids = [
                 run_id_from_config(joinpath(campaigns, "sweep$(n)_chunk$(c).toml"))
                 for c in 0:3
             ]
             @test length(unique(ids)) == 1
-            single = load_and_validate_config(joinpath(campaigns, "sweep$(n)_chunk0.toml"))
-            @test length(single.sweeps) == 1
-            @test single.sweeps[1].name == base_sweeps[n]["name"]
+            push!(sweep_ids, first(ids))
+            for c in 0:3
+                single =
+                    load_and_validate_config(
+                        joinpath(campaigns, "sweep$(n)_chunk$(c).toml"),
+                    )
+                @test length(single.sweeps) == 1 &&
+                      same_sweep(single.sweeps[1], base.sweeps[n])
+                @test single.hessian_chunk == c && single.require_gpu
+            end
         end
+        @test allunique(sweep_ids)
         @test length(
             unique(
                 run_id_from_config(joinpath(campaigns, f)) for f in
@@ -1316,6 +1330,9 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             @test occursin("BLAS threads", read(joinpath(out_base, "hardware.txt"), String))
             @test haskey(meta, "git") && haskey(meta, "finished")
             @test meta["failed_stages"] == ""
+            # the resolved manifest travels with the run and is never overwritten
+            @test isfile(joinpath(out_base, "Manifest.toml"))
+            @test_throws ArgumentError snapshot_manifest(out_base)
 
             sdir = joinpath(out_base, "sweeps", "mini_sweep")
             res = CSV.read(joinpath(sdir, "results.csv"), DataFrame)
@@ -1452,12 +1469,35 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             @test cases.maps == ["mini_mass_time", "mini_spin_map"]
             figs = sweep_figures(out_base, "mini_sweep")
             @test figs.residual !== nothing && figs.suffix == ""
+            # rescaling to the run's own threshold reproduces the persisted δ_min,
+            # amplitude prefactor included (mini_unequal has A₂/A₁ = 0.5)
+            for case in cases.sweeps
+                sm = TOML.parsefile(joinpath(out_base, "sweeps", case, "sweep_meta.toml"))
+                rescaled = sweep_figures(out_base, case; rho = sqrt(sm["rho_sq"]))
+                @test rescaled.delta_min ≈ sm["delta_min"] rtol = 1e-12
+            end
             figs_refit = sweep_figures(out_base, "mini_sweep"; refit = true)
             @test figs_refit.suffix == ""
             rz = zone_map_figure(out_base, "mini_spin_map"; rho = 2.0)
             @test rz.suffix == "_rho2p0" && rz.contour isa DataFrame
             @test all(rz.contour.R_Capped .<= rz.contour.R_Box .+ 1e-12)
             @test all(isapprox.(rz.contour.R_Capped, cm2.R_Capped; rtol = 1e-12))
+
+            # exit-status contract of the CLI: a configuration the pipeline cannot
+            # honour ends with status 2 before any output exists
+            pipeline_script = joinpath(dirname(@__DIR__), "scripts", "run_pipeline.jl")
+            bad_cfg = joinpath(dir, "bad_key.toml")
+            write(bad_cfg, "[hardware]\nrequire_gp = true\n")
+            bad_out = joinpath(dir, "bad_out")
+            cmd_bad = addenv(
+                `$jlbin --startup-file=no $pipeline_script --config $bad_cfg --output-dir $bad_out`,
+                "JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing)
+            proc_bad =
+                run(pipeline(ignorestatus(cmd_bad), stdout = devnull, stderr = devnull))
+            @test proc_bad.exitcode == 2
+            @test !isdir(bad_out)
+            stage_err = CD.PipelineStageError(out_base, ["mini_sweep", "mini_spin_map"])
+            @test occursin("mini_sweep, mini_spin_map", sprint(showerror, stage_err))
 
             # collect_plots subprocess: flat browsing PNGs from a run *path*
             # selector plus a destination argument (same env scrubbing as the

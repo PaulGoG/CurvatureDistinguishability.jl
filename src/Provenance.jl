@@ -12,7 +12,7 @@ using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 
 export run_id_from_config, effective_config, identity_config,
-    unique_run_dir, snapshot_config, backup_existing!,
+    unique_run_dir, snapshot_config, snapshot_manifest, backup_existing!,
     write_run_metadata, write_hardware_fingerprint, git_state
 
 # top-level key naming the base file an overlay configuration is merged onto
@@ -153,6 +153,33 @@ function snapshot_config(config_path::AbstractString, run_dir::AbstractString)
         cp(config_path, dest; force = false)
     end
     return dest
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Copy the resolved manifest of the active project into the run directory as
+`Manifest.toml`, so the exact dependency versions behind a result travel with
+it (the repository tracks `Project.toml` and `[compat]` only). The
+version-specific manifest names take precedence, as in the package loader.
+Returns the destination, or `nothing` with a warning when the active project
+has no manifest. Never overwrites an existing snapshot.
+"""
+function snapshot_manifest(run_dir::AbstractString)
+    dest = joinpath(run_dir, "Manifest.toml")
+    isfile(dest) && throw(ArgumentError("manifest snapshot already exists: $dest"))
+    project = Base.active_project()
+    if project !== nothing
+        suffix = "-v$(VERSION.major).$(VERSION.minor).toml"
+        for name in ("JuliaManifest" * suffix, "Manifest" * suffix,
+            "JuliaManifest.toml", "Manifest.toml")
+            source = joinpath(dirname(project), name)
+            isfile(source) && return cp(source, dest)
+        end
+    end
+    @warn "No manifest found for the active project; the run directory carries no " *
+          "dependency snapshot." project
+    return nothing
 end
 
 """

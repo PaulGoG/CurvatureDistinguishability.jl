@@ -57,7 +57,9 @@ export calculate_numerical_distance, optimization_diagnostics, loss_function
 
 include("Provenance.jl")
 using .Provenance
-export run_id_from_config, effective_config, identity_config, backup_existing!
+export run_id_from_config,
+    effective_config, identity_config, backup_existing!,
+    snapshot_manifest
 
 include("Config.jl")
 using .Config
@@ -71,9 +73,9 @@ export publication_theme,
 
 include("Orchestrator.jl")
 using .Orchestrator
-using .Orchestrator: DEFAULT_CONFIG
+using .Orchestrator: DEFAULT_CONFIG, PipelineStageError, ResourceBudgetError
 export run_pipeline
-public DEFAULT_CONFIG
+public DEFAULT_CONFIG, PipelineStageError, ResourceBudgetError
 
 include("RunFigures.jl")
 using .RunFigures

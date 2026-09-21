@@ -145,6 +145,7 @@ CurvatureDistinguishability.Provenance.identity_config
 CurvatureDistinguishability.Provenance.EXECUTION_SECTIONS
 CurvatureDistinguishability.Provenance.unique_run_dir
 CurvatureDistinguishability.Provenance.snapshot_config
+CurvatureDistinguishability.Provenance.snapshot_manifest
 CurvatureDistinguishability.Provenance.backup_existing!
 CurvatureDistinguishability.Provenance.write_run_metadata
 CurvatureDistinguishability.Provenance.write_hardware_fingerprint
@@ -190,6 +191,7 @@ CurvatureDistinguishability.Fitting.MIN_FIT_POINTS
 CurvatureDistinguishability.Orchestrator.run_pipeline
 CurvatureDistinguishability.Orchestrator.plan_resources
 CurvatureDistinguishability.Orchestrator.ResourceBudgetError
+CurvatureDistinguishability.Orchestrator.PipelineStageError
 CurvatureDistinguishability.Orchestrator.DEFAULT_CONFIG
 ```
 

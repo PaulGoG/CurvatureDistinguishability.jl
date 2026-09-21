@@ -118,7 +118,7 @@ end
 
 """
 Recognized configuration keys per `[section]` context — the whitelist behind
-[`warn_unknown_keys`](@ref)'s typo protection.
+[`reject_unknown_keys`](@ref)'s typo protection.
 """
 const KNOWN_KEYS = Dict(
     "" => ["base_config", "pipeline", "grid", "physics", "noise", "mapping",
@@ -155,15 +155,18 @@ const KNOWN_KEYS = Dict(
 )
 
 """
-Warn (typo protection) on every key of `table` that is not in the
-[`KNOWN_KEYS`](@ref) list for `context`.
+Reject every key of `table` that is not in the [`KNOWN_KEYS`](@ref) list for
+`context`: a misspelled key would otherwise run on the default of the key it
+was meant to set.
 """
-function warn_unknown_keys(table::AbstractDict, context::String)
+function reject_unknown_keys(table::AbstractDict, context::String)
     known = get(KNOWN_KEYS, context, String[])
-    for key in keys(table)
-        key in known || @warn "Unknown configuration key '$key' in " *
-              "[$(isempty(context) ? "top level" : context)] — ignored. " *
-              "Check for typos; known keys: $(join(known, ", "))."
+    for key in sort!(collect(keys(table)))
+        key in known || config_error(
+            "Unknown configuration key '$key' in " *
+            "[$(isempty(context) ? "top level" : context)]; known keys: " *
+            "$(join(known, ", ")).",
+        )
     end
     return nothing
 end
@@ -235,8 +238,8 @@ $(TYPEDSIGNATURES)
 
 Parse a configuration TOML file — an overlay's `base_config` resolved and
 merged first ([`effective_config`](@ref)) — validating every field (types,
-ranges, name uniqueness, interior base points) with descriptive errors;
-warn on unknown keys and physically suspicious values.
+ranges, name uniqueness, interior base points, unknown keys) with descriptive
+errors; warn on physically suspicious values.
 """
 function load_and_validate_config(config_path::AbstractString)
     isfile(config_path) || config_error("Configuration file not found: $config_path")
@@ -255,7 +258,7 @@ helpers, each returning a NamedTuple whose keys are `PipelineSettings`
 field names; the keyword constructor assembles them.
 """
 function settings_from_config(config::AbstractDict)
-    warn_unknown_keys(config, "")
+    reject_unknown_keys(config, "")
     pipeline = parse_pipeline(config)
     sweep_settings = parse_sweep_settings(config)
     grid = parse_grid(config)
@@ -278,7 +281,7 @@ end
 """
 function parse_pipeline(config::AbstractDict)
     pipeline = get(config, "pipeline", Dict{String,Any}())
-    warn_unknown_keys(pipeline, "pipeline")
+    reject_unknown_keys(pipeline, "pipeline")
     run_1d_sweeps = get_boolean(pipeline, "run_1d_sweeps", true, "pipeline")
     run_2d_mapping = get_boolean(pipeline, "run_2d_mapping", true, "pipeline")
     opt_str = get(pipeline, "optimizer", "ipnewton")
@@ -298,7 +301,7 @@ optimizer tolerances, multi-start and analysis tunables.
 function parse_sweep_settings(config::AbstractDict)
     pipeline = get(config, "pipeline", Dict{String,Any}())
     sweep_settings = get(pipeline, "sweep_settings", Dict{String,Any}())
-    warn_unknown_keys(sweep_settings, "pipeline.sweep_settings")
+    reject_unknown_keys(sweep_settings, "pipeline.sweep_settings")
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 ||
         config_error("[pipeline.sweep_settings].n_deltas must be >= 2, got $n_deltas")
@@ -391,7 +394,7 @@ checked for a usable minimum.
 """
 function parse_grid(config::AbstractDict)
     grid = get(config, "grid", Dict{String,Any}())
-    warn_unknown_keys(grid, "grid")
+    reject_unknown_keys(grid, "grid")
     T_obs = get_number(grid, "T_obs", SECONDS_PER_YEAR, "grid")
     T_obs > 0 || config_error("[grid].T_obs must be > 0, got $T_obs")
     f_min = get_number(grid, "f_min", 1.0e-3, "grid")
@@ -415,7 +418,7 @@ length.
 """
 function parse_physics(config::AbstractDict, arm_length::Real)
     phys = get(config, "physics", Dict{String,Any}())
-    warn_unknown_keys(phys, "physics")
+    reject_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
     number(key, default) = get_number(phys, key, default, "physics")
     wp = WaveformParams(
@@ -454,7 +457,7 @@ Robson Table-1 selection for `T_obs` and is overridable individually.
 """
 function parse_noise(config::AbstractDict, T_obs::Real)
     noise_cfg = get(config, "noise", Dict{String,Any}())
-    warn_unknown_keys(noise_cfg, "noise")
+    reject_unknown_keys(noise_cfg, "noise")
     base_noise = robson_confusion_params(T_obs)
     noise_numeric = (:confusion_amp, :confusion_alpha, :confusion_beta,
         :confusion_kappa, :confusion_gamma, :confusion_knee_freq, :arm_length,
@@ -481,7 +484,7 @@ and corner-bisection controls, and the unbounded-direction polygon cap.
 """
 function parse_mapping(config::AbstractDict)
     mapping = get(config, "mapping", Dict{String,Any}())
-    warn_unknown_keys(mapping, "mapping")
+    reject_unknown_keys(mapping, "mapping")
     map_n_angles = get_integer(mapping, "n_angles", 2000, "mapping")
     map_n_angles >= 8 || config_error("[mapping].n_angles must be >= 8, got $map_n_angles")
     if isodd(map_n_angles)
@@ -517,7 +520,7 @@ consumed only by the detached launcher.
 """
 function parse_hardware(config::AbstractDict)
     hardware = get(config, "hardware", Dict{String,Any}())
-    warn_unknown_keys(hardware, "hardware")
+    reject_unknown_keys(hardware, "hardware")
     gpu_str = get(hardware, "gpu_backend", "auto")
     gpu_backend = Symbol(lowercase(String(gpu_str)))
     gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
@@ -553,7 +556,7 @@ end
 """
 function parse_safety(config::AbstractDict)
     safety = get(config, "safety", Dict{String,Any}())
-    warn_unknown_keys(safety, "safety")
+    reject_unknown_keys(safety, "safety")
     default_ram = DEFAULT_RAM_FRACTION * Sys.total_memory() / 2^30
     max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
     max_ram_gb > 0 || config_error("[safety].max_ram_gb must be > 0, got $max_ram_gb")
@@ -581,7 +584,7 @@ function parse_bounds(config::AbstractDict)
     catch err
         config_error("Invalid [parameter_bounds]: $(sprint(showerror, err))")
     end
-    warn_unknown_keys(table, "parameter_bounds")
+    reject_unknown_keys(table, "parameter_bounds")
     return (; bounds)
 end
 
@@ -597,7 +600,7 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
     map_tables = Vector{Dict{String,Any}}(get(config, "maps", []))
     seen = Set{String}()
     sweeps = map(sweep_tables) do s
-        warn_unknown_keys(s, "sweeps[]")
+        reject_unknown_keys(s, "sweeps[]")
         name = String(get(s, "name", ""))
         fs_safe(name) ||
             config_error(
@@ -631,7 +634,7 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
         SweepSpec(name, theta0, u, rho, amp_ratio)
     end
     maps = map(map_tables) do m
-        warn_unknown_keys(m, "maps[]")
+        reject_unknown_keys(m, "maps[]")
         name = String(get(m, "name", ""))
         fs_safe(name) ||
             config_error(
@@ -672,7 +675,7 @@ end
 """
 function parse_monitoring(config::AbstractDict)
     monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
-    warn_unknown_keys(monitoring_cfg, "monitoring")
+    reject_unknown_keys(monitoring_cfg, "monitoring")
     monitoring_enabled = get_boolean(monitoring_cfg, "enabled", false, "monitoring")
     progress_log_fraction =
         get_number(monitoring_cfg, "progress_log_fraction", 0.25, "monitoring")

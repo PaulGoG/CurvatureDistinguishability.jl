@@ -40,9 +40,13 @@ println("  console log  : $console_log")
 println("  (progress bars are TTY-gated: the detached log stays ANSI-free;")
 println("   the run directory additionally receives a structured run.log)")
 
-# Same Julia binary and flags as this session; detached child process.
-cmd = `$(Base.julia_cmd()) --project=$PROJECT_ROOT --threads=auto $(heap_hint_flags(ARGS)) $PIPELINE_SCRIPT $ARGS`
-process = run(pipeline(cmd, stdout = console_log, stderr = console_log), wait = false)
+# Same Julia binary as this session; the child activates its own environment,
+# runs in its own process group (survives the launching shell) and writes both
+# streams through one handle, so neither overwrites the other.
+cmd = `$(Base.julia_cmd()) --threads=auto $(heap_hint_flags(ARGS)) $PIPELINE_SCRIPT $ARGS`
+log_io = open(console_log, "a")
+process = run(pipeline(detach(cmd); stdout = log_io, stderr = log_io); wait = false)
+close(log_io)
 
 println("  status       : RUNNING (PID $(getpid(process)))")
 println("  monitor with : tail -f $console_log")

@@ -351,9 +351,10 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     # ForwardDiff configs are constructed once per solve (they depend only on
     # the parameter length), not on every optimizer callback — per-call
     # construction allocates fresh dual work arrays thousands of times per
-    # sweep. hessian_chunk > 0 limits the outer dual width: (1+c)(1+6) lanes
-    # per kernel launch instead of 49 — the fallback for GPU compilers whose
-    # module build fails on the full nested-dual kernel (see docs/roadmap).
+    # sweep. hessian_chunk = c > 0 sets the ForwardDiff chunk of the outer and
+    # the inner dual: (1+c)² lanes per kernel launch instead of 49, ⌈6/c⌉²
+    # launches per Hessian — for backends whose compiler or per-launch time
+    # limit rejects the full nested-dual kernel.
     x_proto = collect(Float64, theta_guess)
     grad_cfg = ForwardDiff.GradientConfig(loss, x_proto)
     g!(G, x) = ForwardDiff.gradient!(G, loss, x, grad_cfg)
