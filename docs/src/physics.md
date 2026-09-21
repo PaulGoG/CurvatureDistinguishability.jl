@@ -171,9 +171,14 @@ spectral density of §7:
 ```math
 F_A = \frac{F_Z - F_X}{\sqrt{3}}, \qquad F_E = \frac{F_X - 2F_Y + F_Z}{3}.
 ```
-The sky- and polarization-averaged ``\langle F_+^2 + F_\times^2\rangle`` of
-either channel is ``3/10``, the long-wavelength response of
-[Robson2019](@cite) (their Eq. 13), and the null combination ``X + Y + Z``
+Averaged over sky and polarization each channel has
+``\langle F_+^2\rangle = \langle F_\times^2\rangle = 3/20``, hence
+``\langle F_+^2 + F_\times^2\rangle = 3/10`` per channel. The response
+``R = 3/10`` of [Robson2019](@cite) (their Eqs. 8–9) is the
+single-polarization average summed over the two low-frequency channels,
+``2 \times 3/20``: the same number for a different sum, and the sky-averaged
+A + E signal-to-noise ratio of this model equals the one defined by their
+sensitivity curve (their Eq. 13). The null combination ``X + Y + Z``
 vanishes identically in this limit, so the T channel is zero and is
 excluded by default (`[physics].include_t_channel`).
 
@@ -184,7 +189,7 @@ The observed strain of channel ``C \in \{A, E\}`` is
 e^{-i\Psi_k(f)}\, e^{+i\Delta_{\mathrm D}(f, t_k)},
 ```
 where ``\mathcal{T}(f) = [1 + 0.6 (f/f_\star)^2]^{-1/2}`` is the finite-arm
-transfer roll-off of [Robson2019](@cite) (their Eq. 13) with
+transfer roll-off of [Robson2019](@cite) (their Eq. 9) with
 ``f_\star = c/(2\pi L) = 19.09`` mHz for ``L = 2.5\times 10^{9}`` m; the arm
 length is shared with the noise model and the orbit eccentricity through
 `[noise].arm_length`. The ``-i`` between the polarizations is the
