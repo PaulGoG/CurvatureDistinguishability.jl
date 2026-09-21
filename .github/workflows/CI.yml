@@ -1,5 +1,9 @@
 name: CI
 on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -46,22 +50,21 @@ jobs:
       - run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'
       - run: git diff --exit-code
   docs:
-    name: Documentation build
+    name: Documentation
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       actions: write
-      contents: read
+      contents: write
+      statuses: write
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
           version: '1'
       - uses: julia-actions/cache@v3
-      # strict build; the site is attached to the run as an artifact
+      # strict build; deployed to gh-pages from main and from tags
       - run: julia docs/make.jl
-      - uses: actions/upload-artifact@v4
-        with:
-          name: documentation
-          path: docs/build/
-          retention-days: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

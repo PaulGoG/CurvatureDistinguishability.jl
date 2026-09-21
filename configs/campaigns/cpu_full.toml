@@ -1,5 +1,5 @@
-# Overlay of ../production_cpu.toml: all sweeps and maps on the CPU backend.
-base_config = "../production_cpu.toml"
+# Overlay of benchmark_base.toml: all sweeps and maps on the CPU backend.
+base_config = "benchmark_base.toml"
 
 [hardware]
 # gpu_backend: one of: "none" (CPU) | "auto" | "cuda" | "amdgpu" | "metal" | "oneapi"

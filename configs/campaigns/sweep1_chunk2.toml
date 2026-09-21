@@ -1,6 +1,6 @@
-# Single-sweep overlay of ../production_cpu.toml: sweep 1 of 7,
+# Single-sweep overlay of benchmark_base.toml: sweep 1 of 7,
 # 'six_dimensional_diagonal_stress', Hessian chunk 2; GPU backend required, no maps.
-base_config = "../production_cpu.toml"
+base_config = "benchmark_base.toml"
 
 [pipeline]
 run_2d_mapping = false

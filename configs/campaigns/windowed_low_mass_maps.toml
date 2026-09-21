@@ -1,7 +1,7 @@
-# Overlay of ../production_cpu.toml: the two maps whose base points radiate in
+# Overlay of benchmark_base.toml: the two maps whose base points radiate in
 # band before the observation starts, with the finite-observation window; CPU
 # backend, no sweeps.
-base_config = "../production_cpu.toml"
+base_config = "benchmark_base.toml"
 
 [pipeline]
 run_1d_sweeps = false

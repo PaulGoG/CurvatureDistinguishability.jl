@@ -108,9 +108,13 @@ and its console output in `logs/attempt_<k>.console.log`.
     which weights every harmonic by the window of an observation over
     ``[0, T_{\mathrm{obs}}]`` at its emission time
     ([Waveform Physics](physics.md), Finite observation). The key belongs to
-    the run identity. The production base leaves it out;
-    `configs/campaigns/windowed_low_mass_maps.toml` recomputes with it the two
-    maps whose base points radiate in band before ``t = 0``.
+    the run identity. The production configuration sets it; the quickstart
+    configurations, whose coarse grids use ``T_{\mathrm{obs}}`` as a resolution
+    only, leave it out. `configs/campaigns/` is the multi-host benchmark
+    campaign as it was run, on its own frozen base without the window
+    (`benchmark_base.toml`); `windowed_low_mass_maps.toml` there recomputes
+    with the window the two maps whose base points radiate in band before
+    ``t = 0``.
 *   **Frequency Range:** ``10^{-4}`` Hz to ``0.05`` Hz.
 *   **Resolution:** at a spacing of ``1/T_{\mathrm{obs}}`` the grid spans
     ``\approx 1.57`` million frequency bins. The `[safety].max_ram_gb` budget

@@ -1,5 +1,6 @@
-# Production configuration — CPU reference campaign. Physical rationale for
-# the sweep/map cases and the grid: docs/src/parameters.md.
+# Base of the multi-host benchmark campaign, as it was run: the production
+# configuration without the observation window. The overlays of this directory
+# merge onto it.
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
@@ -57,10 +58,6 @@ orbit_phase = 0.0
 constellation_phase = 0.0
 # relative width of the innermost-stable-orbit taper, > 0
 cutoff_width = 0.1
-# weight every harmonic by the observation window over [0, T_obs] (true | false)
-observation_window = true
-# time scale of the window edges [s], > 0 and <= T_obs / 8
-window_edge_time = 1.0e6
 # the T channel is identically zero in this model (dead compute; unsupported
 # on GPU backends)
 include_t_channel = false

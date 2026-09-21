@@ -1032,7 +1032,8 @@ enabled = true
         campaigns = joinpath(configs, "campaigns")
         campaign_files = filter(f -> endswith(f, ".toml"), readdir(campaigns))
         required = vcat(
-            ["cpu_full.toml", "gpu_stress_benchmark.toml", "gpu_stress_chunk0.toml",
+            ["benchmark_base.toml", "windowed_low_mass_maps.toml", "cpu_full.toml",
+                "gpu_stress_benchmark.toml", "gpu_stress_chunk0.toml",
                 "gpu_stress_chunk1.toml", "gpu_stress_chunk2.toml",
                 "gpu_sweeps_chunk0.toml", "gpu_sweeps_chunk1.toml",
                 "gpu_sweeps_chunk2.toml", "gpu_sweeps_chunk3.toml"],
@@ -1041,7 +1042,18 @@ enabled = true
         for f in campaign_files
             @test load_and_validate_config(joinpath(campaigns, f)) isa PipelineSettings
         end
-        base = load_and_validate_config(joinpath(configs, "production_cpu.toml"))
+        # the campaign is frozen on its own base: it keeps the identifiers it ran
+        # under, whatever the production configuration becomes
+        base = load_and_validate_config(joinpath(campaigns, "benchmark_base.toml"))
+        @test base.wp.observation_time == 0
+        @test load_and_validate_config(joinpath(configs, "production_cpu.toml")).wp.observation_time ==
+              base.T_obs
+        for (file, id) in ("cpu_full.toml" => "run_5c0a7409",
+            "gpu_stress_benchmark.toml" => "run_9f93c3af",
+            "gpu_sweeps_chunk2.toml" => "run_96aad190",
+            "windowed_low_mass_maps.toml" => "run_b2538c19")
+            @test run_id_from_config(joinpath(campaigns, file)) == id
+        end
         same_sweep(a, b) =
             all(getfield(a, f) == getfield(b, f) for f in fieldnames(SweepSpec))
         sweep_ids = String[]
@@ -1062,7 +1074,8 @@ enabled = true
                 @test single.hessian_chunk == c && single.require_gpu
             end
         end
-        @test allunique(sweep_ids)
+        @test sweep_ids == ["run_ca598507", "run_5d0a1f8a", "run_253f6ad6", "run_a787b9b3",
+            "run_9c4f5e27", "run_cb2b9055", "run_fbc895db"]
         @test length(
             unique(
                 run_id_from_config(joinpath(campaigns, f)) for f in

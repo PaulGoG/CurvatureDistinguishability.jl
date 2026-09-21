@@ -1,6 +1,7 @@
 # CurvatureDistinguishability.jl
 
 [![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/dev/)
 
 Computational proof of the **quartic distinguishability law** for space-based
 gravitational-wave interferometry: the squared noise-weighted distance between
@@ -203,7 +204,7 @@ CurvatureDistinguishability/
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
-│   └── campaigns/          # multi-host campaign plans: whole-run and per-sweep chunk variants
+│   └── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions

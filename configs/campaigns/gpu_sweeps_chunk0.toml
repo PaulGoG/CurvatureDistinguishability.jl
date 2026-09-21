@@ -1,6 +1,6 @@
-# Overlay of ../production_cpu.toml: all sweeps, no maps, first functional GPU
+# Overlay of benchmark_base.toml: all sweeps, no maps, first functional GPU
 # backend, Hessian chunk 0.
-base_config = "../production_cpu.toml"
+base_config = "benchmark_base.toml"
 
 [pipeline]
 run_2d_mapping = false

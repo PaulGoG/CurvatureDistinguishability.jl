@@ -35,3 +35,9 @@ makedocs(
         "References" => "references.md",
     ],
 )
+
+deploydocs(
+    repo = "github.com/PaulGoG/CurvatureDistinguishability.jl",
+    devbranch = "main",
+    push_preview = false,
+)

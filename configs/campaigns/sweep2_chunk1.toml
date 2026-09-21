@@ -1,6 +1,6 @@
-# Single-sweep overlay of ../production_cpu.toml: sweep 2 of 7,
+# Single-sweep overlay of benchmark_base.toml: sweep 2 of 7,
 # 'massive_binary_mass_time', Hessian chunk 1; GPU backend required, no maps.
-base_config = "../production_cpu.toml"
+base_config = "benchmark_base.toml"
 
 [pipeline]
 run_2d_mapping = false
