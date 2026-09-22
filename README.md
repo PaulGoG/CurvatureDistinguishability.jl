@@ -1,8 +1,11 @@
 # CurvatureDistinguishability.jl
 
 [![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml)
-[![Docs stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/stable/)
-[![Docs dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/dev/)
+[![Coverage](https://codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl/graph/badge.svg)](https://app.codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl)
+[![Docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/stable/)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![Julia](https://img.shields.io/badge/julia-%E2%89%A5%201.12-9558B2?logo=julia&logoColor=white)](https://julialang.org/)
+[![Release](https://img.shields.io/github/v/release/PaulGoG/CurvatureDistinguishability.jl)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Computational proof of the **quartic distinguishability law** for space-based
