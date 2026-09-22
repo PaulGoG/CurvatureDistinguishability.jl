@@ -12,6 +12,27 @@ const CLEAN_ENV = ["JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing]
 fake_worker(program::AbstractString) =
     addenv(`$JULIA_BIN --startup-file=no --threads=1 -e $program`, CLEAN_ENV...)
 
+# A worker process reproduces a sweep table of the test process only up to the
+# summation order of its code generation: Pkg.test runs the in-process
+# reference with --check-bounds=yes (and coverage instrumentation in CI), which
+# changes the vectorised reductions of the geometry stage in the last bits.
+# Optimizer-trajectory columns are excluded, the physical columns are compared
+# to floating-point rounding, the discrete ones exactly.
+const TRAJECTORY_COLUMNS = ("Iterations", "GradNorm", "MultiStartGain")
+function same_sweep_table(a::DataFrame, b::DataFrame; rtol = 1e-8)
+    (names(a) == names(b) && nrow(a) == nrow(b)) || return false
+    for col in names(a)
+        col in TRAJECTORY_COLUMNS && continue
+        x, y = a[!, col], b[!, col]
+        if eltype(x) <: AbstractFloat
+            all(isapprox.(x, y; rtol = rtol)) || return false
+        else
+            x == y || return false
+        end
+    end
+    return true
+end
+
 fast_settings(; kwargs...) = SupervisionSettings(; poll_interval_s = 0.1,
     idle_stall_s = 1.0, busy_stall_s = 4.0, cpu_idle_cores = 0.2,
     startup_grace_s = 30.0,
@@ -328,8 +349,12 @@ gpu_backend = "none"
             run_dir, result = supervise_pipeline(variant, dir, "c"; worker_script = worker,
                 julia = JULIA_BIN, threads = "2", worker_env = CLEAN_ENV)
             @test result.status === :complete && length(result.attempts) == 1
-            @test read(joinpath(run_dir, "sweeps", "resumable", "results.csv")) ==
-                  read(joinpath(ref_sweep, "results.csv"))
+            @test same_sweep_table(
+                CSV.read(
+                    joinpath(run_dir, "sweeps", "resumable", "results.csv"),
+                    DataFrame,
+                ),
+                CSV.read(joinpath(ref_sweep, "results.csv"), DataFrame))
             @test isfile(joinpath(run_dir, "supervision.toml"))
             @test isfile(joinpath(run_dir, "logs", "attempt_1.console.log"))
             @test CD.Heartbeat.read_heartbeat(joinpath(run_dir, "heartbeat.toml")).ticks > 0
