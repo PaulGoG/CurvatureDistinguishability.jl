@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://paulgog.github.io/CurvatureDistinguishability.jl/stable/
+    about: Physics, run parameters, architecture and API reference.

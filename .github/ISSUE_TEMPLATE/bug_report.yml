@@ -1,0 +1,25 @@
+name: Bug report
+description: A wrong result, a crash or a failed run
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected and what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Julia version, operating system, GPU backend (the `backend` line of `metadata.toml`), package version or commit.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration and log
+      description: The TOML configuration and the relevant part of `run.log` or the error output.
+      render: text

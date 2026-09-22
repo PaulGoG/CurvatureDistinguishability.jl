@@ -1,7 +1,9 @@
 # CurvatureDistinguishability.jl
 
 [![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml)
-[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/dev/)
+[![Docs stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/stable/)
+[![Docs dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Computational proof of the **quartic distinguishability law** for space-based
 gravitational-wave interferometry: the squared noise-weighted distance between
@@ -224,7 +226,11 @@ CurvatureDistinguishability/
 │   ├── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
 │   ├── Campaign.jl         # supervised execution of pipeline configurations
 │   └── RunFigures.jl       # figure regeneration from persisted run CSVs
-├── ext/                    # CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext
+├── ext/                    # GPU package extensions, one per vendor package
+│   ├── CurvatureDistinguishabilityCUDAExt.jl
+│   ├── CurvatureDistinguishabilityAMDGPUExt.jl
+│   ├── CurvatureDistinguishabilityMetalExt.jl
+│   └── CurvatureDistinguishabilityoneAPIExt.jl
 ├── scripts/
 │   ├── run_pipeline.jl     # CLI entry point (loads GPU package per config)
 │   ├── run_supervised.jl   # supervisor entry point (one or more configurations)
@@ -241,8 +247,18 @@ CurvatureDistinguishability/
 │       └── reference/      # committed golden-value regression fixtures
 ├── bench/                  # BenchmarkTools scripts (own environment: activate.jl)
 ├── docs/                   # Documenter.jl sources (own environment: activate.jl, make.jl, src/)
+├── .github/
+│   ├── workflows/CI.yml    # tests on Julia 1.12 and 1, formatter check, strict docs build and deployment
+│   ├── dependabot.yml      # weekly GitHub Actions and Julia dependency updates
+│   ├── ISSUE_TEMPLATE/     # bug report, feature request
+│   └── PULL_REQUEST_TEMPLATE.md
+├── .gitignore
+├── .JuliaFormatter.toml    # formatter configuration, enforced by CI
 ├── CHANGELOG.md
 ├── CITATION.cff
+├── CONTRIBUTING.md
+├── LICENSE                 # MIT
+├── README.md
 ├── data/
 │   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
 │   └── logs/               # detached-launch console logs (git-ignored)
