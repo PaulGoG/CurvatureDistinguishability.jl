@@ -48,7 +48,7 @@ post-Newtonian phase of the ``(2,2)`` harmonic is
 + \left(4\beta - 16\pi\right) v^{3}\right],
 ```
 the Newtonian, 1PN and 1.5PN (tail and spin–orbit) terms of TaylorF2, with
-the Poisson–Will spin–orbit coefficient
+the Poisson–Will spin–orbit coefficient [Poisson1995](@cite)
 ```math
 \beta = \frac{1}{12}\left[(113 - 76\eta)\,\chi_s + 113\,\delta_m\,\chi_a\right],
 \qquad \chi_s = \tfrac{1}{2}(\chi_1 + \chi_2),\quad \chi_a = \tfrac{1}{2}(\chi_1 - \chi_2).
@@ -75,8 +75,8 @@ which is where the detector motion of §5 is evaluated.
 
 ## 3. Harmonic amplitudes (0.5PN)
 
-The polarizations are the Blanchet–Iyer–Will–Wiseman amplitudes to 0.5PN
-order,
+The polarizations are the Blanchet–Iyer–Will–Wiseman amplitudes
+[Blanchet1996](@cite) to 0.5PN order,
 ```math
 h_{+,\times} = \frac{2 M \eta\, x}{D_L}\left[H^{(0)}_{+,\times} + x^{1/2} H^{(1/2)}_{+,\times}\right],
 \qquad x = (\pi M F)^{2/3},
@@ -121,11 +121,12 @@ modelled ([Roadmap](roadmap.md)).
 ## 5. Constellation orbits and Doppler phase
 
 The spacecraft follow the analytic equal-arm orbits of Rubbo, Cornish and
-Poujade (2004) to second order in the eccentricity ``e = L/(2\sqrt{3}R)``,
+Poujade [Rubbo2004](@cite) (their Eq. 1) to second order in the eccentricity ``e = L/(2\sqrt{3}R)``,
 ``R = 1`` AU ``= 499.005`` light-seconds: with the orbital phase
 ``\alpha(t) = 2\pi t/\mathrm{yr} + \kappa`` (`[physics].orbit_phase`) and the
 spacecraft phases ``\beta_n = 2\pi(n-1)/3 + \lambda_c``
-(`[physics].constellation_phase`),
+(`[physics].constellation_phase`; their spacecraft index ``n = 0, 1, 2`` is
+``n = 1, 2, 3`` here, with the same orientation),
 ```math
 \begin{aligned}
 x_n &= R\cos\alpha + \tfrac{1}{2}eR\left[\cos(2\alpha - \beta_n) - 3\cos\beta_n\right]
@@ -136,7 +137,7 @@ z_n &= -\sqrt{3}\,eR\cos(\alpha - \beta_n) + \sqrt{3}\,e^2R\left[\cos^2(\alpha -
 \end{aligned}
 ```
 The constellation plane is inclined by 60° to the ecliptic and cartwheels
-once per year; the arms stay equal to ``\mathcal{O}(e^2) \approx 0.3\,\%``.
+once per year in the retrograde sense; the arms stay equal to ``\mathcal{O}(e^2) \approx 0.3\,\%``.
 A wavefront from the source direction ``\hat n = (\cos\beta\cos\lambda,
 \cos\beta\sin\lambda, \sin\beta)`` reaches the constellation centre
 ``\vec R_c = R(\cos\alpha, \sin\alpha, 0)`` ``\hat n\cdot\vec R_c``
@@ -164,15 +165,26 @@ interferometer with detector tensor
 from its two arm unit vectors, giving ``F^{+}_i = D_i : e^+`` and
 ``F^{\times}_i = D_i : e^\times`` (a 60° Michelson, hence the factor
 ``\sqrt{3}/2`` relative to a 90° detector is built in). The three
-Michelson responses ``X, Y, Z`` are combined into the noise-orthogonal
-channels ``A = (Z - X)/\sqrt{2}``, ``E = (X - 2Y + Z)/\sqrt{6}`` and
-rescaled by ``\sqrt{2/3}`` so that each carries the single-Michelson noise
-spectral density of §7:
+Michelson responses ``X, Y, Z`` are combined into the channels
+``A = (Z - X)/\sqrt{2}``, ``E = (X - 2Y + Z)/\sqrt{6}`` of
+[Prince2002](@cite) (their Eq. 18). For equal arms and equal, mutually
+uncorrelated link noises the noise-correlation matrix of ``X, Y, Z`` has
+equal diagonal entries ``S_X`` and equal off-diagonal entries ``S_{XY}``, and
+``A``, ``E`` and ``T = (X + Y + Z)/\sqrt{3}`` diagonalise it with
+``S_A = S_E = S_X - S_{XY}`` and ``S_T = S_X + 2S_{XY}`` (their Eq. 16). In
+the long-wavelength limit every link and every test-mass displacement enters
+two of the three Michelson responses with opposite signs, so ``X + Y + Z``
+vanishes to leading order in ``f/f_\star`` for noise and signal alike:
+``S_{XY} = -S_X/2`` and ``S_A = S_E = \tfrac{3}{2}S_X``. The channels are
+therefore rescaled by ``\sqrt{2/3}``, so that each carries the
+single-Michelson noise spectral density of §7:
 ```math
 F_A = \frac{F_Z - F_X}{\sqrt{3}}, \qquad F_E = \frac{F_X - 2F_Y + F_Z}{3}.
 ```
 Averaged over sky and polarization each channel has
-``\langle F_+^2\rangle = \langle F_\times^2\rangle = 3/20``, hence
+``\langle F_+^2\rangle = \langle F_\times^2\rangle = 3/20`` (the rescaling gives
+``\langle F_A^2\rangle = \langle F_X^2\rangle``, because
+``\langle F_X F_Z\rangle = -\langle F_X^2\rangle/2``), hence
 ``\langle F_+^2 + F_\times^2\rangle = 3/10`` per channel. The response
 ``R = 3/10`` of [Robson2019](@cite) (their Eqs. 8–9) is the
 single-polarization average summed over the two low-frequency channels,
@@ -240,7 +252,10 @@ S_c(f) = A\, f^{-7/3}\, e^{-f^{\alpha} + \beta f \sin(\kappa f)} \left[ 1 + \tan
 ```
 with ``(\alpha, \beta, \kappa, \gamma, f_k)`` from their Table 1, selected by
 the observation time (1 yr: ``\alpha=0.171``, ``\beta=292``, ``\kappa=1020``,
-``\gamma=1680``, ``f_k=2.15`` mHz) and overridable in `[noise]`. The
+``\gamma=1680``, ``f_k=2.15`` mHz) and overridable in `[noise]`. ``S_c`` depends on ``f`` and on
+the observation time only: the confusion term is stationary, and the annual
+modulation of the Galactic foreground by the constellation motion is not
+represented. The
 sky-averaged response ``3/10`` of their Eq. 13 is not applied to the noise,
 because the response is modelled explicitly in §6, where its roll-off
 factor appears instead. The confusion fit is calibrated for observation

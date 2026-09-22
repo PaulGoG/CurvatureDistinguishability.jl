@@ -340,7 +340,7 @@ function parse_sweep_settings(config::AbstractDict)
     # Safe-by-default optimizer tolerances: fits at the numerical precision
     # floor cannot reach very tight gradient norms and would otherwise
     # exhaust the iteration cap; clean-region fits converge in 16–40 Newton
-    # iterations, so 100 leaves ample margin.
+    # iterations against the cap of 100.
     g_tol = get_number(sweep_settings, "g_tol", 1e-10, "pipeline.sweep_settings")
     g_tol > 0 || config_error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
     g_tol < 1e-11 &&

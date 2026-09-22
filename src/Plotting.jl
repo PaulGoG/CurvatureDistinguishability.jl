@@ -53,7 +53,7 @@ deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
 $(TYPEDSIGNATURES)
 
 Publication theme (Computer Modern via MathTeXEngine, boxed axes, dashed
-low-opacity grey grid, no minor ticks, inward ticks, generous padding).
+low-opacity grey grid, no minor ticks, inward ticks).
 All figure builders apply it via `with_theme`.
 """
 function publication_theme()
@@ -833,8 +833,8 @@ const ZONE_LIMIT_MARGIN = 0.08
 
 # A same-unit zone whose principal-axis aspect ratio reaches this value is a
 # needle along a null direction and is drawn in its principal frame (see
-# `zone_figure`). Slated for removal with the 2PN spin–spin term, which closes
-# the spin zone (roadmap §1).
+# `zone_figure`); the 2PN spin–spin term (roadmap §1) closes the spin zone
+# and removes the need for this branch.
 const NEEDLE_ASPECT = 20.0
 
 """
