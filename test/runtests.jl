@@ -1660,6 +1660,7 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
 [[figures]]
 name = "mini_scaling"
 kind = "scaling"
+ncols = 1
 [[figures.panels]]
 run = '$(out_base)'
 case = "mini_sweep"
@@ -1669,6 +1670,7 @@ case = "mini_unequal"
 [[figures]]
 name = "mini_zones"
 kind = "zone"
+labels = ["(a)", "(b)"]
 [[figures.panels]]
 run = '$(out_base)'
 case = "mini_mass_time"
@@ -1688,8 +1690,23 @@ case = "mini_sweep"
                 @test [f.name for f in figs_c] ==
                       ["mini_scaling", "mini_zones", "mini_residual"]
                 @test all(f -> f.figure isa CD.Plotting.Figure, figs_c)
-                save_figure(figs_c[1].figure, joinpath(tmp, "composite"))
+                # panel labels only where the layout asks for them
+                panel_labels(fig) = [
+                    c.text[] for c in fig.content if c isa CD.Plotting.Label &&
+                        c.text[] in ("(a)", "(b)")
+                ]
+                @test isempty(panel_labels(figs_c[1].figure))
+                @test panel_labels(figs_c[2].figure) == ["(a)", "(b)"]
+                # a single-column stack is as wide as one panel; the export scale
+                # is taken from that width
+                @test canvas_width(figs_c[1].figure) == 600
+                save_figure(figs_c[1].figure, joinpath(tmp, "composite");
+                    pt_per_unit = 400 / canvas_width(figs_c[1].figure))
                 @test isfile(joinpath(tmp, "composite.pdf"))
+                @test isfile(joinpath(tmp, "composite.png"))
+                @test_throws ArgumentError save_figure(figs_c[1].figure,
+                    joinpath(tmp, "bad");
+                    pt_per_unit = 0.0)
                 # layout validation: enumerated kind, no unknown keys
                 bad_kind = joinpath(tmp, "bad_kind.toml")
                 write(

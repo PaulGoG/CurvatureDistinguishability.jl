@@ -80,7 +80,7 @@ export PipelineSettings, SweepSpec, MapSpec, load_and_validate_config
 include("Plotting.jl")
 using .Plotting
 export publication_theme,
-    save_figure, scaling_figure, residual_figure,
+    save_figure, canvas_width, scaling_figure, residual_figure,
     ResidualFigureMeta, zone_figure,
     scaling_panel!, residual_panel!, zone_panel!,
     composite_scaling_figure, composite_zone_figure, composite_residual_figure

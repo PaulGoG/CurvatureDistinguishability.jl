@@ -170,6 +170,7 @@ CurvatureDistinguishability.Provenance.git_state
 ```@docs
 CurvatureDistinguishability.Plotting.publication_theme
 CurvatureDistinguishability.Plotting.save_figure
+CurvatureDistinguishability.Plotting.canvas_width
 CurvatureDistinguishability.Plotting.decade_ticks
 CurvatureDistinguishability.Plotting.log_ticks_125
 CurvatureDistinguishability.Plotting.pi_ticks

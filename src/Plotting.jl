@@ -19,7 +19,7 @@ using UnicodePlots: UnicodePlots
 using ..Provenance: backup_existing!
 
 export publication_theme,
-    save_figure, scaling_figure, residual_figure,
+    save_figure, canvas_width, scaling_figure, residual_figure,
     ResidualFigureMeta, zone_figure,
     scaling_panel!, residual_panel!, zone_panel!,
     composite_scaling_figure, composite_zone_figure, composite_residual_figure
@@ -81,12 +81,25 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Save `fig` as both vector `.pdf` and raster `.png` (`px_per_unit = 4`),
-with `safesave`-style backup of any existing files.
+Width of the canvas of `fig` in Makie units (px), the divisor of the
+`pt_per_unit` that exports it at a given print width.
 """
-function save_figure(fig::Figure, base_path::AbstractString)
+canvas_width(fig::Figure) = size(fig.scene)[1]
+
+"""
+$(TYPEDSIGNATURES)
+
+Save `fig` as both vector `.pdf` and raster `.png` (`px_per_unit = 4`),
+with `safesave`-style backup of any existing files. `pt_per_unit` scales the
+PDF: a canvas of `w` px is written `w · pt_per_unit` points wide, so a figure
+that must enter a manuscript at its print width is exported with
+`pt_per_unit = print_width_pt / w`.
+"""
+function save_figure(fig::Figure, base_path::AbstractString; pt_per_unit::Real = 0.75)
+    pt_per_unit > 0 ||
+        throw(ArgumentError("save_figure: pt_per_unit must be > 0, got $pt_per_unit"))
     pdf = backup_existing!(base_path * ".pdf")
-    save(pdf, fig)
+    save(pdf, fig; pt_per_unit = pt_per_unit)
     png = backup_existing!(base_path * ".png")
     save(png, fig; px_per_unit = 4)
     return (pdf, png)
@@ -819,27 +832,19 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Two-row channel legend of the residual-spectrum figures at `gp`, built from
-the `legend_A`/`legend_E` material of [`residual_panel!`](@ref). Mechanism:
-two single-group `Legend`s stacked in a nested `GridLayout` — one row per
-channel, each left-aligned in the block so the three entries line up in
-columns. A single grouped legend laid the two blocks side by side and ran
-wider than the canvas; `nbanks` cannot reproduce the per-channel rows with
-their own bold header.
+One-row channel legend of the residual-spectrum figures at `gp`, built from
+the `legend_A`/`legend_E` material of [`residual_panel!`](@ref): one grouped
+horizontal `Legend` whose two groups — each with its bold channel header and
+the three role entries — sit side by side on a single row.
 """
 function residual_legend_block!(gp, legend_A::NamedTuple, legend_E::NamedTuple)
-    legend_kw = (; orientation = :horizontal, titleposition = :left,
-        framevisible = false, tellwidth = true, tellheight = true,
-        halign = :left, labelsize = 18, titlesize = 19, titlefont = :bold,
-        patchsize = (26, 4), patchlabelgap = 4,
-        colgap = 10, titlegap = 8, padding = (0, 0, 1, 1))
-    legend_block = GridLayout(gp; halign = :center, tellwidth = false, tellheight = true)
-    Legend(legend_block[1, 1], legend_A.entries, legend_A.labels, legend_A.title;
-        legend_kw...)
-    Legend(legend_block[2, 1], legend_E.entries, legend_E.labels, legend_E.title;
-        legend_kw...)
-    rowgap!(legend_block, 3) # the block costs as little height as possible
-    return legend_block
+    return Legend(gp, [legend_A.entries, legend_E.entries],
+        [legend_A.labels, legend_E.labels], [legend_A.title, legend_E.title];
+        orientation = :horizontal, titleposition = :left, framevisible = false,
+        tellwidth = false, tellheight = true, halign = :center,
+        labelsize = 18, titlesize = 19, titlefont = :bold,
+        patchsize = (26, 4), patchlabelgap = 4, colgap = 10, titlegap = 8,
+        groupgap = 36, padding = (0, 0, 1, 1))
 end
 
 """
@@ -848,9 +853,8 @@ $(TYPEDSIGNATURES)
 Residual-spectrum figure in true density units: top panel `d(SNR²)/df` of the
 two-source data and the best-fit single source, bottom panel the unabsorbed
 residual `d(D²)/df` — the integral of the bottom curves is the D² of the
-scaling law. The legend sits on top of the figure as two stacked rows, one per
-channel (data / best fit / residual), left-aligned so the entries line up in
-columns. Channel encodes hue
+scaling law. The legend sits on top of the figure as one row, the two channel
+groups (data / best fit / residual) side by side. Channel encodes hue
 (A blue, E warm); the best fit, which lies on top of the data, is a brighter
 dash-dotted line over the dark solid data line; the plotted means are
 binomially smoothed for display (`RESIDUAL_SMOOTHING_PASSES`) while
@@ -870,9 +874,7 @@ companion. The panels are drawn by [`residual_panel!`](@ref).
 function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
     delta_symbol::String = "\\delta^*")
     with_theme(publication_theme()) do
-        # height carries the second legend row (~32) on top of the 950 the two
-        # panels and the annotation row need, so the axes keep their size
-        fig = Figure(size = (950, 982))
+        fig = Figure(size = (950, 950))
         panel = residual_panel!(fig[1, 1], spec, meta; delta_symbol = delta_symbol)
         # legend on top of the figure, spanning both panels
         residual_legend_block!(fig[0, 1], panel.legend_A, panel.legend_E)
@@ -1283,13 +1285,14 @@ function composite_labels(panels::AbstractVector, ncols::Int,
     all(>(0), panel_size) ||
         throw(ArgumentError("panel_size must be positive, got $panel_size"))
     n = length(panels)
-    isempty(labels) && return ["(" * ('a' + i - 1) * ")" for i in 1:n]
+    isempty(labels) && return String[]
     length(labels) == n ||
         throw(ArgumentError("expected $n panel labels, got $(length(labels))"))
     return String.(labels)
 end
 
-# bold panel labels at the top-left corner of each panel cell
+# bold panel labels at the top-left corner of each panel cell (none when
+# `texts` is empty, the default of the composite builders)
 function label_panels!(fig::Figure, texts::AbstractVector{String}, ncols::Int)
     for (i, text) in enumerate(texts)
         r, c = composite_cell(i, ncols)
@@ -1303,14 +1306,16 @@ end
 $(TYPEDSIGNATURES)
 
 Multi-panel scaling figure: one [`scaling_panel!`](@ref) per entry of
-`panels`, in compact form with the fitted slope written inside each main axis,
+`panels`, with the fitted slope written inside each main axis,
 placed row-major on an `ncols`-column grid under one shared horizontal legend
 (`D²_theoretical`, `D²_numerical`, and the optimizer-floor patch whenever a
 panel draws the floor band). Each entry of `panels` is a NamedTuple with the
 fields `deltas, d2_num, d2_theo, rho_sq, delta_min, slope, slope_err, clean,
 floor_level, c1, c2` (as returned by `RunFigures.sweep_panel_data`).
-`panel_size` is the canvas share `(width, height)` of one panel; `labels`
-default to `(a)`, `(b)`, ….
+`panel_size` is the canvas share `(width, height)` of one panel; `labels`,
+when given (one per panel), are written at the top-left corner of the panels,
+none by default. Panels of a single-column layout are drawn at full size,
+those of wider grids in the compact half-width variant.
 
 Returns the `Figure`.
 """
@@ -1328,7 +1333,7 @@ function composite_scaling_figure(panels::AbstractVector; ncols::Int = 2,
                 rho_sq = p.rho_sq, delta_min = p.delta_min, slope = p.slope,
                 slope_err = p.slope_err, clean = p.clean,
                 floor_level = p.floor_level, c1 = p.c1, c2 = p.c2,
-                compact = true, slope_in_axis = true)
+                compact = ncols > 1, slope_in_axis = true)
         end
         entries = Any[drawn[1].legend_entries[1], drawn[1].legend_entries[2]]
         entry_labels = AbstractString[drawn[1].legend_labels[1],
@@ -1349,12 +1354,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Multi-panel zone-of-confusion figure: one compact [`zone_panel!`](@ref) per
-entry of `panels`, placed row-major on an `ncols`-column grid (no legend).
+Multi-panel zone-of-confusion figure: one [`zone_panel!`](@ref) per entry of
+`panels`, placed row-major on an `ncols`-column grid (no legend).
 Each entry of `panels` is a NamedTuple with the fields `x, y, prior_limited,
 px, py, box, prior_frac, degenerate_frac, x_math, y_math` (as returned by
 `RunFigures.zone_panel_data`). `panel_size` is the canvas share
-`(width, height)` of one panel; `labels` default to `(a)`, `(b)`, ….
+`(width, height)` of one panel; `labels`, when given, are written at the
+top-left corner of the panels, none by default; a single-column layout draws
+the panels at full size.
 
 Returns the `Figure`.
 """
@@ -1371,7 +1378,7 @@ function composite_zone_figure(panels::AbstractVector; ncols::Int = 2,
             zone_panel!(fig[r, c], p.x, p.y, p.prior_limited;
                 px = p.px, py = p.py, box = p.box, prior_frac = p.prior_frac,
                 degenerate_frac = p.degenerate_frac,
-                x_math = p.x_math, y_math = p.y_math, compact = true)
+                x_math = p.x_math, y_math = p.y_math, compact = ncols > 1)
         end
         colgap!(fig.layout, 24)
         rowgap!(fig.layout, 20)
@@ -1383,12 +1390,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Multi-panel residual-spectrum figure: one compact [`residual_panel!`](@ref)
-per entry of `panels`, placed row-major on an `ncols`-column grid under one
-shared two-row channel legend. Each entry of `panels` is a NamedTuple with the
-fields `spec, meta, delta_symbol` (as returned by
+Multi-panel residual-spectrum figure: one [`residual_panel!`](@ref) per
+entry of `panels`, placed row-major on an `ncols`-column grid under one
+shared one-row channel legend. Each entry of `panels` is a NamedTuple with
+the fields `spec, meta, delta_symbol` (as returned by
 `RunFigures.residual_panel_data`). `panel_size` is the canvas share
-`(width, height)` of one panel; `labels` default to `(a)`, `(b)`, ….
+`(width, height)` of one panel; `labels`, when given, are written at the
+top-left corner of the panels, none by default; a single-column layout draws
+the panels at full size.
 
 Returns the `Figure`.
 """
@@ -1399,11 +1408,11 @@ function composite_residual_figure(panels::AbstractVector; ncols::Int = 2,
     nrows = cld(length(panels), ncols)
     w, h = panel_size
     with_theme(publication_theme()) do
-        fig = Figure(size = (ncols * w + (ncols - 1) * 24, nrows * h + 90))
+        fig = Figure(size = (ncols * w + (ncols - 1) * 24, nrows * h + 60))
         drawn = map(enumerate(panels)) do (i, p)
             r, c = composite_cell(i, ncols)
             residual_panel!(fig[r, c], p.spec, p.meta;
-                delta_symbol = p.delta_symbol, compact = true)
+                delta_symbol = p.delta_symbol, compact = ncols > 1)
         end
         residual_legend_block!(fig[0, 1:ncols], drawn[1].legend_A, drawn[1].legend_E)
         colgap!(fig.layout, 24)

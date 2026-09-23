@@ -479,7 +479,8 @@ Build the multi-panel publication figures described by the TOML layout at
 optimization is recomputed. Each `[[figures]]` table holds `name` (output
 base name), `kind` (`"scaling"`, `"zone"` or `"residual"`), the optional
 `ncols` (default 2), `panel_width` (default 600), `panel_height` (default 620
-scaling, 520 zone, 640 residual) and `labels` (default `(a)`, `(b)`, …), and
+scaling, 520 zone, 640 residual) and `labels` (optional panel labels, one per
+panel; none by default), and
 its `[[figures.panels]]` tables hold `run` (run directory, absolute or relative
 to the layout file's directory), `case` (sweep or map name) and, for residual
 figures only, `spectrum` (`"star"` or `"threshold"`, default `"star"`).

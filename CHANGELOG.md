@@ -18,13 +18,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   draw a figure into a supplied grid position; the single figures are
   one-panel wrappers around them.
 - Composite builders `composite_scaling_figure`, `composite_zone_figure` and
-  `composite_residual_figure`: compact panels on a grid with a shared legend
-  and panel labels.
+  `composite_residual_figure`: panels on a grid with a shared legend; a
+  single-column layout draws the panels at full size, wider grids the compact
+  variant; optional panel labels (none by default).
 - Layout-driven composition from persisted run tables: `composite_figures`
   reads a TOML layout, with the panel loaders `sweep_panel_data`,
   `zone_panel_data` and `residual_panel_data`.
-- `scripts/compose_figures.jl` and the example layout
+- `scripts/compose_figures.jl` (with `--print-width PT`, which scales every
+  PDF to the manuscript's text width) and the example layout
   `configs/figures/quickstart_composites.toml`.
+- `save_figure(...; pt_per_unit)` and `canvas_width`.
+
+### Changed
+
+- The residual-spectrum legend is one row, the two channel groups side by
+  side, in the single figure and in the composites.
 
 ### Fixed
 

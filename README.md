@@ -94,7 +94,7 @@ julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.tom
 julia scripts/replot.jl data/run_<hash> [--rho R] [--refit]
 
 # multi-panel publication composites from persisted run tables, laid out by a TOML file
-julia scripts/compose_figures.jl configs/figures/quickstart_composites.toml [--output-dir DIR]
+julia scripts/compose_figures.jl configs/figures/quickstart_composites.toml [--output-dir DIR] [--print-width PT]
 
 # render all figures of one or more runs as a flat PNG view (plots/ by default)
 julia scripts/collect_plots.jl [dest_dir] [run_id ...]
