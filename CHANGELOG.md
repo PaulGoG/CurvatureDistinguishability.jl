@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Perturbative-window exponent of the quartic law (`slope_window`,
+  `slope_window_err` in `sweep_meta.toml`): the log–log slope fitted over the
+  points admitted to the O(δ⁵) correction fit. The scaling figure quotes it;
+  the slope over all clean points is persisted alongside.
+- `scripts/replot.jl --refit`: refit slope, window exponent and correction
+  coefficients from the persisted results table.
+
 ## [1.0.0] - 2026-09-22
 
 First public release.

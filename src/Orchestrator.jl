@@ -600,7 +600,8 @@ $(TYPEDSIGNATURES)
 Compare the fitted distances with the quartic law: the theoretical `D²`
 (with the amplitude-ratio prefactor), the numerical/theoretical ratio, the
 bootstrapped optimizer floor with its clean-point mask, the log-log slope
-over the clean window and the `O(δ⁵)` ratio-correction fit with its
+over the clean window and over the perturbative window of the correction fit
+(`slope_window`), and the `O(δ⁵)` ratio-correction fit with its
 validity radius. The fit summary is logged to `log_io`.
 """
 function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::Real,
@@ -624,11 +625,24 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
     # the correction expansion is fitted only where the ratio is still
     # perturbatively close to unity (Fitting.perturbative_mask)
     perturbative = perturbative_mask(ratio, clean, cfg.correction_fit_max_departure)
+    # the exponent of the leading-order law is fitted over the same
+    # perturbative window as the O(δ⁵) correction: points beyond the
+    # crossover to resolution are not described by the law they would be
+    # fitted to
+    slope_window, slope_window_err =
+        count(perturbative) >= MIN_FIT_POINTS ?
+        loglog_slope(deltas[perturbative], D2_num[perturbative]) : (NaN, NaN)
     c1, c1_err, c2 = ratio_correction_fit(deltas[perturbative], ratio[perturbative])
     logline(
         log_io,
         @sprintf("        O(δ⁵) fit window: %d/%d clean points within %.0f%% of the law",
             count(perturbative), count(clean), 100cfg.correction_fit_max_departure),
+    )
+    isfinite(slope_window) && logline(
+        log_io,
+        @sprintf(
+            "        fitted log-log slope over the perturbative window %.4f ± %.4f (%d points)",
+            slope_window, slope_window_err, count(perturbative)),
     )
     delta_valid =
         (isfinite(c1) && abs(c1) > 1e-12) ?
@@ -640,8 +654,8 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
                 "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
                 c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
         )
-    return (; D2_theo, ratio, floor_level, clean, slope, slope_err, c1, c1_err, c2,
-        delta_valid)
+    return (; D2_theo, ratio, floor_level, clean, slope, slope_err,
+        slope_window, slope_window_err, c1, c1_err, c2, delta_valid)
 end
 
 """
@@ -668,7 +682,8 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
     n = length(deltas)
     (; K_norm, g_uu, delta_min) = geometry
     (; D2_num, best_fits) = fits
-    (; D2_theo, clean, floor_level, slope, slope_err, c1, c1_err, c2, delta_valid) = law
+    (; D2_theo, clean, floor_level, slope, slope_err, slope_window, slope_window_err,
+        c1, c1_err, c2, delta_valid) = law
 
     results_table = DataFrame(Delta = collect(deltas), D2_Numerical = D2_num,
         D2_Theoretical = D2_theo, K_u_Norm = fill(K_norm, n),
@@ -728,6 +743,8 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
                 "df" => ctx.df, "f_min" => cfg.f_min, "f_max" => cfg.f_max,
                 "delta_min" => delta_min, "amp_ratio" => amp_ratio,
                 "slope" => slope, "slope_err" => slope_err,
+                "slope_window" => isnan(slope_window) ? -1.0 : slope_window,
+                "slope_window_err" => isnan(slope_window_err) ? -1.0 : slope_window_err,
                 "c1" => c1, "c1_err" => c1_err, "c2" => c2,
                 "delta_valid" => delta_valid,
                 "floor_level" => isnan(floor_level) ? -1.0 : floor_level,
@@ -738,9 +755,13 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
     end
 
     try
+        # the legend quotes the perturbative-window exponent; the all-clean
+        # slope stays in sweep_meta.toml
         fig = scaling_figure(collect(deltas), D2_num, D2_theo;
-            rho_sq = rho_sq, delta_min = delta_min, slope = slope,
-            slope_err = slope_err, clean = collect(clean),
+            rho_sq = rho_sq, delta_min = delta_min,
+            slope = isfinite(slope_window) ? slope_window : slope,
+            slope_err = isfinite(slope_window) ? slope_window_err : slope_err,
+            clean = collect(clean),
             floor_level = floor_level, c1 = c1, c2 = c2)
         save_figure(fig, joinpath(out_dir, "scaling_plot"))
         rfig = residual_figure(

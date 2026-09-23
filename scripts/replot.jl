@@ -3,12 +3,16 @@
 # src/RunFigures.jl (shared with collect_plots.jl); this script only selects
 # the run and writes {pdf,png} pairs back into it with backup semantics.
 #
-#   julia scripts/replot.jl <run_dir> [--rho R]
+#   julia scripts/replot.jl <run_dir> [--rho R] [--refit]
 #
 # With --rho R the discernibility threshold is changed WITHOUT recomputation:
 # the boundary radius is r = (16ρ²/K)^{1/4} and K is persisted per direction,
 # so maps (and the scaling-plot threshold markers) are rescaled exactly and
 # written to *_rho<R> files, leaving the originals untouched.
+#
+# With --refit the slope, window slope and correction coefficients are
+# refitted from the persisted results table with the current fitting code
+# (persisted metadata is never modified).
 const PROJECT_ROOT = dirname(@__DIR__)
 include(joinpath(PROJECT_ROOT, "activate.jl"))
 
@@ -24,20 +28,25 @@ function parse_arguments(argv)
         rho > 0 || error("--rho must be > 0")
         deleteat!(args, idx:(idx+1))
     end
+    refit = false
+    if (idx = findfirst(==("--refit"), args)) !== nothing
+        refit = true
+        deleteat!(args, idx)
+    end
     length(args) == 1 ||
-        error("Usage: julia scripts/replot.jl <run_dir> [--rho R]")
+        error("Usage: julia scripts/replot.jl <run_dir> [--rho R] [--refit]")
     run_dir = abspath(args[1])
     isdir(run_dir) || error("Run directory not found: $run_dir")
-    return run_dir, rho
+    return run_dir, rho, refit
 end
 
-function replot(run_dir, rho)
+function replot(run_dir, rho, refit)
     replotted = 0
     cases = run_cases(run_dir)
     for name in cases.sweeps
         dir = joinpath(run_dir, "sweeps", name)
         try
-            figs = sweep_figures(run_dir, name; rho = rho)
+            figs = sweep_figures(run_dir, name; rho = rho, refit = refit)
             save_figure(figs.scaling, joinpath(dir, "scaling_plot" * figs.suffix))
             figs.residual === nothing ||
                 save_figure(figs.residual, joinpath(dir, "residual_plot"))
@@ -70,6 +79,6 @@ function replot(run_dir, rho)
     return replotted
 end
 
-run_dir, rho = parse_arguments(ARGS)
-replotted = replot(run_dir, rho)
+run_dir, rho, refit = parse_arguments(ARGS)
+replotted = replot(run_dir, rho, refit)
 println("Replot complete: $replotted item(s) regenerated in $run_dir")

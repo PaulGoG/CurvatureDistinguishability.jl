@@ -125,7 +125,12 @@ Fisher-normalized direction; a box-constrained single-source fit yields
 ``D^2_{\mathrm{num}}``. Persisted per ``\delta``: best-fit parameters,
 convergence flag, iterations, gradient norm, active-bound flag. The log-log
 slope is fitted over an automatically detected clean window and stored in
-`sweep_meta.toml` together with the optimizer floor level. Guardrails warn
+`sweep_meta.toml` together with the optimizer floor level. The exponent
+quoted in the scaling figures is fitted over the perturbative window of the
+``O(\delta^5)`` correction fit (`slope_window` in `sweep_meta.toml`), with the
+slope over all clean points (`slope`) persisted alongside; display-time
+regeneration recomputes the window exponent for runs that predate the key.
+Guardrails warn
 when the sweep direction has an amplitude component (violating the
 equal-amplitude assumption of the law) or when the second source exits the
 physical bounds before ``\delta_{\mathrm{max}}``.

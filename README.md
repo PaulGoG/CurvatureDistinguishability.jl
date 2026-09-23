@@ -90,7 +90,7 @@ julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.tom
 
 # regenerate every figure of a finished run from its CSVs; --rho R rescales maps and
 # threshold markers to another discernibility threshold without recomputation
-julia scripts/replot.jl data/run_<hash> [--rho R]
+julia scripts/replot.jl data/run_<hash> [--rho R] [--refit]
 
 # render all figures of one or more runs as a flat PNG view (plots/ by default)
 julia scripts/collect_plots.jl [dest_dir] [run_id ...]
@@ -127,7 +127,8 @@ failed (the remaining stages still run and the failures are listed in
 
 - **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
   parameters, convergence diagnostics, active-bound flags, multi-start gain),
-  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr,
+  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr
+  over all clean points and over the perturbative window (`slope_window`),
   the O(δ⁵) correction coefficients c₁/c₂ — fitted on the points within
   `correction_fit_max_departure` of the law — with a 10%-validity radius,
   optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log

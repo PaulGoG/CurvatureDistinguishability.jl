@@ -1120,6 +1120,20 @@ enabled = true
             0.3,
         ) ==
               [true, true, false, false]
+        # perturbative-window slope: the window excludes the points where the
+        # O(δ) departure has grown beyond 30 %, which bias the all-point slope
+        deltas = 10.0 .^ range(-2, 2; length = 30)
+        D2_theo = deltas .^ 4
+        D2_num = D2_theo .* (1 .+ 0.02 .* deltas)
+        ratio = D2_num ./ D2_theo
+        window = CD.Fitting.perturbative_mask(ratio, trues(30), 0.3)
+        @test count(window) == 24
+        s_all, e_all = CD.Fitting.loglog_slope(deltas, D2_num)
+        s_win, e_win = CD.Fitting.loglog_slope(deltas[window], D2_num[window])
+        @test s_all ≈ 4.080383377803117 rtol = 1e-9
+        @test s_win ≈ 4.0241212293066635 rtol = 1e-9
+        @test e_win ≈ 0.004121123271661602 rtol = 1e-6
+        @test s_win < s_all
     end
 
     @testset "Orchestrator: resource planning, seeding, mirroring" begin
@@ -1590,6 +1604,21 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             end
             figs_refit = sweep_figures(out_base, "mini_sweep"; refit = true)
             @test figs_refit.suffix == ""
+            @test hasproperty(figs_refit, :slope_window) && hasproperty(figs_refit, :slope)
+            sm_mini = TOML.parsefile(
+                joinpath(out_base, "sweeps", "mini_sweep", "sweep_meta.toml"),
+            )
+            @test haskey(sm_mini, "slope_window") && haskey(sm_mini, "slope_window_err")
+            # persisted (or recomputed) window exponent agrees with the refit
+            if sm_mini["slope_window"] >= 0
+                @test figs_refit.slope_window ≈ sm_mini["slope_window"] rtol = 1e-9
+            end
+            @test isfinite(figs.slope) # figs = sweep_figures(out_base, "mini_sweep") above
+            # refit replot child: rewrites the scaling figure in place (backups kept)
+            cmd_refit = addenv(`$jlbin --startup-file=no $replot_script $out_base --refit`,
+                "JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing)
+            run(pipeline(cmd_refit, stdout = devnull, stderr = devnull))
+            @test isfile(joinpath(out_base, "sweeps", "mini_sweep", "scaling_plot.png"))
             rz = zone_map_figure(out_base, "mini_spin_map"; rho = 2.0)
             @test rz.suffix == "_rho2p0" && rz.contour isa DataFrame
             @test all(rz.contour.R_Capped .<= rz.contour.R_Box .+ 1e-12)

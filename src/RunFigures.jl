@@ -82,11 +82,22 @@ production above-floor rule on the persisted optimizer floor
 annotated slope and correction coefficients are the persisted run-time
 values from `sweep_meta.toml`; with `refit = true` they are refitted from
 the CSV with the current fitting code (persisted metadata is never
-modified). With `rho` the discernibility threshold is rescaled exactly from
+modified). The scaling figure's legend quotes the perturbative-window
+exponent `slope_window`, fitted over the points admitted to the `O(δ⁵)`
+correction fit, and falls back to the all-clean slope when that window holds
+fewer than `MIN_FIT_POINTS` points. With `refit = false` a missing or
+sentinel (negative) `slope_window` in `sweep_meta.toml` is recomputed from
+the CSV, so runs that predate the key regenerate with the window exponent.
+With `rho` the discernibility threshold is rescaled exactly from
 the persisted normalized curvature and the sweep's amplitude ratio: `suffix`
 carries the `_rho…` tag and `residual` is `nothing` (the residual spectrum is
 threshold-independent). `delta_min` is the threshold separation drawn in the
 scaling figure.
+
+Returns the NamedTuple `(scaling, residual, residual_threshold, suffix,
+delta_min, slope, slope_err, slope_window, slope_window_err)`: the figures,
+the threshold data, and the all-clean and window log-log slopes with their
+standard errors (NaN when not fittable).
 """
 function sweep_figures(run_dir::AbstractString, case::AbstractString;
     refit::Bool = false, rho::Union{Nothing,Real} = nothing)
@@ -103,19 +114,30 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     floor_level = Float64(get(meta, "floor_level", -1.0))
     floor_level < 0 && (floor_level = NaN)
     clean = above_floor_mask(res.D2_Numerical, floor_level)
+    ratio = res.D2_Numerical ./ res.D2_Theoretical
+    window = perturbative_mask(ratio, collect(clean),
+        run_config(run_dir).correction_fit_max_departure)
+    # exponent over the O(δ⁵) fit window (NaN below MIN_FIT_POINTS points)
+    fit_window_slope() =
+        count(window) >= MIN_FIT_POINTS ?
+        loglog_slope(res.Delta[window], res.D2_Numerical[window]) : (NaN, NaN)
     if refit
         slope, slope_err =
             count(clean) >= MIN_FIT_POINTS ?
             loglog_slope(res.Delta[clean], res.D2_Numerical[clean]) : (NaN, NaN)
-        ratio = res.D2_Numerical ./ res.D2_Theoretical
-        window = perturbative_mask(ratio, collect(clean),
-            run_config(run_dir).correction_fit_max_departure)
+        slope_window, slope_window_err = fit_window_slope()
         c1, _, c2 = ratio_correction_fit(res.Delta[window], ratio[window])
     else
         slope = Float64(get(meta, "slope", NaN))
         slope_err = Float64(get(meta, "slope_err", NaN))
         c1 = Float64(get(meta, "c1", NaN))
         c2 = Float64(get(meta, "c2", NaN))
+        # negative: sentinel for NaN, or a run that predates the key
+        slope_window = Float64(get(meta, "slope_window", -1.0))
+        slope_window_err = Float64(get(meta, "slope_window_err", -1.0))
+        if slope_window < 0
+            slope_window, slope_window_err = fit_window_slope()
+        end
     end
     rho_sq = rho === nothing ? meta_value(meta, "rho_sq", meta_path) : Float64(rho)^2
     # D² = (p/16) K δ⁴ with p = (2q/(1+q))², q = A₂/A₁ (as in run_sweep)
@@ -126,7 +148,8 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         (16.0 * rho_sq / (amp_prefactor * meta_value(meta, "K_u_norm", meta_path)))^(1 / 4)
     scaling = scaling_figure(res.Delta, res.D2_Numerical, res.D2_Theoretical;
         rho_sq = rho_sq, delta_min = delta_min,
-        slope = slope, slope_err = slope_err,
+        slope = isfinite(slope_window) ? slope_window : slope,
+        slope_err = isfinite(slope_window) ? slope_window_err : slope_err,
         clean = collect(clean), floor_level = floor_level,
         c1 = c1, c2 = c2)
     residual = nothing
@@ -154,7 +177,9 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
     end
     return (scaling = scaling, residual = residual,
         residual_threshold = residual_threshold,
-        suffix = rho === nothing ? "" : rho_tag(rho), delta_min = delta_min)
+        suffix = rho === nothing ? "" : rho_tag(rho), delta_min = delta_min,
+        slope = slope, slope_err = slope_err,
+        slope_window = slope_window, slope_window_err = slope_window_err)
 end
 
 """
