@@ -19,6 +19,9 @@ makedocs(
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true",
         assets = String[],
+        # the API page collects every public docstring and exceeds the
+        # default size threshold; it stays a single page by design
+        size_threshold_ignore = ["api.md"],
     ),
     modules = [CurvatureDistinguishability],
     checkdocs = :public,
