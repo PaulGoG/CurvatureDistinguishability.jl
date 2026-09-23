@@ -6,8 +6,8 @@ module Plotting
 
 using DocStringExtensions: TYPEDSIGNATURES
 using CairoMakie: Axis, DataAspect, Figure, GridLayout, Label, Legend,
-    LinearTicks, Point2f, PolyElement, Relative, Theme, band!,
-    hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
+    LinearTicks, Point2f, PolyElement, Relative, Theme, TopLeft, band!,
+    colgap!, hidexdecorations!, hlines!, hspan!, lines!, linkxaxes!,
     poly!, rowgap!, rowsize!, save, scatter!, text!, vlines!,
     with_theme, xlims!, ylims!
 using LaTeXStrings: LaTeXStrings, @L_str, latexstring
@@ -20,7 +20,9 @@ using ..Provenance: backup_existing!
 
 export publication_theme,
     save_figure, scaling_figure, residual_figure,
-    ResidualFigureMeta, zone_figure
+    ResidualFigureMeta, zone_figure,
+    scaling_panel!, residual_panel!, zone_panel!,
+    composite_scaling_figure, composite_zone_figure, composite_residual_figure
 public decade_ticks, pi_ticks, log_ticks_125, offset_ticks, sci_tick_labels,
     sci_latex, coef_latex, slope_latex, axis_exponent, sweep_diagnostic_panel,
     map_diagnostic_panel
@@ -367,7 +369,177 @@ function sci_tick_labels(values)
     end
 end
 
-# --- figure builders --------------------------------------------------------
+# --- panel drawers and figure builders --------------------------------------
+
+"""
+Legend options of the scaling figure, shared by the single figure and the
+composite: horizontal and frameless on top; the patch box is tall enough for
+the floor-band swatch to read, line and marker entries being drawn centred
+in it.
+"""
+const SCALING_LEGEND_KW = (; orientation = :horizontal, framevisible = false,
+    tellwidth = false, tellheight = true, labelsize = 19,
+    patchsize = (30, 12), colgap = 16, patchlabelgap = 5,
+    padding = (0, 0, 4, 0))
+
+"""
+$(TYPEDSIGNATURES)
+
+Draw the quartic-scaling panel pair of [`scaling_figure`](@ref) into the grid
+position (or `GridLayout`) `gp`: the log–log `D²(δ)` main axis at row 1 and
+the linked ratio axis `D²_num/D²_theo` at row 2 of a nested `GridLayout`.
+Everything of the single figure is drawn except the legend, whose material is
+returned instead. With `slope_in_axis = true` the fitted slope is written at
+the top left of the main axis and the numerical series label is the plain
+`D²_numerical`; otherwise the slope is folded into that label. `compact`
+selects the half-width variant for composites (at most five decade ticks per
+axis, narrower tick-label space, in-axis annotations two points smaller).
+
+Returns the NamedTuple `(layout, main, ratio, legend_entries,
+legend_labels)`.
+"""
+function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
+    d2_theo::AbstractVector;
+    rho_sq::Real, delta_min::Real, slope::Real, slope_err::Real,
+    clean::AbstractVector{Bool}, floor_level::Real,
+    c1::Real = NaN, c2::Real = NaN, compact::Bool = false,
+    slope_in_axis::Bool = false)
+    layout = GridLayout(gp)
+    maxticks = compact ? 5 : 7
+    ticklabelspace = compact ? 54.0 : 66.0
+    font_shift = compact ? 2 : 0
+
+    pos = d2_num .> 0
+    ylo = min(minimum(d2_num[pos]), minimum(d2_theo)) / 3
+    yhi = max(maximum(d2_num[pos]), maximum(d2_theo)) * 3
+    # the threshold can sit close to the frame top (near-degenerate
+    # sweeps end just past D² = ρ²): guarantee headroom for its label
+    # before the ticks are chosen, so every decade of the frame is labelled
+    threshold_visible = ylo < rho_sq < yhi
+    threshold_visible && (yhi = max(yhi, rho_sq * 30))
+    x_ticks = decade_ticks(minimum(deltas), maximum(deltas); maxticks = maxticks)
+    y_ticks = decade_ticks(ylo, yhi; maxticks = maxticks)
+
+    ax1 = Axis(layout[1, 1]; xscale = log10, yscale = log10,
+        ylabel = L"D^2", xticks = x_ticks, yticks = y_ticks,
+        yticklabelspace = ticklabelspace)
+
+    theory_line = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
+    numerical_scatter = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
+        strokecolor = :black, strokewidth = 1.4, markersize = 22)
+    # points inside the optimizer-floor band are stricken through by a
+    # thin X stretching over the symbol (no legend entry): the floor, not
+    # the physics, sets them
+    floored =
+        isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
+        falses(length(d2_num))
+    any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
+        marker = '×', color = :grey15, markersize = 42)
+    ylims!(ax1, ylo, yhi)
+
+    # legend material: the fitted slope is part of the D²_numerical label
+    # (or written in the axis), not a separate item, and the sub-floor band
+    # is named by a patch in its own colour rather than by an in-axis text
+    # (which the δ_min line crosses whenever δ_min sits in the last decade)
+    floor_color = (:grey, 0.30)
+    floor_band = isfinite(floor_level) && floor_level > ylo
+    legend_entries = Any[theory_line, numerical_scatter]
+    numerical_label =
+        slope_in_axis ? L"D^2_{\mathrm{numerical}}" :
+        latexstring(
+            "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ " *
+            slope_latex(slope, slope_err),
+        )
+    legend_labels = AbstractString[L"D^2_{\mathrm{theoretical}}", numerical_label]
+    if floor_band
+        push!(legend_entries, PolyElement(color = floor_color))
+        push!(legend_labels, "Optimizer floor") # upright text: no math in it
+    end
+    slope_in_axis && text!(ax1, 0.03, 0.97; space = :relative,
+        text = latexstring("\\mathrm{slope:}\\ " * slope_latex(slope, slope_err)),
+        align = (:left, :top), fontsize = 18 - font_shift, color = :dodgerblue4)
+
+    floor_band && hspan!(ax1, ylo, floor_level; color = floor_color)
+    if threshold_visible
+        hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
+        # left side: the δ⁴ line is many decades below the threshold
+        # there, so the label cannot collide with data or fit
+        text!(ax1, minimum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
+            align = (:left, :bottom), offset = (2, 3),
+            fontsize = 18 - font_shift, color = :grey35)
+    end
+    if minimum(deltas) < delta_min < maximum(deltas)
+        vlines!(ax1, [delta_min]; color = :grey35, linewidth = 1.8, linestyle = :dash)
+        text!(ax1, delta_min, ylo; text = L"\delta_{\mathrm{min}}",
+            align = (:right, :bottom), offset = (-5, 4),
+            fontsize = 18 - font_shift, color = :grey35)
+    end
+
+    ax2 = Axis(layout[2, 1]; xscale = log10,
+        xlabel = L"\delta",
+        ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = x_ticks,
+        yticklabelspace = ticklabelspace)
+    # The ratio panel repeats the top panel's vocabulary exactly: dark-red
+    # solid reference at 1 (the theory), blue dots, and floor-band points
+    # stricken through by the same thin X — their true ratio diverges, so
+    # they sit clamped at the panel top. Non-converged points carry no
+    # special mark: the iteration/tolerance caps are strict enough that
+    # flagged points at ratio ≈ 1 are genuine optima.
+    ratio = d2_num ./ d2_theo
+    hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
+    # points below the optimizer floor are discarded here — their ratio
+    # is floor-set and meaningless; the top panel shows them X-stricken
+    keep = pos .& .!floored
+    # symmetric, dynamically chosen y-limits around ratio 1: the smallest
+    # symmetry-appealing half-width that holds every kept point with
+    # ~15% headroom
+    spread = any(keep) ? maximum(abs, ratio[keep] .- 1.0) : 0.5
+    half_width_index = something(findfirst(w -> w >= 1.15 * spread,
+        (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
+    ratio_half_width = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half_width_index]
+    if isfinite(c1) && any(keep)
+        # higher-order-terms fit in dashed dark blue (reads cleanly over
+        # the solid reference): starting slightly left of the first kept
+        # point, reaching past the right margin (clipped by the frame)
+        delta_fit_grid =
+            10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
+                log10(maximum(deltas)) + 0.4, length = 200)
+        model =
+            1.0 .+ c1 .* delta_fit_grid .+
+            (isfinite(c2) ? c2 : 0.0) .* delta_fit_grid .^ 2
+        lines!(ax2, delta_fit_grid,
+            clamp.(model, 1.0 - ratio_half_width, 1.0 + ratio_half_width);
+            color = :navy,
+            linestyle = :dash, linewidth = 3.0)
+        # coefficients always written out as mantissa × 10ⁿ
+        ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
+        isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
+        text!(ax2, 0.985, 0.92; space = :relative,
+            text = latexstring(ctext),
+            align = (:right, :top), fontsize = 16 - font_shift, color = :navy)
+    end
+    scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
+        strokecolor = :black, strokewidth = 1.2, markersize = 17)
+    ylims!(ax2, 1.0 - ratio_half_width, 1.0 + ratio_half_width)
+
+    # explicit x-limits from the data with a small log margin: the fit
+    # curve and reference line intentionally overshoot the last point, and
+    # autolimits would otherwise stretch the frame after them
+    logspan = log10(maximum(deltas)) - log10(minimum(deltas))
+    xpad = 10.0^(0.04 * logspan)
+    xlims!(ax2, minimum(deltas) / xpad, maximum(deltas) * xpad)
+
+    linkxaxes!(ax1, ax2)
+    hidexdecorations!(ax1; grid = false, ticks = false)
+    rowsize!(layout, 1, Relative(0.68))
+    # clearance between the linked panels so the top panel's lowest and
+    # the ratio panel's highest y-tick labels can never meet: each label
+    # extends ~half its height past its frame edge, so the junction gap
+    # must exceed one full label height with margin
+    rowgap!(layout, 36)
+    return (layout = layout, main = ax1, ratio = ax2,
+        legend_entries = legend_entries, legend_labels = legend_labels)
+end
 
 """
 $(TYPEDSIGNATURES)
@@ -383,7 +555,8 @@ non-convergence carries no special mark. The legend sits on top:
 `D²_theoretical`, `D²_numerical` with the fitted slope folded into its
 label, and — only when the band is drawn — a patch in the band's own grey
 naming the optimizer floor. `clean` is the Bool mask of points used for the
-fits — the caller should pass the above-optimizer-floor mask.
+fits — the caller should pass the above-optimizer-floor mask. The panels are
+drawn by [`scaling_panel!`](@ref).
 """
 function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
     d2_theo::AbstractVector;
@@ -392,139 +565,12 @@ function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
     c1::Real = NaN, c2::Real = NaN)
     with_theme(publication_theme()) do
         fig = Figure(size = (920, 900))
-
-        pos = d2_num .> 0
-        ylo = min(minimum(d2_num[pos]), minimum(d2_theo)) / 3
-        yhi = max(maximum(d2_num[pos]), maximum(d2_theo)) * 3
-        # the threshold can sit close to the frame top (near-degenerate
-        # sweeps end just past D² = ρ²): guarantee headroom for its label
-        # before the ticks are chosen, so every decade of the frame is labelled
-        threshold_visible = ylo < rho_sq < yhi
-        threshold_visible && (yhi = max(yhi, rho_sq * 30))
-        x_ticks = decade_ticks(minimum(deltas), maximum(deltas))
-        y_ticks = decade_ticks(ylo, yhi)
-
-        ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-            ylabel = L"D^2", xticks = x_ticks, yticks = y_ticks, yticklabelspace = 66.0)
-
-        theory_line = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
-        numerical_scatter = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
-            strokecolor = :black, strokewidth = 1.4, markersize = 22)
-        # points inside the optimizer-floor band are stricken through by a
-        # thin X stretching over the symbol (no legend entry): the floor, not
-        # the physics, sets them
-        floored =
-            isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
-            falses(length(d2_num))
-        any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
-            marker = '×', color = :grey15, markersize = 42)
-        ylims!(ax1, ylo, yhi)
-
-        # legend on top of the figure: the fitted slope is part of the
-        # D²_numerical label, not a separate item, and the sub-floor band is
-        # named by a patch in its own colour rather than by an in-axis text
-        # (which the δ_min line crosses whenever δ_min sits in the last decade)
-        floor_color = (:grey, 0.30)
-        floor_band = isfinite(floor_level) && floor_level > ylo
-        legend_entries = Any[theory_line, numerical_scatter]
-        legend_labels = AbstractString[L"D^2_{\mathrm{theoretical}}",
-            latexstring(
-                "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ " *
-                slope_latex(slope, slope_err),
-            )]
-        if floor_band
-            push!(legend_entries, PolyElement(color = floor_color))
-            push!(legend_labels, "Optimizer floor") # upright text: no math in it
-        end
-        Legend(fig[0, 1], legend_entries, legend_labels;
-            orientation = :horizontal, framevisible = false,
-            tellwidth = false, tellheight = true, labelsize = 19,
-            # patch box tall enough for the band swatch to read; line and
-            # marker entries are drawn centred in it, so they are unaffected
-            patchsize = (30, 12), colgap = 16, patchlabelgap = 5,
-            padding = (0, 0, 4, 0))
-
-        floor_band && hspan!(ax1, ylo, floor_level; color = floor_color)
-        if threshold_visible
-            hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
-            # left side: the δ⁴ line is many decades below the threshold
-            # there, so the label cannot collide with data or fit
-            text!(ax1, minimum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
-                align = (:left, :bottom), offset = (2, 3),
-                fontsize = 18, color = :grey35)
-        end
-        if minimum(deltas) < delta_min < maximum(deltas)
-            vlines!(ax1, [delta_min]; color = :grey35, linewidth = 1.8, linestyle = :dash)
-            text!(ax1, delta_min, ylo; text = L"\delta_{\mathrm{min}}",
-                align = (:right, :bottom), offset = (-5, 4),
-                fontsize = 18, color = :grey35)
-        end
-
-        ax2 = Axis(fig[2, 1]; xscale = log10,
-            xlabel = L"\delta",
-            ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = x_ticks,
-            yticklabelspace = 66.0)
-        # The ratio panel repeats the top panel's vocabulary exactly: dark-red
-        # solid reference at 1 (the theory), blue dots, and floor-band points
-        # stricken through by the same thin X — their true ratio diverges, so
-        # they sit clamped at the panel top. Non-converged points carry no
-        # special mark: the iteration/tolerance caps are strict enough that
-        # flagged points at ratio ≈ 1 are genuine optima.
-        ratio = d2_num ./ d2_theo
-        hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
-        # points below the optimizer floor are discarded here — their ratio
-        # is floor-set and meaningless; the top panel shows them X-stricken
-        keep = pos .& .!floored
-        # symmetric, dynamically chosen y-limits around ratio 1: the smallest
-        # symmetry-appealing half-width that holds every kept point with
-        # ~15% headroom
-        spread = any(keep) ? maximum(abs, ratio[keep] .- 1.0) : 0.5
-        half_width_index = something(findfirst(w -> w >= 1.15 * spread,
-            (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)), 6)
-        ratio_half_width = (0.02, 0.05, 0.1, 0.25, 0.5, 1.0)[half_width_index]
-        if isfinite(c1) && any(keep)
-            # higher-order-terms fit in dashed dark blue (reads cleanly over
-            # the solid reference): starting slightly left of the first kept
-            # point, reaching past the right margin (clipped by the frame)
-            delta_fit_grid =
-                10.0 .^ range(log10(minimum(deltas[keep])) - 0.15,
-                    log10(maximum(deltas)) + 0.4, length = 200)
-            model =
-                1.0 .+ c1 .* delta_fit_grid .+
-                (isfinite(c2) ? c2 : 0.0) .* delta_fit_grid .^ 2
-            lines!(ax2, delta_fit_grid,
-                clamp.(model, 1.0 - ratio_half_width, 1.0 + ratio_half_width);
-                color = :navy,
-                linestyle = :dash, linewidth = 3.0)
-            # coefficients always written out as mantissa × 10ⁿ
-            ctext = "1 + c_1\\delta + c_2\\delta^2,\\;\\; c_1 = " * coef_latex(c1)
-            isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
-            text!(ax2, 0.985, 0.92; space = :relative,
-                text = latexstring(ctext),
-                align = (:right, :top), fontsize = 16, color = :navy)
-        end
-        scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
-            strokecolor = :black, strokewidth = 1.2, markersize = 17)
-        ylims!(ax2, 1.0 - ratio_half_width, 1.0 + ratio_half_width)
-
-        # explicit x-limits from the data with a small log margin: the fit
-        # curve and reference line intentionally overshoot the last point, and
-        # autolimits would otherwise stretch the frame after them
-        logspan = log10(maximum(deltas)) - log10(minimum(deltas))
-        xpad = 10.0^(0.04 * logspan)
-        xlims!(ax2, minimum(deltas) / xpad, maximum(deltas) * xpad)
-
-        linkxaxes!(ax1, ax2)
-        hidexdecorations!(ax1; grid = false, ticks = false)
-        rowsize!(fig.layout, 1, Relative(0.68))
-        # clearance between the linked panels so the top panel's lowest and
-        # the ratio panel's highest y-tick labels can never meet: each label
-        # extends ~half its height past its frame edge, so the junction gap
-        # must exceed one full label height with margin (the legend gap above
-        # the top panel stays compact). Gap indices follow the layout's row
-        # numbering (legend row 0, panels 1 and 2): gap 1 lies below row 1.
-        rowgap!(fig.layout, 12)
-        rowgap!(fig.layout, 1, 36)
+        panel = scaling_panel!(fig[1, 1], deltas, d2_num, d2_theo;
+            rho_sq, delta_min, slope, slope_err, clean, floor_level, c1, c2,
+            compact = false, slope_in_axis = false)
+        Legend(fig[0, 1], panel.legend_entries, panel.legend_labels;
+            SCALING_LEGEND_KW...)
+        rowgap!(fig.layout, 12) # the legend gap above the top panel stays compact
         return fig
     end
 end
@@ -581,6 +627,182 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Draw the two residual-spectrum panels of [`residual_figure`](@ref) into the
+grid position (or `GridLayout`) `gp`: the `d(SNR²)/df` axis at row 1, the
+between-panel annotation row at row 2 and the `d(D²)/df` axis at row 3 of a
+nested `GridLayout`. Everything of the single figure is drawn except the
+legend, whose material is returned per channel as `(entries, labels, title)`.
+Top-panel limits and decade ticks follow the persisted signal means (at most
+eight decades below their maximum), and the envelopes are clamped to the frame
+bottom of either panel; the bottom frame reaches at most twelve decades below
+the residual maximum. `compact` selects the half-width variant for composites
+(at most five decade ticks per axis, narrower tick-label space, annotations
+two points smaller).
+
+Returns the NamedTuple `(layout, top, bottom, legend_A, legend_E)`.
+"""
+function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
+    delta_symbol::String = "\\delta^*", compact::Bool = false)
+    layout = GridLayout(gp)
+    maxticks = compact ? 5 : 7
+    ticklabelspace = compact ? 54.0 : 70.0
+    font_shift = compact ? 2 : 0
+    # Limits and ticks follow the plotted data: with log-uniform decimation
+    # the first/last plotted frequencies sit at the band ends, so the
+    # frame ends on the data with no gap at either side. Dense 1–2–5
+    # log ticks — whole decades alone are too sparse over ~3 decades.
+    fmin = minimum(spec.f)
+    fmax = maximum(spec.f)
+    x_ticks = log_ticks_125(fmin, fmax)
+
+    # channel = hue (A blue, E warm), role = shade + line style: data is
+    # the dark solid line, the best fit — which sits right on top of it —
+    # is a brighter dash-dotted line over it, the residual a medium solid
+    col_data_A, col_bf_A, col_res_A = :steelblue4, :deepskyblue, :dodgerblue2
+    col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
+
+    # display-only smoothing of the window means: oscillations of the
+    # density whose period spans a few decimation windows alias into a
+    # sawtooth in the means (the envelopes below stay raw)
+    smooth(v) = binomial_smooth(v, RESIDUAL_SMOOTHING_PASSES)
+    sig_mean_A = smooth(spec.sig_mean_A)
+    sig_mean_E = smooth(spec.sig_mean_E)
+    bf_mean_A = smooth(spec.bf_mean_A)
+    bf_mean_E = smooth(spec.bf_mean_E)
+    res_mean_A = smooth(spec.res_mean_A)
+    res_mean_E = smooth(spec.res_mean_E)
+
+    # top-panel range from the persisted signal means alone: the envelope
+    # minima of a spectrum tapering off at the high-frequency end reach
+    # decades below the curves and would otherwise set the frame; the depth
+    # is capped at eight decades below the maximum. Explicit decade ticks
+    # (Makie's default log labels would render the unit and tens decades as
+    # 10⁰/10¹ instead of 1/10)
+    sig_pos = filter(>(0), vcat(spec.sig_mean_A, spec.sig_mean_E))
+    sig_top = maximum(sig_pos)
+    ylo1 = max(minimum(sig_pos), sig_top * 1e-8) / 3
+    yhi1 = sig_top * 3
+    ax1 = Axis(layout[1, 1]; xscale = log10, yscale = log10,
+        ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+        xticks = x_ticks,
+        yticks = decade_ticks(ylo1, yhi1; maxticks = maxticks),
+        yticklabelspace = ticklabelspace)
+    # envelopes clamped at the frame bottom: no shading below the frame
+    band!(ax1, spec.f, max.(spec.sig_min_A, ylo1), max.(spec.sig_max_A, ylo1);
+        color = (col_data_A, 0.14))
+    band!(ax1, spec.f, max.(spec.sig_min_E, ylo1), max.(spec.sig_max_E, ylo1);
+        color = (col_data_E, 0.14))
+    dA = lines!(ax1, spec.f, sig_mean_A; color = col_data_A, linewidth = 3.6)
+    dE = lines!(ax1, spec.f, sig_mean_E; color = col_data_E, linewidth = 3.6)
+    bA = lines!(ax1, spec.f, bf_mean_A; color = col_bf_A,
+        linestyle = :dashdot, linewidth = 3.0)
+    bE = lines!(ax1, spec.f, bf_mean_E; color = col_bf_E,
+        linestyle = :dashdot, linewidth = 3.0)
+    ylims!(ax1, ylo1, yhi1)
+
+    # y-range of the residual panel: cover the lines AND the min/max
+    # shadings — but cap the extra depth at ~1.6 decades below the mean
+    # floor, so a near-cancellation spike in a single decimation window
+    # cannot compress the curves into a negligible band (the band then clips only
+    # inside the dip), and at twelve decades below the residual maximum. The
+    # per-bin noise reference 1/Δf can sit many decades above the curves and
+    # is never allowed to distort the range.
+    res_pos = filter(>(0), vcat(res_mean_A, res_mean_E))
+    band_pos = filter(>(0), vcat(spec.res_min_A, spec.res_min_E))
+    band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
+    res_top = maximum(
+        filter(
+            >(0),
+            vcat(spec.res_mean_A, spec.res_mean_E,
+                spec.res_max_A, spec.res_max_E),
+        ),
+    )
+    ylo2 = max(band_lo / 2, minimum(res_pos) / 40, res_top * 1e-12)
+    yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
+        maximum(res_pos)) * 4
+    noise_level = 1.0 / meta.df
+    noise_in_frame = noise_level < 30 * yhi2
+    noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
+
+    # annotations sit between the panels — above the bottom plot, outside
+    # its frame, on one line: the δ*/integral text left-aligned, and the
+    # off-scale noise note right-aligned in the same row (only when the
+    # 1/Δf reference cannot be drawn inside the frame)
+    Label(layout[2, 1],
+        latexstring(delta_symbol, " = ", sci_latex(meta.delta_star),
+            ":\\;\\; D^2_{", delta_symbol, "} = ", sci_latex(meta.d2_num),
+            "\\;\\; (D^2_{\\mathrm{th},\\,", delta_symbol, "} = ",
+            sci_latex(meta.d2_theo), ")");
+        fontsize = 16 - font_shift, halign = :left, tellwidth = false,
+        tellheight = true, padding = (4, 0, 2, 8))
+    if !noise_in_frame
+        Label(layout[2, 1],
+            latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+                sci_latex(noise_level),
+                "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
+            fontsize = 14 - font_shift, color = :grey35, halign = :right,
+            tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
+    end
+
+    ax2 = Axis(layout[3, 1]; xscale = log10, yscale = log10,
+        xlabel = L"f\ \ [\mathrm{Hz}]",
+        ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+        xticks = x_ticks, yticks = decade_ticks(ylo2, yhi2; maxticks = maxticks),
+        yticklabelspace = ticklabelspace)
+    band!(ax2, spec.f, max.(spec.res_min_A, ylo2), spec.res_max_A;
+        color = (col_res_A, 0.16))
+    band!(ax2, spec.f, max.(spec.res_min_E, ylo2), spec.res_max_E;
+        color = (col_res_E, 0.16))
+    rA = lines!(ax2, spec.f, res_mean_A; color = col_res_A, linewidth = 3.2)
+    rE = lines!(ax2, spec.f, res_mean_E; color = col_res_E, linewidth = 3.2)
+
+    if noise_in_frame
+        hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
+        text!(ax2, fmax, noise_level; text = "Per-bin noise level",
+            align = (:right, :top), offset = (-6, -4), fontsize = 16 - font_shift,
+            color = :grey35)
+    end
+    ylims!(ax2, ylo2, yhi2)
+
+    linkxaxes!(ax1, ax2)
+    xlims!(ax2, fmin, fmax) # frame ends on the data — no gap at either side
+    hidexdecorations!(ax1; grid = false, ticks = false)
+    rowgap!(layout, 8) # keep the between-panel annotation block compact
+    roles = ["Data", "Best fit", "Residual"]
+    return (layout = layout, top = ax1, bottom = ax2,
+        legend_A = (entries = [dA, bA, rA], labels = roles, title = "Channel A:"),
+        legend_E = (entries = [dE, bE, rE], labels = roles, title = "Channel E:"))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Two-row channel legend of the residual-spectrum figures at `gp`, built from
+the `legend_A`/`legend_E` material of [`residual_panel!`](@ref). Mechanism:
+two single-group `Legend`s stacked in a nested `GridLayout` — one row per
+channel, each left-aligned in the block so the three entries line up in
+columns. A single grouped legend laid the two blocks side by side and ran
+wider than the canvas; `nbanks` cannot reproduce the per-channel rows with
+their own bold header.
+"""
+function residual_legend_block!(gp, legend_A::NamedTuple, legend_E::NamedTuple)
+    legend_kw = (; orientation = :horizontal, titleposition = :left,
+        framevisible = false, tellwidth = true, tellheight = true,
+        halign = :left, labelsize = 18, titlesize = 19, titlefont = :bold,
+        patchsize = (26, 4), patchlabelgap = 4,
+        colgap = 10, titlegap = 8, padding = (0, 0, 1, 1))
+    legend_block = GridLayout(gp; halign = :center, tellwidth = false, tellheight = true)
+    Legend(legend_block[1, 1], legend_A.entries, legend_A.labels, legend_A.title;
+        legend_kw...)
+    Legend(legend_block[2, 1], legend_E.entries, legend_E.labels, legend_E.title;
+        legend_kw...)
+    rowgap!(legend_block, 3) # the block costs as little height as possible
+    return legend_block
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Residual-spectrum figure in true density units: top panel `d(SNR²)/df` of the
 two-source data and the best-fit single source, bottom panel the unabsorbed
 residual `d(D²)/df` — the integral of the bottom curves is the D² of the
@@ -591,15 +813,17 @@ columns. Channel encodes hue
 dash-dotted line over the dark solid data line; the plotted means are
 binomially smoothed for display (`RESIDUAL_SMOOTHING_PASSES`) while
 the min/max decimation envelopes are drawn from the raw columns, shading both
-channels and covered by the bottom panel's y-range (depth-
-capped so a cancellation spike cannot compress the curves). Frame limits
-follow the plotted data with dense 1–2–5 log ticks, and the δ*/integral and
+channels and clamped at the frame bottom. The top frame follows the persisted
+signal means (at most eight decades deep); the bottom frame covers the
+residual envelopes, depth-capped so a cancellation spike cannot compress the
+curves and at most twelve decades below the residual maximum. Dense 1–2–5 log
+ticks on the frequency axis; the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
 `spec` is the (log-uniformly decimated) spectrum table; `meta` is the
 [`ResidualFigureMeta`](@ref) annotation record. `delta_symbol` names the
 evaluation separation in the annotation — the default `\\delta^*` for the
 validity-window panel, `\\delta_{\\mathrm{thr}}` for the threshold
-companion.
+companion. The panels are drawn by [`residual_panel!`](@ref).
 """
 function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
     delta_symbol::String = "\\delta^*")
@@ -607,129 +831,10 @@ function residual_figure(spec::AbstractDataFrame, meta::ResidualFigureMeta;
         # height carries the second legend row (~32) on top of the 950 the two
         # panels and the annotation row need, so the axes keep their size
         fig = Figure(size = (950, 982))
-        # Limits and ticks follow the plotted data: with log-uniform decimation
-        # the first/last plotted frequencies sit at the band ends, so the
-        # frame ends on the data with no gap at either side. Dense 1–2–5
-        # log ticks — whole decades alone are too sparse over ~3 decades.
-        fmin = minimum(spec.f)
-        fmax = maximum(spec.f)
-        x_ticks = log_ticks_125(fmin, fmax)
-
-        # channel = hue (A blue, E warm), role = shade + line style: data is
-        # the dark solid line, the best fit — which sits right on top of it —
-        # is a brighter dash-dotted line over it, the residual a medium solid
-        col_data_A, col_bf_A, col_res_A = :steelblue4, :deepskyblue, :dodgerblue2
-        col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
-
-        # display-only smoothing of the window means: oscillations of the
-        # density whose period spans a few decimation windows alias into a
-        # sawtooth in the means (the envelopes below stay raw)
-        smooth(v) = binomial_smooth(v, RESIDUAL_SMOOTHING_PASSES)
-        sig_mean_A = smooth(spec.sig_mean_A)
-        sig_mean_E = smooth(spec.sig_mean_E)
-        bf_mean_A = smooth(spec.bf_mean_A)
-        bf_mean_E = smooth(spec.bf_mean_E)
-        res_mean_A = smooth(spec.res_mean_A)
-        res_mean_E = smooth(spec.res_mean_E)
-
-        # explicit decade ticks (Makie's default log labels would render the
-        # unit and tens decades as 10⁰/10¹ instead of 1/10)
-        sig_pos = filter(
-            >(0),
-            vcat(spec.sig_min_A, spec.sig_min_E,
-                spec.sig_max_A, spec.sig_max_E),
-        )
-        ax1 = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-            ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-            xticks = x_ticks,
-            yticks = decade_ticks(minimum(sig_pos), maximum(sig_pos)),
-            yticklabelspace = 70.0)
-        band!(ax1, spec.f, spec.sig_min_A, spec.sig_max_A; color = (col_data_A, 0.14))
-        band!(ax1, spec.f, spec.sig_min_E, spec.sig_max_E; color = (col_data_E, 0.14))
-        dA = lines!(ax1, spec.f, sig_mean_A; color = col_data_A, linewidth = 3.6)
-        dE = lines!(ax1, spec.f, sig_mean_E; color = col_data_E, linewidth = 3.6)
-        bA = lines!(ax1, spec.f, bf_mean_A; color = col_bf_A,
-            linestyle = :dashdot, linewidth = 3.0)
-        bE = lines!(ax1, spec.f, bf_mean_E; color = col_bf_E,
-            linestyle = :dashdot, linewidth = 3.0)
-
-        # y-range of the residual panel: cover the lines AND the min/max
-        # shadings — but cap the extra depth at ~1.6 decades below the mean
-        # floor, so a near-cancellation spike in a single decimation window
-        # cannot compress the curves into a negligible band (the band then clips only
-        # inside the dip). The per-bin noise reference 1/Δf can sit many
-        # decades above the curves and is never allowed to distort the range.
-        res_pos = filter(>(0), vcat(res_mean_A, res_mean_E))
-        band_pos = filter(>(0), vcat(spec.res_min_A, spec.res_min_E))
-        band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
-        ylo2 = max(band_lo / 2, minimum(res_pos) / 40)
-        yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
-            maximum(res_pos)) * 4
-        noise_level = 1.0 / meta.df
-        noise_in_frame = noise_level < 30 * yhi2
-        noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
-
-        # annotations sit between the panels — above the bottom plot, outside
-        # its frame, on one line: the δ*/integral text left-aligned, and the
-        # off-scale noise note right-aligned in the same row (only when the
-        # 1/Δf reference cannot be drawn inside the frame)
-        Label(fig[2, 1],
-            latexstring(delta_symbol, " = ", sci_latex(meta.delta_star),
-                ":\\;\\; D^2_{", delta_symbol, "} = ", sci_latex(meta.d2_num),
-                "\\;\\; (D^2_{\\mathrm{th},\\,", delta_symbol, "} = ",
-                sci_latex(meta.d2_theo), ")");
-            fontsize = 16, halign = :left, tellwidth = false, tellheight = true,
-            padding = (4, 0, 2, 8))
-        if !noise_in_frame
-            Label(fig[2, 1],
-                latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
-                    sci_latex(noise_level),
-                    "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
-                fontsize = 14, color = :grey35, halign = :right,
-                tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
-        end
-
-        ax2 = Axis(fig[3, 1]; xscale = log10, yscale = log10,
-            xlabel = L"f\ \ [\mathrm{Hz}]",
-            ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
-            xticks = x_ticks, yticks = decade_ticks(ylo2, yhi2),
-            yticklabelspace = 70.0)
-        band!(ax2, spec.f, max.(spec.res_min_A, 1e-300), spec.res_max_A;
-            color = (col_res_A, 0.16))
-        band!(ax2, spec.f, max.(spec.res_min_E, 1e-300), spec.res_max_E;
-            color = (col_res_E, 0.16))
-        rA = lines!(ax2, spec.f, res_mean_A; color = col_res_A, linewidth = 3.2)
-        rE = lines!(ax2, spec.f, res_mean_E; color = col_res_E, linewidth = 3.2)
-
-        # Legend on top of the figure, spanning both panels. Mechanism: two
-        # single-group `Legend`s stacked in a nested `GridLayout` — one row per
-        # channel, each left-aligned in the block so the three entries line up
-        # in columns. A single grouped legend laid the two blocks side by side
-        # and ran wider than the canvas; `nbanks` cannot reproduce the
-        # per-channel rows with their own bold header.
-        legend_kw = (; orientation = :horizontal, titleposition = :left,
-            framevisible = false, tellwidth = true, tellheight = true,
-            halign = :left, labelsize = 18, titlesize = 19, titlefont = :bold,
-            patchsize = (26, 4), patchlabelgap = 4,
-            colgap = 10, titlegap = 8, padding = (0, 0, 1, 1))
-        legend_block = GridLayout(fig[0, 1];
-            halign = :center, tellwidth = false, tellheight = true)
-        Legend(legend_block[1, 1], [dA, bA, rA],
-            ["Data", "Best fit", "Residual"], "Channel A:"; legend_kw...)
-        Legend(legend_block[2, 1], [dE, bE, rE],
-            ["Data", "Best fit", "Residual"], "Channel E:"; legend_kw...)
-        rowgap!(legend_block, 3) # the block costs as little height as possible
-        if noise_in_frame
-            hlines!(ax2, [noise_level]; color = :grey35, linewidth = 1.8, linestyle = :dot)
-            text!(ax2, fmax, noise_level; text = "Per-bin noise level",
-                align = (:right, :top), offset = (-6, -4), fontsize = 16, color = :grey35)
-        end
-        ylims!(ax2, ylo2, yhi2)
-
-        linkxaxes!(ax1, ax2)
-        xlims!(ax2, fmin, fmax) # frame ends on the data — no gap at either side
-        hidexdecorations!(ax1; grid = false, ticks = false)
-        rowgap!(fig.layout, 8) # keep the between-panel annotation block compact
+        panel = residual_panel!(fig[1, 1], spec, meta; delta_symbol = delta_symbol)
+        # legend on top of the figure, spanning both panels
+        residual_legend_block!(fig[0, 1], panel.legend_A, panel.legend_E)
+        rowgap!(fig.layout, 8)
         return fig
     end
 end
@@ -776,9 +881,12 @@ common power of 10 — annotated once at the end of the axis (right of the
 frame's bottom corner for x, above the frame for y), never per tick and
 never inside the axis label — while plain decimals are used where they read
 fine (`exponent == 0`). Fallback when no clean grid exists: per-tick
-common-exponent scientific notation. Returns the `(lo, hi)` limits.
+common-exponent scientific notation. The multiplier labels are placed in
+`layout`, the zone panel's `GridLayout` holding `ax` at `[1, 1]`. Returns the
+`(lo, hi)` limits.
 """
-function zone_axis_ticks!(fig, ax, axis::Symbol, param::Int, h::Real, exponent::Int)
+function zone_axis_ticks!(layout::GridLayout, ax, axis::Symbol, param::Int, h::Real,
+    exponent::Int)
     ticks_property = axis === :x ? :xticks : :yticks
     format_property = axis === :x ? :xtickformat : :ytickformat
     lo, hi = -h, h
@@ -805,11 +913,11 @@ function zone_axis_ticks!(fig, ax, axis::Symbol, param::Int, h::Real, exponent::
         power_label = latexstring("\\times 10^{", axis_power, "}")
         if axis === :x
             # just right of the frame's bottom corner, clear of the last tick label
-            Label(fig[1, 2], power_label;
+            Label(layout[1, 2], power_label;
                 fontsize = 20, halign = :left, valign = :bottom,
                 padding = (2, 0, 0, 0), tellheight = false)
         else
-            Label(fig[0, 1], power_label;
+            Label(layout[0, 1], power_label;
                 fontsize = 20, halign = :left, valign = :bottom,
                 padding = (0, 0, 2, 0), tellwidth = false)
         end
@@ -926,19 +1034,61 @@ with `DataAspect`, except a needle: a zone whose principal-axis aspect
 the 1.5PN model — is rotated into the frame of that direction (abscissa along
 it, ordinate transverse, independent scales) so that its transverse width is
 visible; the x label quotes the null slope dχ₂/dχ₁, while wall detection and
-the annotation stay in parameter units.
+the annotation stay in parameter units. The map is drawn by
+[`zone_panel!`](@ref).
 """
 function zone_figure(x::AbstractVector, y::AbstractVector,
     prior_limited::AbstractVector{Bool};
     px::Int, py::Int, box::NTuple{4,Float64},
     prior_frac::Real, degenerate_frac::Real,
     x_math = nothing, y_math = nothing)
+    same_units, needle, _ = zone_frame(x, y, px, py, x_math, y_math)
+    with_theme(publication_theme()) do
+        # squarer canvas for equal-aspect same-unit planes to avoid wide side margins
+        fig = Figure(size = (same_units && !needle) ? (820, 830) : (960, 720))
+        zone_panel!(fig[1, 1], x, y, prior_limited;
+            px, py, box, prior_frac, degenerate_frac, x_math, y_math)
+        return fig
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Validated frame of a zone map: `(same_units, needle, ϑ)`, where `same_units`
+marks a spin–spin plane, `needle` a same-unit zone whose principal-axis
+aspect reaches `NEEDLE_ASPECT`, and `ϑ` the principal-axis angle
+([`principal_axis`](@ref)). Throws on a degenerate plane or inconsistent
+mathematical-contour arguments.
+"""
+function zone_frame(x::AbstractVector, y::AbstractVector, px::Int, py::Int,
+    x_math, y_math)
     px == py && throw(ArgumentError("map plane must use two distinct parameters"))
     (x_math === nothing) == (y_math === nothing) ||
         throw(ArgumentError("x_math and y_math must be supplied together"))
     x_math === nothing || length(x_math) == length(y_math) == length(x) ||
         throw(DimensionMismatch("x_math/y_math must match the boundary polygon length"))
     same_units = (px in SPIN_INDICES && py in SPIN_INDICES)
+    ϑ, aspect = principal_axis(x, y)
+    return same_units, same_units && aspect >= NEEDLE_ASPECT, ϑ
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Draw the zone-of-confusion map of [`zone_figure`](@ref) into the grid
+position (or `GridLayout`) `gp`: the axis at row 1 of a nested `GridLayout`,
+the prior-wall annotation and any y-axis multiplier in its row 0, any x-axis
+multiplier in its column 2. `compact` selects the half-width variant for
+composites (annotation two points smaller).
+
+Returns the NamedTuple `(layout, axis, needle, same_units)`.
+"""
+function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
+    prior_limited::AbstractVector{Bool};
+    px::Int, py::Int, box::NTuple{4,Float64},
+    prior_frac::Real, degenerate_frac::Real,
+    x_math = nothing, y_math = nothing, compact::Bool = false)
     # Needle frame (same-unit planes only, where a rotation is meaningful): a
     # zone drawn as a needle along a null direction is rotated into its
     # principal frame — abscissa along the needle, ordinate transverse — on
@@ -946,130 +1096,277 @@ function zone_figure(x::AbstractVector, y::AbstractVector,
     # line. Wall detection below keeps the parameter-unit coordinates. Remove
     # with the 2PN spin–spin term (roadmap §1), which closes the spin zone and
     # returns the parameter frame.
-    ϑ, aspect = principal_axis(x, y)
-    needle = same_units && aspect >= NEEDLE_ASPECT
+    same_units, needle, ϑ = zone_frame(x, y, px, py, x_math, y_math)
     rotate(u, v) = (u .* cos(ϑ) .+ v .* sin(ϑ), v .* cos(ϑ) .- u .* sin(ϑ))
     xd, yd = needle ? rotate(x, y) : (x, y)
     xm_d, ym_d = (x_math === nothing || !needle) ? (x_math, y_math) : rotate(x_math, y_math)
-    with_theme(publication_theme()) do
-        # squarer canvas for equal-aspect same-unit planes to avoid wide side margins
-        fig = Figure(size = (same_units && !needle) ? (820, 830) : (960, 720))
+    layout = GridLayout(gp)
+    font_shift = compact ? 2 : 0
 
-        # Limits symmetric about zero on each axis, sized by everything that
-        # must be visible on it — the zone polygon with its wall runs — plus
-        # ZONE_LIMIT_MARGIN. The uncapped mathematical contour does not enter:
-        # along degenerate directions it is unbounded, and it is free to run
-        # off the frame.
-        function half_width(v)
-            m = maximum(abs, filter(isfinite, v); init = 0.0)
-            return m > 0 ? (1 + ZONE_LIMIT_MARGIN) * m : 1.0
-        end
-        hx = half_width(xd)
-        hy = half_width(yd)
-        # commensurate axes (DataAspect) share the larger half-width, so the
-        # frame stays square in data units
-        same_units && !needle && (hx = hy = max(hx, hy))
-        x_exponent = axis_exponent(hx)
-        y_exponent = axis_exponent(hy)
+    # Limits symmetric about zero on each axis, sized by everything that
+    # must be visible on it — the zone polygon with its wall runs — plus
+    # ZONE_LIMIT_MARGIN. The uncapped mathematical contour does not enter:
+    # along degenerate directions it is unbounded, and it is free to run
+    # off the frame.
+    function half_width(v)
+        m = maximum(abs, filter(isfinite, v); init = 0.0)
+        return m > 0 ? (1 + ZONE_LIMIT_MARGIN) * m : 1.0
+    end
+    hx = half_width(xd)
+    hy = half_width(yd)
+    # commensurate axes (DataAspect) share the larger half-width, so the
+    # frame stays square in data units
+    same_units && !needle && (hx = hy = max(hx, hy))
+    x_exponent = axis_exponent(hx)
+    y_exponent = axis_exponent(hy)
 
-        if needle
-            xlabel = latexstring(
-                "\\Delta\\chi_{\\parallel}\\ \\ (\\mathrm{null\\ direction},\\ ",
-                "\\mathrm{d}\\chi_2/\\mathrm{d}\\chi_1 = ", @sprintf("%.2f", tan(ϑ)),
-                ")")
-            ylabel = L"\Delta\chi_{\perp}"
-        else
-            xlabel = deviation_label(px)
-            ylabel = deviation_label(py)
-        end
-        ax = Axis(fig[1, 1]; xlabel = xlabel, ylabel = ylabel)
-        same_units && !needle && (ax.aspect = DataAspect())
+    if needle
+        xlabel = latexstring(
+            "\\Delta\\chi_{\\parallel}\\ \\ (\\mathrm{null\\ direction},\\ ",
+            "\\mathrm{d}\\chi_2/\\mathrm{d}\\chi_1 = ", @sprintf("%.2f", tan(ϑ)),
+            ")")
+        ylabel = L"\Delta\chi_{\perp}"
+    else
+        xlabel = deviation_label(px)
+        ylabel = deviation_label(py)
+    end
+    ax = Axis(layout[1, 1]; xlabel = xlabel, ylabel = ylabel)
+    same_units && !needle && (ax.aspect = DataAspect())
 
-        xlo, xhi = zone_axis_ticks!(fig, ax, :x, px, hx, x_exponent)
-        ylo, yhi = zone_axis_ticks!(fig, ax, :y, py, hy, y_exponent)
-        # a tall same-unit zone (needle along a null spin direction) leaves the
-        # x axis narrow: rotate its tick labels so they cannot collide
-        if same_units && !needle && (xhi - xlo) < 0.6 * (yhi - ylo)
-            ax.xticklabelrotation = π / 4
-        end
+    xlo, xhi = zone_axis_ticks!(layout, ax, :x, px, hx, x_exponent)
+    ylo, yhi = zone_axis_ticks!(layout, ax, :y, py, hy, y_exponent)
+    # a tall same-unit zone (needle along a null spin direction) leaves the
+    # x axis narrow: rotate its tick labels so they cannot collide
+    if same_units && !needle && (xhi - xlo) < 0.6 * (yhi - ylo)
+        ax.xticklabelrotation = π / 4
+    end
 
-        poly!(ax, Point2f.(xd, yd); color = (ZONE_BLUE, 0.25), strokewidth = 0)
+    poly!(ax, Point2f.(xd, yd); color = (ZONE_BLUE, 0.25), strokewidth = 0)
 
-        # The boundary of the filled (physical) zone is solid throughout:
-        # curvature-limited runs in blue, prior-limited runs in red along the
-        # hard physical walls. Where the prior cuts the zone off, the uncapped
-        # mathematical contour continues past the wall as an empty dashed line
-        # (no fill) — drawn first so the solid boundary sits on top of the
-        # junctions.
-        n = length(x)
-        edge_prior = [prior_limited[i] && prior_limited[mod1(i + 1, n)] for i in 1:n]
-        if x_math !== nothing && any(prior_limited)
-            # dilate the mask by one edge per side so each dashed arc joins the
-            # solid contour at the capping crossover (where r_math = r_capped);
-            # non-finite (degenerate) points break the polyline
-            xm = [isfinite(v) ? Float64(v) : NaN for v in xm_d]
-            ym = [isfinite(v) ? Float64(v) : NaN for v in ym_d]
-            edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
-            mx, my = boundary_runs(xm, ym, edge_math, true)
-            isempty(mx) || lines!(ax, mx, my; color = (ZONE_BLUE, 0.75),
-                linewidth = 2.4, linestyle = :dash)
-        end
-        cx, cy = boundary_runs(xd, yd, edge_prior, false)
-        bx, by = boundary_runs(xd, yd, edge_prior, true)
-        isempty(cx) || lines!(ax, cx, cy; color = ZONE_BLUE, linewidth = 3.0)
-        isempty(bx) || lines!(ax, bx, by; color = WALL_VERMILLION, linewidth = 4.5)
+    # The boundary of the filled (physical) zone is solid throughout:
+    # curvature-limited runs in blue, prior-limited runs in red along the
+    # hard physical walls. Where the prior cuts the zone off, the uncapped
+    # mathematical contour continues past the wall as an empty dashed line
+    # (no fill) — drawn first so the solid boundary sits on top of the
+    # junctions.
+    n = length(x)
+    edge_prior = [prior_limited[i] && prior_limited[mod1(i + 1, n)] for i in 1:n]
+    if x_math !== nothing && any(prior_limited)
+        # dilate the mask by one edge per side so each dashed arc joins the
+        # solid contour at the capping crossover (where r_math = r_capped);
+        # non-finite (degenerate) points break the polyline
+        xm = [isfinite(v) ? Float64(v) : NaN for v in xm_d]
+        ym = [isfinite(v) ? Float64(v) : NaN for v in ym_d]
+        edge_math = [prior_limited[i] || prior_limited[mod1(i + 1, n)] for i in 1:n]
+        mx, my = boundary_runs(xm, ym, edge_math, true)
+        isempty(mx) || lines!(ax, mx, my; color = (ZONE_BLUE, 0.75),
+            linewidth = 2.4, linestyle = :dash)
+    end
+    cx, cy = boundary_runs(xd, yd, edge_prior, false)
+    bx, by = boundary_runs(xd, yd, edge_prior, true)
+    isempty(cx) || lines!(ax, cx, cy; color = ZONE_BLUE, linewidth = 3.0)
+    isempty(bx) || lines!(ax, bx, by; color = WALL_VERMILLION, linewidth = 4.5)
 
-        xlims!(ax, xlo, xhi)
-        ylims!(ax, ylo, yhi)
+    xlims!(ax, xlo, xhi)
+    ylims!(ax, ylo, yhi)
 
-        if prior_frac > 0
-            # never round a nonzero fraction to "0%": the capped boundary run
-            # can be visually dominant yet contain few sampled directions
-            # (adaptive refinement leaves flat prior walls sparsely sampled)
-            pcttex(f) = 100f < 0.5 ? "{<}1\\%" : @sprintf("%.0f\\%%", 100f)
-            # name the active walls with their values: a prior-limited boundary
-            # point sits exactly on the box edge its ray exited through, so an
-            # edge is active iff some capped point lies on it
-            devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
-            fmt_edge(v, isphase) =
-                isphase && isapprox(abs(v), π; atol = 1e-9) ?
-                (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
-            prior_x = view(x, prior_limited)
-            prior_y = view(y, prior_limited)
-            lox, hix, loy, hiy = box
-            walls = String[]
-            for (lo_e, hi_e, vals, tol, idx) in
-                ((lox, hix, prior_x, 1e-6 * (maximum(x) - minimum(x)), px),
-                (loy, hiy, prior_y, 1e-6 * (maximum(y) - minimum(y)), py))
-                lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
-                hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
-                isph = idx == PHASE_INDEX
-                if lo_hit && hi_hit && isapprox(lo_e, -hi_e; rtol = 1e-9)
-                    push!(walls, string(devtex(idx), " = \\pm ", fmt_edge(abs(hi_e), isph)))
-                else
-                    lo_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(lo_e, isph)))
-                    hi_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(hi_e, isph)))
-                end
+    if prior_frac > 0
+        # never round a nonzero fraction to "0%": the capped boundary run
+        # can be visually dominant yet contain few sampled directions
+        # (adaptive refinement leaves flat prior walls sparsely sampled)
+        pcttex(f) = 100f < 0.5 ? "{<}1\\%" : @sprintf("%.0f\\%%", 100f)
+        # name the active walls with their values: a prior-limited boundary
+        # point sits exactly on the box edge its ray exited through, so an
+        # edge is active iff some capped point lies on it
+        devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
+        fmt_edge(v, isphase) =
+            isphase && isapprox(abs(v), π; atol = 1e-9) ?
+            (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
+        prior_x = view(x, prior_limited)
+        prior_y = view(y, prior_limited)
+        lox, hix, loy, hiy = box
+        walls = String[]
+        for (lo_e, hi_e, vals, tol, idx) in
+            ((lox, hix, prior_x, 1e-6 * (maximum(x) - minimum(x)), px),
+            (loy, hiy, prior_y, 1e-6 * (maximum(y) - minimum(y)), py))
+            lo_hit = isfinite(lo_e) && any(v -> abs(v - lo_e) < tol, vals)
+            hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
+            isph = idx == PHASE_INDEX
+            if lo_hit && hi_hit && isapprox(lo_e, -hi_e; rtol = 1e-9)
+                push!(walls, string(devtex(idx), " = \\pm ", fmt_edge(abs(hi_e), isph)))
+            else
+                lo_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(lo_e, isph)))
+                hi_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(hi_e, isph)))
             end
-            # worded without a hyphen (the math engine sets "-" as a minus sign)
-            # and short enough to clear the axis multiplier at the left end of
-            # the same row
-            msg =
-                isempty(walls) ? "\\text{Prior bounds}" :
-                string("\\text{Prior walls}\\ ", join(walls, ",\\;\\ "), "\\ \\text{bound}")
-            msg *= string("\\ ", pcttex(prior_frac), "\\ \\text{of directions}")
-            # in the needle frame the long axis is the prior-capped null
-            # direction, not a curvature scale
-            needle && (msg *= "\\ \\text{and the long axis}")
-            degenerate_frac > 0 && (
-                msg *= string("\\;\\ (", pcttex(degenerate_frac), "\\ \\text{degenerate})")
-            )
-            # on top of the plot, outside the box (a thin Label row above the
-            # axis); tellwidth = false so the label's own width never dictates
-            # the column width — otherwise the axis collapses to a narrow strip
-            Label(fig[0, 1], latexstring(msg); fontsize = 18, color = :grey35,
-                halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
         end
+        # worded without a hyphen (the math engine sets "-" as a minus sign)
+        # and short enough to clear the axis multiplier at the left end of
+        # the same row
+        msg =
+            isempty(walls) ? "\\text{Prior bounds}" :
+            string("\\text{Prior walls}\\ ", join(walls, ",\\;\\ "), "\\ \\text{bound}")
+        msg *= string("\\ ", pcttex(prior_frac), "\\ \\text{of directions}")
+        # in the needle frame the long axis is the prior-capped null
+        # direction, not a curvature scale
+        needle && (msg *= "\\ \\text{and the long axis}")
+        degenerate_frac > 0 && (
+            msg *= string("\\;\\ (", pcttex(degenerate_frac), "\\ \\text{degenerate})")
+        )
+        # on top of the plot, outside the box (a thin Label row above the
+        # axis); tellwidth = false so the label's own width never dictates
+        # the column width — otherwise the axis collapses to a narrow strip
+        Label(layout[0, 1], latexstring(msg); fontsize = 18 - font_shift,
+            color = :grey35, halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
+    end
+    return (layout = layout, axis = ax, needle = needle, same_units = same_units)
+end
+
+# --- composite figures ------------------------------------------------------
+
+# Grid cell `(row, column)` of panel `i` in a row-major composite with `ncols`
+# columns; row 0 is left to the shared legend.
+composite_cell(i::Int, ncols::Int) = (fld(i - 1, ncols) + 1, mod(i - 1, ncols) + 1)
+
+"""
+$(TYPEDSIGNATURES)
+
+Argument check of the composite builders: at least one panel, `ncols ≥ 1`,
+positive panel sizes, and either no labels or one per panel. Returns the
+panel labels, generated as `(a)`, `(b)`, … when `labels` is empty.
+"""
+function composite_labels(panels::AbstractVector, ncols::Int,
+    panel_size::Tuple{Int,Int}, labels::AbstractVector{<:AbstractString})
+    isempty(panels) && throw(ArgumentError("a composite figure needs at least one panel"))
+    ncols >= 1 || throw(ArgumentError("ncols must be >= 1, got $ncols"))
+    all(>(0), panel_size) ||
+        throw(ArgumentError("panel_size must be positive, got $panel_size"))
+    n = length(panels)
+    isempty(labels) && return ["(" * ('a' + i - 1) * ")" for i in 1:n]
+    length(labels) == n ||
+        throw(ArgumentError("expected $n panel labels, got $(length(labels))"))
+    return String.(labels)
+end
+
+# bold panel labels at the top-left corner of each panel cell
+function label_panels!(fig::Figure, texts::AbstractVector{String}, ncols::Int)
+    for (i, text) in enumerate(texts)
+        r, c = composite_cell(i, ncols)
+        Label(fig[r, c, TopLeft()], text; fontsize = 22, font = :bold,
+            halign = :left, padding = (0, 0, 6, 0))
+    end
+    return fig
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Multi-panel scaling figure: one [`scaling_panel!`](@ref) per entry of
+`panels`, in compact form with the fitted slope written inside each main axis,
+placed row-major on an `ncols`-column grid under one shared horizontal legend
+(`D²_theoretical`, `D²_numerical`, and the optimizer-floor patch whenever a
+panel draws the floor band). Each entry of `panels` is a NamedTuple with the
+fields `deltas, d2_num, d2_theo, rho_sq, delta_min, slope, slope_err, clean,
+floor_level, c1, c2` (as returned by `RunFigures.sweep_panel_data`).
+`panel_size` is the canvas share `(width, height)` of one panel; `labels`
+default to `(a)`, `(b)`, ….
+
+Returns the `Figure`.
+"""
+function composite_scaling_figure(panels::AbstractVector; ncols::Int = 2,
+    panel_size::Tuple{Int,Int} = (600, 620),
+    labels::AbstractVector{<:AbstractString} = String[])
+    texts = composite_labels(panels, ncols, panel_size, labels)
+    nrows = cld(length(panels), ncols)
+    w, h = panel_size
+    with_theme(publication_theme()) do
+        fig = Figure(size = (ncols * w + (ncols - 1) * 24, nrows * h + 70))
+        drawn = map(enumerate(panels)) do (i, p)
+            r, c = composite_cell(i, ncols)
+            scaling_panel!(fig[r, c], p.deltas, p.d2_num, p.d2_theo;
+                rho_sq = p.rho_sq, delta_min = p.delta_min, slope = p.slope,
+                slope_err = p.slope_err, clean = p.clean,
+                floor_level = p.floor_level, c1 = p.c1, c2 = p.c2,
+                compact = true, slope_in_axis = true)
+        end
+        entries = Any[drawn[1].legend_entries[1], drawn[1].legend_entries[2]]
+        entry_labels = AbstractString[drawn[1].legend_labels[1],
+            drawn[1].legend_labels[2]]
+        floored = findfirst(d -> length(d.legend_entries) > 2, drawn)
+        if floored !== nothing
+            push!(entries, drawn[floored].legend_entries[3])
+            push!(entry_labels, drawn[floored].legend_labels[3])
+        end
+        Legend(fig[0, 1:ncols], entries, entry_labels; SCALING_LEGEND_KW...)
+        colgap!(fig.layout, 24)
+        rowgap!(fig.layout, 20)
+        label_panels!(fig, texts, ncols)
+        return fig
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Multi-panel zone-of-confusion figure: one compact [`zone_panel!`](@ref) per
+entry of `panels`, placed row-major on an `ncols`-column grid (no legend).
+Each entry of `panels` is a NamedTuple with the fields `x, y, prior_limited,
+px, py, box, prior_frac, degenerate_frac, x_math, y_math` (as returned by
+`RunFigures.zone_panel_data`). `panel_size` is the canvas share
+`(width, height)` of one panel; `labels` default to `(a)`, `(b)`, ….
+
+Returns the `Figure`.
+"""
+function composite_zone_figure(panels::AbstractVector; ncols::Int = 2,
+    panel_size::Tuple{Int,Int} = (600, 520),
+    labels::AbstractVector{<:AbstractString} = String[])
+    texts = composite_labels(panels, ncols, panel_size, labels)
+    nrows = cld(length(panels), ncols)
+    w, h = panel_size
+    with_theme(publication_theme()) do
+        fig = Figure(size = (ncols * w + (ncols - 1) * 24, nrows * h + 10))
+        for (i, p) in enumerate(panels)
+            r, c = composite_cell(i, ncols)
+            zone_panel!(fig[r, c], p.x, p.y, p.prior_limited;
+                px = p.px, py = p.py, box = p.box, prior_frac = p.prior_frac,
+                degenerate_frac = p.degenerate_frac,
+                x_math = p.x_math, y_math = p.y_math, compact = true)
+        end
+        colgap!(fig.layout, 24)
+        rowgap!(fig.layout, 20)
+        label_panels!(fig, texts, ncols)
+        return fig
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Multi-panel residual-spectrum figure: one compact [`residual_panel!`](@ref)
+per entry of `panels`, placed row-major on an `ncols`-column grid under one
+shared two-row channel legend. Each entry of `panels` is a NamedTuple with the
+fields `spec, meta, delta_symbol` (as returned by
+`RunFigures.residual_panel_data`). `panel_size` is the canvas share
+`(width, height)` of one panel; `labels` default to `(a)`, `(b)`, ….
+
+Returns the `Figure`.
+"""
+function composite_residual_figure(panels::AbstractVector; ncols::Int = 2,
+    panel_size::Tuple{Int,Int} = (600, 640),
+    labels::AbstractVector{<:AbstractString} = String[])
+    texts = composite_labels(panels, ncols, panel_size, labels)
+    nrows = cld(length(panels), ncols)
+    w, h = panel_size
+    with_theme(publication_theme()) do
+        fig = Figure(size = (ncols * w + (ncols - 1) * 24, nrows * h + 90))
+        drawn = map(enumerate(panels)) do (i, p)
+            r, c = composite_cell(i, ncols)
+            residual_panel!(fig[r, c], p.spec, p.meta;
+                delta_symbol = p.delta_symbol, compact = true)
+        end
+        residual_legend_block!(fig[0, 1:ncols], drawn[1].legend_A, drawn[1].legend_E)
+        colgap!(fig.layout, 24)
+        rowgap!(fig.layout, 20)
+        label_panels!(fig, texts, ncols)
         return fig
     end
 end

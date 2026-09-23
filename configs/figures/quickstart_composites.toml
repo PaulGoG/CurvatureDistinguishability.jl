@@ -1,0 +1,26 @@
+# Composite-figure layout on the quickstart run (scripts/compose_figures.jl).
+# Run paths resolve relative to this file.
+
+[[figures]]
+name = "quickstart_scaling"
+kind = "scaling"
+
+[[figures.panels]]
+run = "../../data/run_027b0820"
+case = "massive_binary_mass_time"
+
+[[figures.panels]]
+run = "../../data/run_027b0820"
+case = "near_degenerate_flat_spin"
+
+[[figures]]
+name = "quickstart_zones"
+kind = "zone"
+
+[[figures.panels]]
+run = "../../data/run_027b0820"
+case = "mass_vs_time_degeneracy"
+
+[[figures.panels]]
+run = "../../data/run_027b0820"
+case = "spin1_vs_spin2_coupling"

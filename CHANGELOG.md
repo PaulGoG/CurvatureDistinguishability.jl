@@ -14,6 +14,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the slope over all clean points is persisted alongside.
 - `scripts/replot.jl --refit`: refit slope, window exponent and correction
   coefficients from the persisted results table.
+- Panel drawers `scaling_panel!`, `residual_panel!` and `zone_panel!`, which
+  draw a figure into a supplied grid position; the single figures are
+  one-panel wrappers around them.
+- Composite builders `composite_scaling_figure`, `composite_zone_figure` and
+  `composite_residual_figure`: compact panels on a grid with a shared legend
+  and panel labels.
+- Layout-driven composition from persisted run tables: `composite_figures`
+  reads a TOML layout, with the panel loaders `sweep_panel_data`,
+  `zone_panel_data` and `residual_panel_data`.
+- `scripts/compose_figures.jl` and the example layout
+  `configs/figures/quickstart_composites.toml`.
+
+### Fixed
+
+- Residual-figure axis ranges: the top-panel limits and ticks follow the signal
+  means, and the envelopes no longer extend below the frame in either panel.
 
 ## [1.0.0] - 2026-09-22
 

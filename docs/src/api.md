@@ -185,6 +185,12 @@ CurvatureDistinguishability.Plotting.scaling_figure
 CurvatureDistinguishability.Plotting.residual_figure
 CurvatureDistinguishability.Plotting.ResidualFigureMeta
 CurvatureDistinguishability.Plotting.zone_figure
+CurvatureDistinguishability.Plotting.scaling_panel!
+CurvatureDistinguishability.Plotting.residual_panel!
+CurvatureDistinguishability.Plotting.zone_panel!
+CurvatureDistinguishability.Plotting.composite_scaling_figure
+CurvatureDistinguishability.Plotting.composite_zone_figure
+CurvatureDistinguishability.Plotting.composite_residual_figure
 ```
 
 ## Fitting
@@ -249,4 +255,8 @@ CurvatureDistinguishability.Campaign.requested_stages
 CurvatureDistinguishability.RunFigures.run_cases
 CurvatureDistinguishability.RunFigures.sweep_figures
 CurvatureDistinguishability.RunFigures.zone_map_figure
+CurvatureDistinguishability.RunFigures.composite_figures
+CurvatureDistinguishability.RunFigures.sweep_panel_data
+CurvatureDistinguishability.RunFigures.zone_panel_data
+CurvatureDistinguishability.RunFigures.residual_panel_data
 ```

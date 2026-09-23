@@ -1396,6 +1396,32 @@ enabled = true
         @test ax_round.aspect[] isa CD.Plotting.DataAspect
     end
 
+    @testset "Plotting: residual panel range" begin
+        # a spectrum tapering off at the high-frequency end: the top frame
+        # follows the signal means (at most eight decades deep), the bottom
+        # frame reaches at most twelve decades below the residual maximum
+        f = 10 .^ range(-4, -1.3; length = 300)
+        cut = 0.5 .* (1 .- tanh.((f .- 0.02) ./ 0.002))
+        sig = 1e10 .* (f ./ 1e-3) .^ (-7 / 3) .* cut .+ 1e-40
+        spec = DataFrame(f = f, sig_mean_A = sig, sig_mean_E = 0.8 .* sig,
+            bf_mean_A = sig, bf_mean_E = 0.8 .* sig,
+            res_mean_A = 1e-3 .* sig, res_mean_E = 8e-4 .* sig,
+            sig_min_A = 0.5 .* sig, sig_max_A = 2 .* sig,
+            sig_min_E = 0.4 .* sig, sig_max_E = 1.6 .* sig,
+            res_min_A = 5e-4 .* sig, res_max_A = 2e-3 .* sig,
+            res_min_E = 4e-4 .* sig, res_max_E = 1.6e-3 .* sig)
+        spec.res_min_A[1:20] .= 0.0
+        meta = ResidualFigureMeta(10.0, 3e-8, 1.0, 1.0)
+        p = residual_panel!(CD.Plotting.Figure()[1, 1], spec, meta)
+        lims_top = p.top.limits[]
+        @test lims_top[2][1] ≈ max(minimum(sig), maximum(sig) * 1e-8) / 3 rtol = 1e-6
+        @test lims_top[2][2] ≈ maximum(sig) * 3 rtol = 1e-6
+        lims_bot = p.bottom.limits[]
+        @test lims_bot[2][1] >= maximum(spec.res_max_A) * 1e-12 * (1 - 1e-9)
+        fig_r = residual_figure(spec, meta)
+        @test fig_r isa CD.Plotting.Figure
+    end
+
     @testset "End-to-end minimal pipeline" begin
         mktempdir() do dir
             cfg_path = joinpath(dir, "config.toml")
@@ -1619,6 +1645,80 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 "JULIA_LOAD_PATH" => nothing, "JULIA_PROJECT" => nothing)
             run(pipeline(cmd_refit, stdout = devnull, stderr = devnull))
             @test isfile(joinpath(out_base, "sweeps", "mini_sweep", "scaling_plot.png"))
+
+            # panel loaders and layout-driven composites from the persisted tables
+            pd = sweep_panel_data(out_base, "mini_sweep")
+            @test length(pd.deltas) == length(pd.d2_num) == length(pd.clean)
+            @test isfinite(pd.delta_min)
+            zd = zone_panel_data(out_base, "mini_spin_map")
+            @test length(zd.x) == length(zd.y) == length(zd.prior_limited)
+            mktempdir() do tmp
+                layout_path = joinpath(tmp, "layout.toml")
+                write(
+                    layout_path,
+                    """
+[[figures]]
+name = "mini_scaling"
+kind = "scaling"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_sweep"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_unequal"
+[[figures]]
+name = "mini_zones"
+kind = "zone"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_mass_time"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_spin_map"
+[[figures]]
+name = "mini_residual"
+kind = "residual"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_sweep"
+""",
+                )
+                figs_c = composite_figures(layout_path)
+                @test length(figs_c) == 3
+                @test [f.name for f in figs_c] ==
+                      ["mini_scaling", "mini_zones", "mini_residual"]
+                @test all(f -> f.figure isa CD.Plotting.Figure, figs_c)
+                save_figure(figs_c[1].figure, joinpath(tmp, "composite"))
+                @test isfile(joinpath(tmp, "composite.pdf"))
+                # layout validation: enumerated kind, no unknown keys
+                bad_kind = joinpath(tmp, "bad_kind.toml")
+                write(
+                    bad_kind,
+                    """
+[[figures]]
+name = "bad"
+kind = "spectrum"
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_sweep"
+""",
+                )
+                @test_throws ArgumentError composite_figures(bad_kind)
+                bad_key = joinpath(tmp, "bad_key.toml")
+                write(
+                    bad_key,
+                    """
+[[figures]]
+name = "bad"
+kind = "scaling"
+foo = 1
+[[figures.panels]]
+run = '$(out_base)'
+case = "mini_sweep"
+""",
+                )
+                @test_throws ArgumentError composite_figures(bad_key)
+            end
             rz = zone_map_figure(out_base, "mini_spin_map"; rho = 2.0)
             @test rz.suffix == "_rho2p0" && rz.contour isa DataFrame
             @test all(rz.contour.R_Capped .<= rz.contour.R_Box .+ 1e-12)

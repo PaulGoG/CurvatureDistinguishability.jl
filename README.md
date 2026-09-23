@@ -26,10 +26,11 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 CurvatureDistinguishability/
 ├── Project.toml        # dependencies, GPU weak dependencies, [compat]
 ├── activate.jl         # activates and instantiates the package environment
-├── configs/            # TOML scenarios: quickstart*, production_*, campaigns/
+├── configs/            # TOML scenarios: quickstart*, production_*, campaigns/; figures/ layouts
 ├── src/                # library: physics, geometry, inference, orchestration, plotting
 ├── ext/                # GPU package extensions (CUDA, AMDGPU, Metal, oneAPI)
-├── scripts/            # entry points: run_pipeline, run_supervised, launch_run, replot, collect_plots
+├── scripts/            # entry points: run_pipeline, run_supervised, launch_run, replot,
+│                       #   collect_plots, compose_figures
 ├── test/               # unit, physics-validation, static-QA and end-to-end tests
 ├── bench/              # BenchmarkTools suite (own environment)
 ├── docs/               # Documenter.jl sources (own environment)
@@ -91,6 +92,9 @@ julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.tom
 # regenerate every figure of a finished run from its CSVs; --rho R rescales maps and
 # threshold markers to another discernibility threshold without recomputation
 julia scripts/replot.jl data/run_<hash> [--rho R] [--refit]
+
+# multi-panel publication composites from persisted run tables, laid out by a TOML file
+julia scripts/compose_figures.jl configs/figures/quickstart_composites.toml [--output-dir DIR]
 
 # render all figures of one or more runs as a flat PNG view (plots/ by default)
 julia scripts/collect_plots.jl [dest_dir] [run_id ...]
@@ -158,6 +162,7 @@ failed (the remaining stages still run and the failures are listed in
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
 | GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware (agreement ≤ 5×10⁻⁵ relative above the optimizer floor); see Known limitations |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
+| Multi-panel composites (TOML layout over persisted run tables) | tested; `scripts/compose_figures.jl` |
 
 ## Known limitations
 
@@ -210,7 +215,9 @@ CurvatureDistinguishability/
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
-│   └── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
+│   ├── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
+│   └── figures/
+│       └── quickstart_composites.toml  # composite-figure layout on the quickstart run
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
@@ -240,7 +247,8 @@ CurvatureDistinguishability/
 │   ├── run_supervised.jl   # supervisor entry point (one or more configurations)
 │   ├── launch_run.jl       # detached launcher of run_supervised.jl
 │   ├── replot.jl           # regenerate all figures from a run's CSVs
-│   └── collect_plots.jl    # flat PNG browsing view of one or more runs
+│   ├── collect_plots.jl    # flat PNG browsing view of one or more runs
+│   └── compose_figures.jl  # multi-panel composites from a TOML layout over run tables
 ├── test/
 │   ├── runtests.jl         # physics validation + A/B regression + E2E
 │   ├── supervision_tests.jl  # watchdog, checkpoint and continuation tests

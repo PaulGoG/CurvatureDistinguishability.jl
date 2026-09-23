@@ -81,7 +81,9 @@ include("Plotting.jl")
 using .Plotting
 export publication_theme,
     save_figure, scaling_figure, residual_figure,
-    ResidualFigureMeta, zone_figure
+    ResidualFigureMeta, zone_figure,
+    scaling_panel!, residual_panel!, zone_panel!,
+    composite_scaling_figure, composite_zone_figure, composite_residual_figure
 
 include("Orchestrator.jl")
 using .Orchestrator
@@ -95,6 +97,7 @@ export supervise_pipeline
 
 include("RunFigures.jl")
 using .RunFigures
-export run_cases, sweep_figures, zone_map_figure
+export run_cases, sweep_figures, zone_map_figure, composite_figures,
+    sweep_panel_data, zone_panel_data, residual_panel_data
 
 end

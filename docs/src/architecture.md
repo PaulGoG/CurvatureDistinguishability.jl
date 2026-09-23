@@ -100,7 +100,8 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   family-wide tick policy: integer power-of-10 log ticks restricted to the
   data range with anchors congruent mod the step; a single per-axis exponent
   for small linear values (never mixed exponents); single-denominator π
-  ticks on phase axes.
+  ticks on phase axes. Figures are drawn by panel functions into a supplied
+  layout position, the single figures being one-panel wrappers.
 - **`Orchestrator.jl`** — the driver. Pre-flight memory estimate against
   `[safety].max_ram_gb` (refuses or downscales concurrency; the GPU branch
   additionally enforces the VRAM budget), bounded-concurrency task pools,
@@ -115,7 +116,10 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   `scripts/collect_plots.jl`: point classification and display refits reuse
   the pipeline's own fit rules (`optimizer_floor`/`above_floor_mask`,
   `loglog_slope`, `ratio_correction_fit`), so run-time and regenerated
-  figures cannot diverge.
+  figures cannot diverge. Publication composites are assembled from the
+  persisted tables by `RunFigures.composite_figures` from a TOML layout
+  (`scripts/compose_figures.jl`, example
+  `configs/figures/quickstart_composites.toml`).
 
 ## 3. The workflows
 
