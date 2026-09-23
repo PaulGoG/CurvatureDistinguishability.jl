@@ -455,9 +455,18 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         push!(legend_entries, PolyElement(color = floor_color))
         push!(legend_labels, "Optimizer floor") # upright text: no math in it
     end
-    slope_in_axis && text!(ax1, 0.03, 0.97; space = :relative,
-        text = latexstring("\\mathrm{slope:}\\ " * slope_latex(slope, slope_err)),
-        align = (:left, :top), fontsize = 18 - font_shift, color = :dodgerblue4)
+    if slope_in_axis
+        # top-left corner; when the threshold line sits in the top fifth of
+        # the frame its label occupies that corner, so the slope goes just
+        # below the line (the δ⁴ law is many decades lower there)
+        thr_rel =
+            threshold_visible ?
+            (log10(rho_sq) - log10(ylo)) / (log10(yhi) - log10(ylo)) : 0.0
+        slope_y = thr_rel > 0.8 ? thr_rel - 0.035 : 0.97
+        text!(ax1, 0.03, slope_y; space = :relative,
+            text = latexstring("\\mathrm{slope:}\\ " * slope_latex(slope, slope_err)),
+            align = (:left, :top), fontsize = 18 - font_shift, color = :dodgerblue4)
+    end
 
     floor_band && hspan!(ax1, ylo, floor_level; color = floor_color)
     if threshold_visible
@@ -585,6 +594,14 @@ Display only — persisted tables are never smoothed.
 const RESIDUAL_SMOOTHING_PASSES = 2
 
 """
+Depth of the drawn min–max envelopes of the residual-spectrum figure, as a
+fraction of the window mean: the window minima of an oscillating density
+reach its cancellation nodes many decades below the mean and would fill the
+frame with shading. Display only — the persisted tables keep the full range.
+"""
+const ENVELOPE_DEPTH = 1e-3
+
+"""
 $(TYPEDSIGNATURES)
 
 `passes` applications of the symmetric five-point binomial kernel
@@ -630,12 +647,14 @@ $(TYPEDSIGNATURES)
 Draw the two residual-spectrum panels of [`residual_figure`](@ref) into the
 grid position (or `GridLayout`) `gp`: the `d(SNR²)/df` axis at row 1, the
 between-panel annotation row at row 2 and the `d(D²)/df` axis at row 3 of a
-nested `GridLayout`. Everything of the single figure is drawn except the
+nested `GridLayout` (compact: the off-scale-noise note at row 3, the axis at
+row 4). Everything of the single figure is drawn except the
 legend, whose material is returned per channel as `(entries, labels, title)`.
 Top-panel limits and decade ticks follow the persisted signal means (at most
 eight decades below their maximum), and the envelopes are clamped to the frame
-bottom of either panel; the bottom frame reaches at most twelve decades below
-the residual maximum. `compact` selects the half-width variant for composites
+bottom of either panel and drawn no deeper than `ENVELOPE_DEPTH` below the
+window means; the bottom frame reaches at most eight decades below the
+residual maximum. `compact` selects the half-width variant for composites
 (at most five decade ticks per axis, narrower tick-label space, annotations
 two points smaller).
 
@@ -654,6 +673,17 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     fmin = minimum(spec.f)
     fmax = maximum(spec.f)
     x_ticks = log_ticks_125(fmin, fmax)
+    if compact
+        # half-width panels: keep the 1–2–5 tick marks, label the decades only
+        vals, labels = x_ticks
+        x_ticks = (
+            vals,
+            [
+                abs(log10(v) - round(log10(v))) < 1e-9 ? l : "" for
+                (v, l) in zip(vals, labels)
+            ],
+        )
+    end
 
     # channel = hue (A blue, E warm), role = shade + line style: data is
     # the dark solid line, the best fit — which sits right on top of it —
@@ -688,10 +718,16 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
         yticks = decade_ticks(ylo1, yhi1; maxticks = maxticks),
         yticklabelspace = ticklabelspace)
     # envelopes clamped at the frame bottom: no shading below the frame
-    band!(ax1, spec.f, max.(spec.sig_min_A, ylo1), max.(spec.sig_max_A, ylo1);
-        color = (col_data_A, 0.14))
-    band!(ax1, spec.f, max.(spec.sig_min_E, ylo1), max.(spec.sig_max_E, ylo1);
-        color = (col_data_E, 0.14))
+    # envelopes: the window minima of an oscillating density reach the
+    # cancellation nodes, decades below the means; the drawn envelope stops
+    # ENVELOPE_DEPTH below the window mean and at the frame bottom
+    sig_lo_A = max.(spec.sig_min_A, ENVELOPE_DEPTH .* spec.sig_mean_A, ylo1)
+    sig_lo_E = max.(spec.sig_min_E, ENVELOPE_DEPTH .* spec.sig_mean_E, ylo1)
+    # the upper edge is clamped to the lower one: a band whose edges cross
+    # (envelope maximum below the frame past the ISCO cut-off) twists, and
+    # its triangles sweep across the axis
+    band!(ax1, spec.f, sig_lo_A, max.(spec.sig_max_A, sig_lo_A); color = (col_data_A, 0.14))
+    band!(ax1, spec.f, sig_lo_E, max.(spec.sig_max_E, sig_lo_E); color = (col_data_E, 0.14))
     dA = lines!(ax1, spec.f, sig_mean_A; color = col_data_A, linewidth = 3.6)
     dE = lines!(ax1, spec.f, sig_mean_E; color = col_data_E, linewidth = 3.6)
     bA = lines!(ax1, spec.f, bf_mean_A; color = col_bf_A,
@@ -704,11 +740,13 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     # shadings — but cap the extra depth at ~1.6 decades below the mean
     # floor, so a near-cancellation spike in a single decimation window
     # cannot compress the curves into a negligible band (the band then clips only
-    # inside the dip), and at twelve decades below the residual maximum. The
+    # inside the dip), and at eight decades below the residual maximum. The
     # per-bin noise reference 1/Δf can sit many decades above the curves and
     # is never allowed to distort the range.
     res_pos = filter(>(0), vcat(res_mean_A, res_mean_E))
-    band_pos = filter(>(0), vcat(spec.res_min_A, spec.res_min_E))
+    res_lo_A = max.(spec.res_min_A, ENVELOPE_DEPTH .* spec.res_mean_A)
+    res_lo_E = max.(spec.res_min_E, ENVELOPE_DEPTH .* spec.res_mean_E)
+    band_pos = filter(>(0), vcat(res_lo_A, res_lo_E))
     band_lo = isempty(band_pos) ? minimum(res_pos) : minimum(band_pos)
     res_top = maximum(
         filter(
@@ -717,7 +755,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
                 spec.res_max_A, spec.res_max_E),
         ),
     )
-    ylo2 = max(band_lo / 2, minimum(res_pos) / 40, res_top * 1e-12)
+    ylo2 = max(band_lo / 2, minimum(res_pos) / 40, res_top * 1e-8)
     yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
         maximum(res_pos)) * 4
     noise_level = 1.0 / meta.df
@@ -728,6 +766,10 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     # its frame, on one line: the δ*/integral text left-aligned, and the
     # off-scale noise note right-aligned in the same row (only when the
     # 1/Δf reference cannot be drawn inside the frame)
+    # compact panels stack the two annotations in rows 2 and 3 (the single
+    # figure keeps them on one row)
+    noise_row = compact ? 3 : 2
+    axis_row = compact ? 4 : 3
     Label(layout[2, 1],
         latexstring(delta_symbol, " = ", sci_latex(meta.delta_star),
             ":\\;\\; D^2_{", delta_symbol, "} = ", sci_latex(meta.d2_num),
@@ -736,7 +778,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
         fontsize = 16 - font_shift, halign = :left, tellwidth = false,
         tellheight = true, padding = (4, 0, 2, 8))
     if !noise_in_frame
-        Label(layout[2, 1],
+        Label(layout[noise_row, 1],
             latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
                 sci_latex(noise_level),
                 "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
@@ -744,15 +786,15 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
             tellwidth = false, tellheight = true, padding = (0, 4, 2, 8))
     end
 
-    ax2 = Axis(layout[3, 1]; xscale = log10, yscale = log10,
+    ax2 = Axis(layout[axis_row, 1]; xscale = log10, yscale = log10,
         xlabel = L"f\ \ [\mathrm{Hz}]",
         ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
         xticks = x_ticks, yticks = decade_ticks(ylo2, yhi2; maxticks = maxticks),
         yticklabelspace = ticklabelspace)
-    band!(ax2, spec.f, max.(spec.res_min_A, ylo2), spec.res_max_A;
-        color = (col_res_A, 0.16))
-    band!(ax2, spec.f, max.(spec.res_min_E, ylo2), spec.res_max_E;
-        color = (col_res_E, 0.16))
+    lo_A = max.(res_lo_A, ylo2)
+    lo_E = max.(res_lo_E, ylo2)
+    band!(ax2, spec.f, lo_A, max.(spec.res_max_A, lo_A); color = (col_res_A, 0.16))
+    band!(ax2, spec.f, lo_E, max.(spec.res_max_E, lo_E); color = (col_res_E, 0.16))
     rA = lines!(ax2, spec.f, res_mean_A; color = col_res_A, linewidth = 3.2)
     rE = lines!(ax2, spec.f, res_mean_E; color = col_res_E, linewidth = 3.2)
 
@@ -816,7 +858,7 @@ the min/max decimation envelopes are drawn from the raw columns, shading both
 channels and clamped at the frame bottom. The top frame follows the persisted
 signal means (at most eight decades deep); the bottom frame covers the
 residual envelopes, depth-capped so a cancellation spike cannot compress the
-curves and at most twelve decades below the residual maximum. Dense 1–2–5 log
+curves and at most eight decades below the residual maximum. Dense 1–2–5 log
 ticks on the frequency axis; the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
 `spec` is the (log-uniformly decimated) spectrum table; `meta` is the
