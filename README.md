@@ -20,6 +20,25 @@ signal manifold. The discernibility boundary follows as
 the exact intersection of that boundary with the hard physical parameter
 bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 
+## At a glance
+
+Both figures come from the shipped quickstart configuration
+(`configs/quickstart.toml`, minutes on a laptop); `scripts/replot.jl`
+regenerates them at full resolution from the run's tables.
+
+![Optimized squared distance against the separation along the chirp-mass/coalescence-time direction of a massive binary, with the ratio to the prediction beneath](docs/src/assets/quickstart_scaling_mass_time.png)
+
+*Quartic law along the chirp-mass/coalescence-time direction of a massive
+binary: the optimized D² follows (1/16) K(u) δ⁴ over more than ten decades
+above the optimizer floor; the strip beneath shows the ratio to the
+prediction with its O(δ⁵) correction fit.*
+
+![Zone of confusion in the spin plane, drawn in the frame of the 1.5PN null direction](docs/src/assets/quickstart_zone_spin.png)
+
+*Zone of confusion in the spin plane, in the frame of the exact 1.5PN null
+direction: curvature-limited transverse to the null line, bounded along it
+only by the spin priors (wall segments in vermilion).*
+
 ## File structure
 
 ```text
@@ -33,7 +52,7 @@ CurvatureDistinguishability/
 │                       #   collect_plots, compose_figures
 ├── test/               # unit, physics-validation, static-QA and end-to-end tests
 ├── bench/              # BenchmarkTools suite (own environment)
-├── docs/               # Documenter.jl sources (own environment)
+├── docs/               # Documenter.jl sources (own environment); src/assets/ holds the README figures
 ├── data/               # run outputs, one run_<hash>/ per run (git-ignored)
 └── plots/              # flat PNG browsing view (git-ignored)
 ```
@@ -160,7 +179,7 @@ failed (the remaining stages still run and the failures are listed in
 | Robson (2019) noise model (Eq. 12 instrumental + Eq. 14 confusion, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware (agreement ≤ 5×10⁻⁵ relative above the optimizer floor); see Known limitations |
+| GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware: optimized distances agree to 3×10⁻⁴ or better above the optimizer floor, 2×10⁻⁴ away from the near-null spin direction; see Known limitations |
 | Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
 | Multi-panel composites (TOML layout over persisted run tables) | tested; `scripts/compose_figures.jl` |
 
@@ -194,7 +213,7 @@ Citation metadata is in `CITATION.cff`; a BibTeX entry:
 @software{Gogita_CurvatureDistinguishability,
   author  = {Gogîță, Paul-Adrian},
   title   = {CurvatureDistinguishability.jl},
-  version = {1.0.0},
+  version = {1.1.0},
   year    = {2026},
   url     = {https://github.com/PaulGoG/CurvatureDistinguishability.jl}
 }

@@ -9,6 +9,7 @@ plots/
 *.pdf
 *.png
 !test/fixtures/**
+!docs/src/assets/*.png
 .DS_Store
 docs/build/
 # manifests are resolved per host; each run directory keeps a copy of its own

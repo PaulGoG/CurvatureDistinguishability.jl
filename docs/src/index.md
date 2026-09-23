@@ -22,6 +22,13 @@ mathematical boundary with the hard physical parameter bounds
 1.5PN phase cannot see) the zone is limited by the prior, not by
 curvature, and the figures mark those boundary segments distinctly.
 
+Both figures below come from the quickstart configuration
+(`configs/quickstart.toml`, minutes on a laptop).
+
+![Quartic law along the chirp-mass/coalescence-time direction](assets/quickstart_scaling_mass_time.png)
+
+![Zone of confusion in the spin plane, null-direction frame](assets/quickstart_zone_spin.png)
+
 The repository README is the operational reference (file structure,
 environment setup, usage, component status). This documentation covers the
 deeper layers:

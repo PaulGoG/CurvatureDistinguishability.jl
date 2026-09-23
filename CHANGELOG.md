@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-23
+
 ### Added
 
 - Perturbative-window exponent of the quartic law (`slope_window`,
@@ -28,11 +30,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   PDF to the manuscript's text width) and the example layout
   `configs/figures/quickstart_composites.toml`.
 - `save_figure(...; pt_per_unit)` and `canvas_width`.
+- README and documentation landing page: the quickstart scaling law and the
+  spin-plane zone of confusion as figures (`docs/src/assets/`).
 
 ### Changed
 
 - The residual-spectrum legend is one row, the two channel groups side by
   side, in the single figure and in the composites.
+- `[compat]` admits CUDA.jl 6 alongside 5 (the H200 campaign ran on the
+  CUDACore 6 series).
+- The GPU-path agreement quoted in the README is the campaign-wide figure
+  (3×10⁻⁴ or better above the optimizer floor).
 
 ### Fixed
 
@@ -70,5 +78,6 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/releases/tag/v1.0.0

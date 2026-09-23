@@ -1,6 +1,6 @@
 name = "CurvatureDistinguishability"
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Paul-Adrian Gogîță"]
 
 [deps]
@@ -42,7 +42,7 @@ CurvatureDistinguishabilityoneAPIExt = "oneAPI"
 [compat]
 AMDGPU = "1, 2"
 CSV = "0.10"
-CUDA = "5"
+CUDA = "5, 6"
 CairoMakie = "0.13, 0.14, 0.15, 0.16"
 DataFrames = "1"
 Dates = "1"
