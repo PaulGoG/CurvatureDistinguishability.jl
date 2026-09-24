@@ -6,6 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Galactic confusion term entered the noise PSD at the wrong level.
+  Robson et al. (2019) calibrate their Eq. 14 fit on the two-channel
+  sensitivity curve, S_n = P_n/R + S_c (their Eq. 1), whereas the
+  instrumental Eq. 12 term is the PSD of one channel, against which the
+  explicit channel response is weighted. `analytic_noise_psd` now adds
+  R(f)·S_c(f) with the Eq. 9 response R(f) = (3/10)/(1 + 0.6 (f/f★)²), so
+  that the per-channel PSD divided by R(f) is the published sensitivity
+  curve and the sky- and polarization-averaged A + E signal-to-noise ratio
+  coincides with the one computed from it. Below 4 mHz the confusion term
+  was over-weighted by up to 3.3. On the shipped base points the squared
+  signal-to-noise ratios rise by 9 % (the two light sources) to a factor
+  2.9 (the 8×10⁵ M☉ binaries), Fisher norms by factors between 1.0 and 3.0
+  depending on the axis, and every D², δ_min and zone extent computed with
+  earlier versions changes accordingly; the fitted exponents of the quartic
+  law and the run timings do not. Run identifiers hash the configuration,
+  not the code, and are unchanged: results of earlier versions under the
+  same identifier are told apart by the commit in their `metadata.toml`.
+
+### Added
+
+- `sky_averaged_response(f, arm_length)`: Robson et al. (2019) Eq. 9.
+- Closure test of the noise model against the published sensitivity curve
+  (Eq. 13 + Eq. 14).
+
+### Changed
+
+- The README and documentation landing figures are regenerated from the
+  quickstart run under the corrected noise weighting.
+
 ## [1.1.0] - 2026-09-23
 
 ### Added

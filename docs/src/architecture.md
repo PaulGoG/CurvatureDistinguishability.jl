@@ -28,9 +28,11 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   protection). Physical parameters live *only* in the TOML; the source
   carries physical constants (arm length, AU, year) and published-fit
   defaults.
-- **`Physics.jl`** — the Robson et al. (2019) noise model: instrumental
-  Eq. 12 plus the Eq. 14 galactic-confusion fit with Table-1 coefficients
-  selected by observation time (all overridable in `[noise]`); the physical
+- **`Physics.jl`** — the Robson et al. (2019) noise model: the per-channel
+  instrumental Eq. 12 plus the Eq. 14 galactic-confusion fit, a two-channel
+  sensitivity-level fit brought to the channel level by the Eq. 9 response,
+  with Table-1 coefficients selected by observation time (all overridable in
+  `[noise]`); the physical
   constants (arm length, AU, year, Gpc); and the scalar source-frame
   waveform: TaylorF2 phasing to 1.5PN (`pn_phase`, `harmonic_phase`,
   `spin_beta`), the 0.5PN harmonic amplitudes (`harmonic_amplitudes`), the

@@ -95,11 +95,41 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 np.confusion_beta * f * sin(np.confusion_kappa * f),
             ) *
             (1 + tanh(np.confusion_gamma * (np.confusion_knee_freq - f)))
-        @test analytic_noise_psd(f) ≈ analytic_noise_psd(f; noise = FIX_NOISE_OFF) + sc rtol =
+        # Eq. 14 is a two-channel sensitivity-level fit; it enters the
+        # per-channel PSD through the Eq. 9 response R(f) = (3/10)/(1 + 0.6 (f/f★)²)
+        f_star = CD.Physics.transfer_frequency(np.arm_length)
+        R = sky_averaged_response(f, np.arm_length)
+        @test R ≈ 0.3 / (1 + 0.6 * (f / f_star)^2) rtol = 1e-14
+        @test analytic_noise_psd(f) ≈ analytic_noise_psd(f; noise = FIX_NOISE_OFF) + R * sc rtol =
             1e-14
         @test sc > 0
-        # the confusion bump must actually contribute in the mHz band now
+        @test 0 < R < 0.3
+        @test sky_averaged_response(0.0, np.arm_length) == 0.3
+        # the confusion bump must actually contribute in the mHz band
         @test analytic_noise_psd(1e-3) > 2 * analytic_noise_psd(1e-3; noise = FIX_NOISE_OFF)
+
+        # closure at the sensitivity level: the per-channel PSD divided by R(f)
+        # is the published sensitivity curve, Eq. 13 (instrumental) + Eq. 14
+        L = np.arm_length
+        for fx in (2e-4, 1e-3, 3e-3, 1e-2, 3e-2)
+            p_oms = np.oms_amplitude^2 * (1 + (np.oms_reddening_freq / fx)^4)
+            p_acc =
+                np.acc_amplitude^2 * (1 + (np.acc_knee_low / fx)^2) *
+                (1 + (fx / np.acc_knee_high)^4)
+            s13 =
+                10 / (3 * L^2) *
+                (p_oms + 2 * (1 + cos(fx / f_star)^2) * p_acc / (2 * π * fx)^4) *
+                (1 + 0.6 * (fx / f_star)^2)
+            s14 =
+                np.confusion_amp * fx^(-7 / 3) *
+                exp(
+                    -(fx^np.confusion_alpha) +
+                    np.confusion_beta * fx * sin(np.confusion_kappa * fx),
+                ) *
+                (1 + tanh(np.confusion_gamma * (np.confusion_knee_freq - fx)))
+            @test analytic_noise_psd(fx) / sky_averaged_response(fx, L) ≈ s13 + s14 rtol =
+                1e-12
+        end
 
         # Table-1 selection by observation time
         @test robson_confusion_params(SECONDS_PER_YEAR).confusion_beta == 292.0

@@ -1472,7 +1472,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
     @info "Backend: $(backend_name(backend)); concurrency: $sweep_tasks sweep / " *
           "$map_tasks map tasks; estimated peak RAM $(round(est_gb, digits = 2)) GB " *
           "(budget $(cfg.max_ram_gb) GB)"
-    @info "Noise: instrumental Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14" : "disabled")"
+    @info "Noise: per-channel Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14 × Eq.9 response" : "disabled")"
     @info "Optimizer: $(cfg.optimizer) with physical bounds"
 
     attempt > 1 && @info "Continuing the run: attempt $attempt."

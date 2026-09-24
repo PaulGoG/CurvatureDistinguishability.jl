@@ -9,7 +9,7 @@ phase, aligned spins).
 module Physics
 
 using DocStringExtensions: TYPEDSIGNATURES
-export NoiseParams, robson_confusion_params, analytic_noise_psd,
+export NoiseParams, robson_confusion_params, analytic_noise_psd, sky_averaged_response,
     WaveformParams, waveform_params, spin_beta, pn_phase, harmonic_phase,
     harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
@@ -38,6 +38,21 @@ scale above which the long-wavelength response rolls off (Robson et al.
 2019, Eq. 13).
 """
 transfer_frequency(arm_length::Real) = C_LIGHT / (2 * π * arm_length)
+
+"""
+$(TYPEDSIGNATURES)
+
+Sky- and polarization-averaged signal response of the two low-frequency LISA
+channels, Robson et al. (2019) Eq. 9: `R(f) = (3/10) / (1 + 0.6 (f/f★)²)`
+with `f★ = c/(2π L)` from `arm_length` [m]. It relates a two-channel
+sensitivity-level spectral density to the per-channel PSD (their Eq. 1,
+`S_n = P_n / R`), and its roll-off is the square of the transfer factor
+`Detector` applies to every harmonic. Used by [`analytic_noise_psd`](@ref)
+to bring the Eq. 14 confusion fit to the level of the Eq. 12 channel noise.
+"""
+function sky_averaged_response(f::Real, arm_length::Real)
+    return (3 / 10) / (1 + 0.6 * (f / transfer_frequency(arm_length))^2)
+end
 
 """
 One gigaparsec in light-seconds, the default luminosity-distance unit.
@@ -125,7 +140,10 @@ from the Eq. 10 optical-metrology noise `oms_amplitude` [m Hz⁻¹ᐟ²] with it
 [Hz], and the `arm_length` [m] (which also sets the transfer frequency
 `f★ = c/(2π L)`). The galactic confusion part is Eq. 14,
 `S_c(f) = A f^{-7/3} e^{-f^α + β f sin(κf)} [1 + tanh(γ(f_k - f))]`,
-defaulting to the 1-yr column of Table 1.
+defaulting to the 1-yr column of Table 1. Eq. 14 is calibrated on the
+two-channel sensitivity curve (their Eq. 1, `S_n = P_n/R + S_c`), so
+[`analytic_noise_psd`](@ref) multiplies it by the Eq. 9 response
+[`sky_averaged_response`](@ref) before adding it to the channel noise.
 
 All fields are configurable through the `[noise]` section of the run configuration;
 the defaults reproduce the published Robson et al. (2019) LISA model.
@@ -164,9 +182,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-One-sided noise PSD at frequency `f` [Hz]: Robson et al. (2019) Eq. 12
-instrumental noise plus the Eq. 14 galactic confusion fit (togglable via
-`noise.confusion_enabled`). Returns a positive floor value for `f <= 0`.
+One-sided noise PSD of one channel at frequency `f` [Hz]: the Robson et
+al. (2019) Eq. 12 instrumental noise `P_n(f)` plus the Eq. 14 galactic
+confusion fit `S_c(f)` brought to the same level by the Eq. 9 response,
+`P_n(f) + R(f) S_c(f)` (togglable via `noise.confusion_enabled`). Dividing
+the result by `R(f)` reproduces their sensitivity curve, Eq. 13 + Eq. 14,
+so the sky- and polarization-averaged A + E signal-to-noise ratio of the
+explicit response equals the one computed from that curve. Returns a
+positive floor value for `f <= 0`.
 """
 function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
     if f <= 0.0
@@ -190,7 +213,8 @@ function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
         return s_inst
     end
 
-    # Galactic binary confusion noise (Robson Eq. 14)
+    # Galactic binary confusion noise (Robson Eq. 14): a two-channel
+    # sensitivity-level fit, converted to the per-channel PSD by Eq. 9
     s_gal =
         noise.confusion_amp * f^(-7 / 3) *
         exp(
@@ -199,7 +223,7 @@ function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
         ) *
         (1 + tanh(noise.confusion_gamma * (noise.confusion_knee_freq - f)))
 
-    return s_inst + s_gal
+    return s_inst + sky_averaged_response(f, L) * s_gal
 end
 
 """

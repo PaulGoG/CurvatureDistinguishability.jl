@@ -255,11 +255,26 @@ the observation time (1 yr: ``\alpha=0.171``, ``\beta=292``, ``\kappa=1020``,
 ``\gamma=1680``, ``f_k=2.15`` mHz) and overridable in `[noise]`. ``S_c`` depends on ``f`` and on
 the observation time only: the confusion term is stationary, and the annual
 modulation of the Galactic foreground by the constellation motion is not
-represented. The
-sky-averaged response ``3/10`` of their Eq. 13 is not applied to the noise,
-because the response is modelled explicitly in §6, where its roll-off
-factor appears instead. The confusion fit is calibrated for observation
-times between 0.5 and 4 yr; shorter grids use the nearest column.
+represented.
+
+The two terms are defined at different levels. ``P_n`` is the noise of one
+channel and is used as such: the sky- and polarization-averaged response
+``R(f)`` of their Eq. 9 is not applied to it, because the response is
+modelled explicitly in §6, where its roll-off factor appears instead. The
+confusion fit, by contrast, is calibrated on the two-channel sensitivity
+curve, ``S_n = P_n/R + S_c`` (their Eq. 1; the amplitude ``A`` is quoted for
+two channels), so it enters the per-channel PSD multiplied by the response:
+```math
+S_I(f) = P_n(f) + R(f)\, S_c(f), \qquad R(f) = \frac{3}{10}\,\frac{1}{1 + 0.6\,(f/f_\star)^2},
+```
+the same weight for ``I = A, E``
+([`sky_averaged_response`](@ref CurvatureDistinguishability.Physics.sky_averaged_response)).
+Dividing ``S_I`` by ``R`` recovers the published sensitivity curve (their
+Eq. 13 + Eq. 14), and the sky- and polarization-averaged ``A + E``
+signal-to-noise ratio of §6 equals the one computed from that curve. After
+the conversion the Galactic term still exceeds ``P_n`` by an order of
+magnitude at 1 mHz. The confusion fit is calibrated for observation times
+between 0.5 and 4 yr; shorter grids use the nearest column.
 
 ## 8. Domain of validity
 
