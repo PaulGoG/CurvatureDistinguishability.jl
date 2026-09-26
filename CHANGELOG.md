@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-09-26
+
 ### Changed
 
 - The LISA conventions reference is the published science ground segment
@@ -130,7 +132,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.0.0...v1.1.0

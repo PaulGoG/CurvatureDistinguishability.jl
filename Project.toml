@@ -1,6 +1,6 @@
 name = "CurvatureDistinguishability"
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
-version = "2.0.1"
+version = "2.0.2"
 authors = ["Paul-Adrian Gogîță"]
 
 [deps]
