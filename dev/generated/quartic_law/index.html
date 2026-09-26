@@ -18,7 +18,7 @@ u_raw = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]</code></pre><pre class="documenter-exampl
 u_norm = u_raw ./ sqrt(g_uu)
 K_norm = K_u / g_uu^2
 delta_min = (16 / K_norm)^(1 / 4)
-(K_norm, delta_min)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(6.564396243042929e-8, 124.94857244091432)</code></pre><p>Direct optimization at five separations against the prediction: inject two sources, fit a single source, and record the residual squared distance.</p><pre><code class="language-julia hljs">deltas = 10.0 .^ range(-3, -1, length = 5)
+(K_norm, delta_min)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(6.56439624304293e-8, 124.9485724409143)</code></pre><p>Direct optimization at five separations against the prediction: inject two sources, fit a single source, and record the residual squared distance.</p><pre><code class="language-julia hljs">deltas = 10.0 .^ range(-3, -1, length = 5)
 D2_num = map(deltas) do d
     p2 = theta0 .+ d .* u_norm
     data = map((a, b) -&gt; a .+ b, channel_strain(theta0, freqs, wp),
@@ -29,11 +29,11 @@ D2_num = map(deltas) do d
 end
 D2_theo = (K_norm / 16) .* deltas .^ 4
 D2_num ./ D2_theo</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">5-element Vector{Float64}:
- 24.21148183669409
-  1.2042354859851165
-  1.0017797167991107
-  0.9999889186380788
-  0.9999951322712919</code></pre><p>The ratios sit at unity across two decades of separation — the quartic law, from nothing but the manifold&#39;s curvature. The comparison figure:</p><pre><code class="language-julia hljs">fig = with_theme(publication_theme()) do
+ 22.5981862747381
+  1.260813475982283
+  1.002075029411644
+  1.0000109475076735
+  0.9999970322730654</code></pre><p>The ratios sit at unity across two decades of separation — the quartic law, from nothing but the manifold&#39;s curvature. The comparison figure:</p><pre><code class="language-julia hljs">fig = with_theme(publication_theme()) do
     fig = Figure(size = (700, 480))
     ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
         xlabel = &quot;Parameter separation δ&quot;, ylabel = &quot;D²&quot;)
@@ -43,4 +43,4 @@ D2_num ./ D2_theo</code></pre><pre class="documenter-example-output"><code class
         strokecolor = :black, strokewidth = 1, label = &quot;Direct optimization&quot;)
     fig[0, 1] = Legend(fig, ax; orientation = :horizontal, framevisible = false)
     fig
-end</code></pre><img src="4021c59c.png" alt="Example block output"/><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../parameters/">« Complex Run Parameters</a><a class="docs-footer-nextpage" href="../../roadmap/">Roadmap »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Saturday 26 September 2026 13:28">Saturday 26 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre><img src="7e580d68.png" alt="Example block output"/><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../parameters/">« Complex Run Parameters</a><a class="docs-footer-nextpage" href="../../roadmap/">Roadmap »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Saturday 26 September 2026 13:54">Saturday 26 September 2026</span>. Using Julia version 1.13.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
