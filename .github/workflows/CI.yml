@@ -53,6 +53,11 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # one gh-pages deploy at a time across refs: a tag build otherwise races
+    # the main build of the same commit and its push is rejected
+    concurrency:
+      group: ${{ github.workflow }}-docs-deploy
+      cancel-in-progress: false
     permissions:
       actions: write
       contents: write
