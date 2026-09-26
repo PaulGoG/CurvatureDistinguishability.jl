@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The LISA conventions reference is the published science ground segment
+  conventions document (Baghi et al. 2026, arXiv:2603.22377) in place of the
+  Rosetta Stone draft; equation numbers in the docstrings follow it.
+
 ## [2.0.1] - 2026-09-26
 
 ### Changed

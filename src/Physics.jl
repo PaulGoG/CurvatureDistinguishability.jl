@@ -256,9 +256,10 @@ symmetric mass ratio `eta` ∈ (0, 1/4] is fixed per configuration (the
 heavier body carries `chi1`). The source sits at ecliptic longitude
 `ecliptic_longitude` and latitude `ecliptic_latitude` [rad], with
 inclination `inclination` (angle between the propagation direction and the
-orbital angular momentum) and polarization angle `polarization` in the
-Rosetta Stone conventions. `orbit_phase` and `constellation_phase` are the
-orbital and cartwheel phases of the constellation at `t = 0`, `arm_length`
+orbital angular momentum) and polarization angle `polarization` in the LISA
+science ground segment conventions (Baghi et al. 2026). `orbit_phase` and
+`constellation_phase` are the orbital and cartwheel phases of the constellation
+at `t = 0`, `arm_length`
 [m] sets the orbital eccentricity of the spacecraft and the transfer
 frequency, and `cutoff_width` is the relative width of the
 innermost-stable-orbit taper. `observation_time` [s] is the duration of the
@@ -425,7 +426,7 @@ $(TYPEDSIGNATURES)
 
 Stationary-phase phase of harmonic `k` (`k` times the orbital phase) at
 frequency `f`, in the Fourier convention `h̃(f) = ∫ h(t) e^{-2πift} dt`
-(LISA Rosetta Stone, Eq. 1), for which `h̃(f) ∝ e^{-iΨ_k(f)}` with
+(Baghi et al. 2026, Eq. 1), for which `h̃(f) ∝ e^{-iΨ_k(f)}` with
 `Ψ_k(f) = 2πf t_c − (k/2) φ_c + (k/2) ψ_PN(2f/k) − π/4`: `ψ_PN` is
 [`pn_phase`](@ref) of the (2,2) harmonic and `2f/k` the (2,2) frequency at
 which harmonic `k` radiates at `f`; `φ_c` is the (2,2) phase at coalescence.

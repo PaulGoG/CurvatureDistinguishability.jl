@@ -106,7 +106,7 @@ interferometer with detector tensor `D_i = ½(â⊗â − b̂⊗b̂)` from its t
 unit vectors, giving `F⁺_i = D_i : e⁺` and `F×_i = D_i : e×` with the
 wave-frame polarization tensors of [`ResponseGeometry`](@ref); the three
 Michelson responses are combined into `A = (Z − X)/√2` and
-`E = (X − 2Y + Z)/√6` (Rosetta Stone Eq. 42) and rescaled by `√(2/3)` so
+`E = (X − 2Y + Z)/√6` (Baghi et al. 2026, Eq. 40) and rescaled by `√(2/3)` so
 that both channels carry the single-Michelson noise PSD the noise model
 provides: `F_A = (F_Z − F_X)/√3`, `F_E = (F_X − 2F_Y + F_Z)/3`. Their
 sky-and-polarization average of `F⁺² + F×²` is `3/10`, the long-wavelength
