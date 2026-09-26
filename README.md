@@ -22,22 +22,26 @@ bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
 
 ## At a glance
 
-Both figures come from the shipped quickstart configuration
-(`configs/quickstart.toml`, minutes on a laptop); `scripts/replot.jl`
-regenerates them at full resolution from the run's tables.
+Both figures are sweeps of the production configuration
+(`configs/production_cpu.toml`: a one-year observation on a grid of
+1.57 × 10⁶ frequency bins, thirty separations per direction).
+`scripts/replot.jl` regenerates them from a run's tables; the minutes-scale
+`configs/quickstart.toml` shows the same law on a short grid.
 
-![Optimized squared distance against the separation along the chirp-mass/coalescence-time direction of a massive binary, with the ratio to the prediction beneath](docs/src/assets/quickstart_scaling_mass_time.png)
+![Optimized squared distance against the separation along the six-dimensional diagonal direction of a distant moderate-mass binary, with the ratio to the prediction beneath](docs/src/assets/production_scaling_diagonal.png)
 
-*Quartic law along the chirp-mass/coalescence-time direction of a massive
-binary: the optimized D² follows (1/16) K(u) δ⁴ over more than ten decades
-above the optimizer floor; the strip beneath shows the ratio to the
-prediction with its O(δ⁵) correction fit.*
+*Quartic law along the six-dimensional diagonal direction of a distant
+moderate-mass binary, every shape parameter displaced at once: the optimized
+D² follows (1/16) K(u) δ⁴ over fifteen decades above the optimizer floor
+(exponent 3.995 ± 0.002); the strip beneath shows the ratio to the prediction
+with its O(δ⁵) correction fit.*
 
-![Zone of confusion in the spin plane, drawn in the frame of the 1.5PN null direction](docs/src/assets/quickstart_zone_spin.png)
+![Optimized squared distance against the separation along the chirp-mass/coalescence-time direction of a massive binary, with the ratio to the prediction beneath](docs/src/assets/production_scaling_mass_time.png)
 
-*Zone of confusion in the spin plane, in the frame of the exact 1.5PN null
-direction: curvature-limited transverse to the null line, bounded along it
-only by the spin priors (wall segments in vermilion).*
+*The chirp-mass/coalescence-time direction of a massive aligned-spin binary,
+the degeneracy that dominates realistic catalogues: exponent 3.994 ± 0.002,
+discernibility scale δ_min = 55 Fisher σ, and the onset of the crossover to
+resolution at the largest separations.*
 
 ## File structure
 

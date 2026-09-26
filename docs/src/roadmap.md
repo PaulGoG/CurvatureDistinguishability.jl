@@ -25,8 +25,8 @@ curvature-limited.
   Arun et al. 2009 for the aligned-spin self-terms) with the same care as
   the Robson Table 1 transcription; add the transcription to the test suite.
 - Config-gate it: `[physics] spin_spin_2pn = false` (default off) threaded
-  through `WaveformParams`, so all existing fixtures/tests and the v1.0
-  model stay bit-identical when disabled. The term is a toggle, not a
+  through `WaveformParams`, so all existing fixtures and tests and the
+  present model stay bit-identical when disabled. The term is a toggle, not a
   replacement: the 1.5PN model remains the default and stays selectable.
 - Consequences when enabled: K values change everywhere and spin maps gain
   genuine structure. The A/B fixture tests must assert the *disabled*

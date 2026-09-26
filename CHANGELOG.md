@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The README and documentation landing figures are two sweeps of the
+  production configuration (six-dimensional diagonal, chirp-mass /
+  coalescence-time) instead of the quickstart sweep and spin map.
+- Waveform Physics documentation: the frequency grid is the analysis band,
+  the observation window the span of the observation.
+
 ## [2.0.0] - 2026-09-25
 
 The numerical results of this version differ from those of every 1.x

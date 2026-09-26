@@ -234,7 +234,13 @@ frequency; a hard cut would not be differentiable. It removes the band below
 ``F_0`` with ``\tau(F_0) = t_c`` — 0.56 mHz for ``\mathcal{M} = 0.1`` s and
 ``t_c = 0.63`` yr — and leaves the signal above about ``2F_0`` unchanged to
 ``10^{-10}``. Without the key the window is absent and ``T_{\mathrm{obs}}``
-only sets the frequency resolution and the confusion-noise level.
+only sets the frequency resolution and the confusion-noise level. The
+distinction matters because the frequency grid is the analysis band of the
+detector, not the span of the observation: the stationary-phase map
+``t(f)`` assigns every grid frequency to an emission time, so a light
+binary that fills the band has radiated at the low grid frequencies years
+before ``t = 0``, and only the window restricts the signal to what a
+``T_{\mathrm{obs}}``-long observation records.
 
 ## 7. Noise model
 
@@ -304,7 +310,7 @@ the long-wavelength limit of the detector. Consequences:
 - The noise is the analytic Robson model, not an LDC noise realization; the
   pipeline validates the noiseless-baseline geometry ([Roadmap](roadmap.md)).
 - Precession, eccentricity, higher PN orders in the phase (2PN spin–spin is
-  the first post-v1.0 feature) and higher harmonics beyond 0.5PN are not
+  the first planned extension) and higher harmonics beyond 0.5PN are not
   included.
 
 The band and the mass scale are campaign choices

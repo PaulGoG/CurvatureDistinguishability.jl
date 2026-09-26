@@ -110,8 +110,8 @@ and its console output in `logs/attempt_<k>.console.log`.
     ([Waveform Physics](physics.md), Finite observation). The key belongs to
     the run identity. The production configuration sets it; the quickstart
     configurations, whose coarse grids use ``T_{\mathrm{obs}}`` as a resolution
-    only, leave it out. `configs/campaigns/` is the multi-host benchmark
-    campaign as it was run, on its own frozen base without the window
+    only, leave it out. `configs/campaigns/` holds the multi-host benchmark
+    campaign on its own base without the window
     (`benchmark_base.toml`); `windowed_low_mass_maps.toml` there recomputes
     with the window the two maps whose base points radiate in band before
     ``t = 0``.
