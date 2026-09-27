@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-09-27
+
+### Changed
+
+- Figure labels follow the manuscript notation: `D²_opt` and `D²_th` for
+  the optimized and predicted distances (legend and ratio strip), `D_*²`
+  for the threshold line, `φ_c` for the coalescence phase, "exponent" for
+  the fitted log-log slope, `dD²/df` for the residual density.
+- Legends are set at the size of the axis labels; in-axis annotations are
+  slightly larger.
+- Annotations quote values to three significant digits with trailing zeros
+  kept (`δ* = 316`, `D²_opt = 30.0`); a leading minus and a colon are set
+  tight (`c₂ = −3.4×10⁻⁸`, `Exponent: 3.995`).
+- The prior-wall note of a confusion map gives the capped fraction of the
+  sampling angle to one decimal and names the vanishing-curvature fraction
+  only when it reaches 0.1 %.
+- The README and documentation landing figures are re-rendered with these
+  labels.
+
 ## [2.0.2] - 2026-09-26
 
 ### Changed
@@ -132,7 +151,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.3...HEAD
+[2.0.3]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v1.1.0...v2.0.0
