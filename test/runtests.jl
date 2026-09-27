@@ -1380,11 +1380,20 @@ enabled = true
         @test CD.Plotting.slope_latex(3.9812, 0.0081) == "3.981 \\pm 0.008"
         @test CD.Plotting.slope_latex(4.0, NaN) == "4.000"
         @test CD.Plotting.coef_latex(0.001278) == "1.28\\times 10^{-3}"
-        @test CD.Plotting.coef_latex(-0.0235) == "-2.35\\times 10^{-2}"
+        @test CD.Plotting.coef_latex(-0.0235) == "{-}2.35\\times 10^{-2}" # tight unary minus
         @test CD.Plotting.coef_latex(1.5) == "1.50" # ×10⁰ factor omitted
         @test CD.Plotting.coef_latex(14.46) == "14.5" # 2×10¹-style products fold
         @test CD.Plotting.coef_latex(0.2346) == "0.235" # …and 10⁻¹ likewise
-        @test CD.Plotting.coef_latex(-14.46) == "-14.5"
+        @test CD.Plotting.coef_latex(-14.46) == "{-}14.5"
+        @test CD.Plotting.tex_minus("-3.4") == "{-}3.4" &&
+              CD.Plotting.tex_minus("3.4") == "3.4"
+        # annotation values: three significant digits, trailing zeros kept, 1 ≤ |v| < 1000
+        @test CD.Plotting.fixed_sig_latex(30.03) == "30.0"
+        @test CD.Plotting.fixed_sig_latex(31.44) == "31.4"
+        @test CD.Plotting.fixed_sig_latex(316.2) == "316"
+        @test CD.Plotting.fixed_sig_latex(1.318) == "1.32"
+        @test CD.Plotting.fixed_sig_latex(-2.5) == "{-}2.50"
+        @test CD.Plotting.fixed_sig_latex(0.05) == CD.Plotting.sci_latex(0.05)
         # per-tick common-exponent labels never show a power in −1..1
         plain = CD.Plotting.sci_tick_labels([-1.5, 0.0, 0.5])
         @test plain[1].s == "\$-1.5\$" && plain[3].s == "\$0.5\$"
@@ -1411,7 +1420,7 @@ enabled = true
             prior_frac = 0.0, degenerate_frac = 0.0)
         ax_needle = first(filter(c -> c isa CD.Plotting.Axis, fig_needle.content))
         @test occursin("parallel", ax_needle.xlabel[])
-        @test occursin("-2.29", ax_needle.xlabel[])
+        @test occursin("{-}2.29", ax_needle.xlabel[])
         @test !(ax_needle.aspect[] isa CD.Plotting.DataAspect)
         φ_round = range(0, 2π; length = 64)[1:(end-1)]
         _, aspect_round =

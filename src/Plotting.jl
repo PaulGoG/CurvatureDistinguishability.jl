@@ -47,7 +47,7 @@ Short LaTeX axis labels for the six model parameters (deviation form is
 composed by the figure builders).
 """
 const PARAM_LABELS =
-    (L"D_L", L"\mathcal{M}", L"t_c", L"\Phi_0", L"\chi_1", L"\chi_2")
+    (L"D_L", L"\mathcal{M}", L"t_c", L"\phi_c", L"\chi_1", L"\chi_2")
 
 deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
 
@@ -240,9 +240,31 @@ function sci_latex(v::Real; sig::Int = 3)
     v == 0 && return "0"
     isfinite(v) || return string(v)
     e = floor(Int, log10(abs(v)))
-    -1 <= e <= 1 && return @sprintf("%.4g", round(v, sigdigits = sig))
+    -1 <= e <= 1 && return tex_minus(@sprintf("%.4g", round(v, sigdigits = sig)))
     m = round(v / 10.0^e, sigdigits = sig)
-    return string(@sprintf("%g", m), "\\times 10^{", e, "}")
+    return string(tex_minus(@sprintf("%g", m)), "\\times 10^{", e, "}")
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+A leading minus sign as `{-}`: the math engine otherwise spaces a minus
+after `=` as a binary operator (`= − 2.29`).
+"""
+tex_minus(s::AbstractString) = startswith(s, "-") ? "{-}" * s[2:end] : s
+
+"""
+$(TYPEDSIGNATURES)
+
+`sig` significant digits with trailing zeros kept (`30.0`, `31.4`, `316`),
+for annotations that quote a value the text quotes to the same precision;
+magnitudes outside `1 ≤ |v| < 1000` fall back to [`sci_latex`](@ref).
+"""
+function fixed_sig_latex(v::Real; sig::Int = 3)
+    (v == 0 || !isfinite(v)) && return sci_latex(v; sig)
+    e = floor(Int, log10(abs(v)))
+    0 <= e <= 2 || return sci_latex(v; sig)
+    return tex_minus(Printf.format(Printf.Format("%.$(max(sig - 1 - e, 0))f"), v))
 end
 
 function pi_label(k::Integer, den::Integer)
@@ -356,8 +378,8 @@ function coef_latex(v::Real)
     isfinite(v) || return string(v)
     e = floor(Int, log10(abs(v)))
     # exponents −1..1 render as plain decimals keeping the two mantissa decimals
-    -1 <= e <= 1 && return Printf.format(Printf.Format("%.$(2 - e)f"), v)
-    return string(@sprintf("%.2f", v / 10.0^e), "\\times 10^{", e, "}")
+    -1 <= e <= 1 && return tex_minus(Printf.format(Printf.Format("%.$(2 - e)f"), v))
+    return string(tex_minus(@sprintf("%.2f", v / 10.0^e)), "\\times 10^{", e, "}")
 end
 
 """
@@ -391,7 +413,7 @@ the floor-band swatch to read, line and marker entries being drawn centred
 in it.
 """
 const SCALING_LEGEND_KW = (; orientation = :horizontal, framevisible = false,
-    tellwidth = false, tellheight = true, labelsize = 19,
+    tellwidth = false, tellheight = true, labelsize = 24,
     patchsize = (30, 12), colgap = 16, patchlabelgap = 5,
     padding = (0, 0, 4, 0))
 
@@ -458,12 +480,12 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
     floor_band = isfinite(floor_level) && floor_level > ylo
     legend_entries = Any[theory_line, numerical_scatter]
     numerical_label =
-        slope_in_axis ? L"D^2_{\mathrm{numerical}}" :
+        slope_in_axis ? L"D^2_{\mathrm{opt}}" :
         latexstring(
-            "D^2_{\\mathrm{numerical}}\\;\\;\\ \\mathrm{slope:}\\ " *
+            "D^2_{\\mathrm{opt}}\\;\\;\\ \\mathrm{exponent}{:}\\ " *
             slope_latex(slope, slope_err),
         )
-    legend_labels = AbstractString[L"D^2_{\mathrm{theoretical}}", numerical_label]
+    legend_labels = AbstractString[L"D^2_{\mathrm{th}}", numerical_label]
     if floor_band
         push!(legend_entries, PolyElement(color = floor_color))
         push!(legend_labels, "Optimizer floor") # upright text: no math in it
@@ -477,8 +499,8 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
             (log10(rho_sq) - log10(ylo)) / (log10(yhi) - log10(ylo)) : 0.0
         slope_y = thr_rel > 0.8 ? thr_rel - 0.035 : 0.97
         text!(ax1, 0.03, slope_y; space = :relative,
-            text = latexstring("\\mathrm{slope:}\\ " * slope_latex(slope, slope_err)),
-            align = (:left, :top), fontsize = 18 - font_shift, color = :dodgerblue4)
+            text = latexstring("\\mathrm{Exponent}{:}\\ " * slope_latex(slope, slope_err)),
+            align = (:left, :top), fontsize = 20 - font_shift, color = :dodgerblue4)
     end
 
     floor_band && hspan!(ax1, ylo, floor_level; color = floor_color)
@@ -486,20 +508,20 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         hlines!(ax1, [rho_sq]; color = :grey35, linewidth = 1.8)
         # left side: the δ⁴ line is many decades below the threshold
         # there, so the label cannot collide with data or fit
-        text!(ax1, minimum(deltas), rho_sq; text = L"\rho^2_{\mathrm{thr}}",
+        text!(ax1, minimum(deltas), rho_sq; text = L"D_*^2",
             align = (:left, :bottom), offset = (2, 3),
-            fontsize = 18 - font_shift, color = :grey35)
+            fontsize = 20 - font_shift, color = :grey35)
     end
     if minimum(deltas) < delta_min < maximum(deltas)
         vlines!(ax1, [delta_min]; color = :grey35, linewidth = 1.8, linestyle = :dash)
         text!(ax1, delta_min, ylo; text = L"\delta_{\mathrm{min}}",
             align = (:right, :bottom), offset = (-5, 4),
-            fontsize = 18 - font_shift, color = :grey35)
+            fontsize = 20 - font_shift, color = :grey35)
     end
 
     ax2 = Axis(layout[2, 1]; xscale = log10,
         xlabel = L"\delta",
-        ylabel = L"D^2_{\mathrm{num}}/D^2_{\mathrm{theo}}", xticks = x_ticks,
+        ylabel = L"D^2_{\mathrm{opt}}/D^2_{\mathrm{th}}", xticks = x_ticks,
         yticklabelspace = ticklabelspace)
     # The ratio panel repeats the top panel's vocabulary exactly: dark-red
     # solid reference at 1 (the theory), blue dots, and floor-band points
@@ -538,7 +560,7 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         isfinite(c2) && (ctext *= ",\\;\\ c_2 = " * coef_latex(c2))
         text!(ax2, 0.985, 0.92; space = :relative,
             text = latexstring(ctext),
-            align = (:right, :top), fontsize = 16 - font_shift, color = :navy)
+            align = (:right, :top), fontsize = 18 - font_shift, color = :navy)
     end
     scatter!(ax2, deltas[keep], ratio[keep]; color = :dodgerblue,
         strokecolor = :black, strokewidth = 1.2, markersize = 17)
@@ -574,7 +596,7 @@ departure curve, from the first point to the right margin). Both panels use
 one vocabulary: blue dots, and floor-band points stricken through by a thin
 X (clamped at the ratio-panel top, where their true ratio diverges);
 non-convergence carries no special mark. The legend sits on top:
-`D²_theoretical`, `D²_numerical` with the fitted slope folded into its
+`D²_th`, `D²_opt` with the fitted exponent folded into its
 label, and — only when the band is drawn — a patch in the band's own grey
 naming the optimizer floor. `clean` is the Bool mask of points used for the
 fits — the caller should pass the above-optimizer-floor mask. The panels are
@@ -784,15 +806,14 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     noise_row = compact ? 3 : 2
     axis_row = compact ? 4 : 3
     Label(layout[2, 1],
-        latexstring(delta_symbol, " = ", sci_latex(meta.delta_star),
-            ":\\;\\; D^2_{", delta_symbol, "} = ", sci_latex(meta.d2_num),
-            "\\;\\; (D^2_{\\mathrm{th},\\,", delta_symbol, "} = ",
-            sci_latex(meta.d2_theo), ")");
-        fontsize = 16 - font_shift, halign = :left, tellwidth = false,
+        latexstring(delta_symbol, " = ", fixed_sig_latex(meta.delta_star),
+            "{:}\\;\\; D^2_{\\mathrm{opt}} = ", fixed_sig_latex(meta.d2_num),
+            "\\;\\; (D^2_{\\mathrm{th}} = ", fixed_sig_latex(meta.d2_theo), ")");
+        fontsize = 18 - font_shift, halign = :left, tellwidth = false,
         tellheight = true, padding = (4, 0, 2, 8))
     if !noise_in_frame
         Label(layout[noise_row, 1],
-            latexstring("\\mathrm{Noise\\ level\\ per\\ bin:}\\ 1/\\Delta f = ",
+            latexstring("\\mathrm{Noise\\ level\\ per\\ bin}{:}\\ 1/\\Delta f = ",
                 sci_latex(noise_level),
                 "\\ \\mathrm{Hz^{-1}}\\ \\mathrm{(off\\ scale)}");
             fontsize = 14 - font_shift, color = :grey35, halign = :right,
@@ -801,7 +822,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
 
     ax2 = Axis(layout[axis_row, 1]; xscale = log10, yscale = log10,
         xlabel = L"f\ \ [\mathrm{Hz}]",
-        ylabel = L"\mathrm{d}(D^2)/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
+        ylabel = L"\mathrm{d}D^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
         xticks = x_ticks, yticks = decade_ticks(ylo2, yhi2; maxticks = maxticks),
         yticklabelspace = ticklabelspace)
     lo_A = max.(res_lo_A, ylo2)
@@ -842,9 +863,9 @@ function residual_legend_block!(gp, legend_A::NamedTuple, legend_E::NamedTuple)
         [legend_A.labels, legend_E.labels], [legend_A.title, legend_E.title];
         orientation = :horizontal, titleposition = :left, framevisible = false,
         tellwidth = false, tellheight = true, halign = :center,
-        labelsize = 18, titlesize = 19, titlefont = :bold,
+        labelsize = 21, titlesize = 22, titlefont = :bold,
         patchsize = (26, 4), patchlabelgap = 4, colgap = 10, titlegap = 8,
-        groupgap = 36, padding = (0, 0, 1, 1))
+        groupgap = 28, padding = (0, 0, 1, 1))
 end
 
 """
@@ -1167,7 +1188,8 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     if needle
         xlabel = latexstring(
             "\\Delta\\chi_{\\parallel}\\ \\ (\\mathrm{null\\ direction},\\ ",
-            "\\mathrm{d}\\chi_2/\\mathrm{d}\\chi_1 = ", @sprintf("%.2f", tan(ϑ)),
+            "\\mathrm{d}\\chi_2/\\mathrm{d}\\chi_1 = ",
+            tex_minus(@sprintf("%.2f", tan(ϑ))),
             ")")
         ylabel = L"\Delta\chi_{\perp}"
     else
@@ -1218,7 +1240,9 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
         # never round a nonzero fraction to "0%": the capped boundary run
         # can be visually dominant yet contain few sampled directions
         # (adaptive refinement leaves flat prior walls sparsely sampled)
-        pcttex(f) = 100f < 0.5 ? "{<}1\\%" : @sprintf("%.0f\\%%", 100f)
+        pcttex(f) =
+            100f < 0.05 ? "{<}0.1\\%" :
+            100f < 10 ? @sprintf("%.1f\\%%", 100f) : @sprintf("%.0f\\%%", 100f)
         # name the active walls with their values: a prior-limited boundary
         # point sits exactly on the box edge its ray exited through, so an
         # edge is active iff some capped point lies on it
@@ -1249,12 +1273,18 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
         msg =
             isempty(walls) ? "\\text{Prior bounds}" :
             string("\\text{Prior walls}\\ ", join(walls, ",\\;\\ "), "\\ \\text{bound}")
-        msg *= string("\\ ", pcttex(prior_frac), "\\ \\text{of directions}")
+        msg *= string("\\ ", pcttex(prior_frac), "\\ \\text{of the sampling angle}")
         # in the needle frame the long axis is the prior-capped null
         # direction, not a curvature scale
         needle && (msg *= "\\ \\text{and the long axis}")
-        degenerate_frac > 0 && (
-            msg *= string("\\;\\ (", pcttex(degenerate_frac), "\\ \\text{degenerate})")
+        # the vanishing-curvature fraction only when it is not negligible
+        # (the row must stay clear of the axis multiplier at its left end)
+        degenerate_frac >= 0.001 && (
+            msg *= string(
+                "\\;\\ (",
+                pcttex(degenerate_frac),
+                "\\ \\text{with vanishing curvature})",
+            )
         )
         # on top of the plot, outside the box (a thin Label row above the
         # axis); tellwidth = false so the label's own width never dictates
@@ -1308,7 +1338,7 @@ $(TYPEDSIGNATURES)
 Multi-panel scaling figure: one [`scaling_panel!`](@ref) per entry of
 `panels`, with the fitted slope written inside each main axis,
 placed row-major on an `ncols`-column grid under one shared horizontal legend
-(`D²_theoretical`, `D²_numerical`, and the optimizer-floor patch whenever a
+(`D²_th`, `D²_opt`, and the optimizer-floor patch whenever a
 panel draws the floor band). Each entry of `panels` is a NamedTuple with the
 fields `deltas, d2_num, d2_theo, rho_sq, delta_min, slope, slope_err, clean,
 floor_level, c1, c2` (as returned by `RunFigures.sweep_panel_data`).
