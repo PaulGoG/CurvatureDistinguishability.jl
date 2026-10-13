@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-10-13
+
+### Changed
+
+- `[compat]` admits CSV.jl 1.1 alongside 0.10, in the package and in the
+  test environment. The persisted run tables and the reference fixtures
+  hold numeric and Boolean columns only, which the 1.x parser returns with
+  unchanged element types, so no read or write site changes; the suite
+  passes with CSV.jl 1.1.0 resolved.
+
 ## [2.0.3] - 2026-09-27
 
 ### Changed
@@ -151,7 +161,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.3...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.4...HEAD
+[2.0.4]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.0...v2.0.1
