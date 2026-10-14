@@ -560,16 +560,18 @@ end
 $(TYPEDSIGNATURES)
 
 Identifier of the fitting problem behind a sweep checkpoint: SHA-256 of the
-sweep definition, the separation grid, the normalized direction and every
-setting that enters a fit. Rows written under another signature are refused.
+sweep definition, the separation grid, the normalized direction, every
+setting that enters a fit and the package `version` that computes it. Rows
+written under another signature are refused.
 """
 function sweep_signature(sweep::SweepSpec, deltas::AbstractVector,
-    u_norm::AbstractVector, cfg::PipelineSettings)
+    u_norm::AbstractVector, cfg::PipelineSettings;
+    version::AbstractString = package_version())
     parts = (sweep.name, sweep.theta_0, sweep.amp_ratio, collect(deltas), collect(u_norm),
         cfg.optimizer, cfg.n_starts, cfg.rng_seed, cfg.g_tol, cfg.f_reltol,
         cfg.max_iterations, cfg.multi_start_parallel_scale,
         cfg.multi_start_transverse_scale, cfg.hessian_chunk, cfg.T_obs, cfg.f_min,
-        cfg.f_max)
+        cfg.f_max, version)
     text = sprint() do io
         for part in parts
             show(io, part)
@@ -1349,8 +1351,10 @@ Keywords:
     directory. Stages recorded as complete are skipped, a sweep continues from
     its work-item checkpoint, stages abandoned by a supervisor are skipped, and
     the logs are appended to. A run that is already complete is returned as is.
+    Only runs produced by the same package version are continued.
   - `run_dir = nothing`: use exactly this run directory (created when absent);
-    implies `resume`.
+    implies `resume`. An `ArgumentError` is thrown when the directory was
+    produced by another package version (`Provenance.check_package_version`).
   - `heartbeat_period_s = 0`: when positive, publish `heartbeat.toml` in the
     run directory at this period for a supervising process.
 """
@@ -1372,6 +1376,7 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     base_dir = joinpath(project_root, output_dir)
     if run_dir !== nothing
         out_base = String(run_dir)
+        check_package_version(out_base)
         mkpath(out_base)
     elseif resume
         out_base, state = resolve_run_dir(base_dir, config_path)
@@ -1447,6 +1452,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         attempts = attempt,
         started = get(previous, "started", string(now())),
         run_id = basename(out_base), git = git_state(project_root),
+        package_version = package_version(),
         config_file = basename(config_path),
         base_config = string(get(TOML.parsefile(config_path), "base_config", "")),
         julia_version = string(VERSION), hostname = gethostname(),

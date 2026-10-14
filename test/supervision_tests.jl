@@ -304,6 +304,33 @@ gpu_backend = "none"
                   (reference, :complete)
             @test run_pipeline(cfg_path, dir, "a"; resume = true) == reference
             @test !isdir(reference * "_r2")
+            # a run recorded by another package version, or by one predating
+            # the record, is never continued although its identifier matches
+            stale_base = joinpath(dir, "d")
+            stale = joinpath(stale_base, basename(reference))
+            mkpath(stale_base)
+            cp(reference, stale)
+            CD.Provenance.write_run_metadata(stale; package_version = "0.0.1")
+            resolved = @test_logs (:warn, r"package version 0\.0\.1") match_mode = :any begin
+                CD.Provenance.resolve_run_dir(stale_base, cfg_path)
+            end
+            @test resolved == (stale * "_r2", :fresh)
+            @test_throws "package version 0.0.1" run_pipeline(cfg_path, dir, "d";
+                run_dir = stale)
+            meta = TOML.parsefile(joinpath(stale, "metadata.toml"))
+            delete!(meta, "package_version")
+            open(io -> TOML.print(io, meta), joinpath(stale, "metadata.toml"), "w")
+            @test_throws "predates the record" run_pipeline(cfg_path, dir, "d";
+                run_dir = stale)
+            @test TOML.parsefile(joinpath(reference, "metadata.toml"))["package_version"] ==
+                  CD.Provenance.package_version()
+            # sweep checkpoints are keyed to the version as well
+            sweep_cfg = load_and_validate_config(cfg_path)
+            signature(; kw...) = CD.Orchestrator.sweep_signature(
+                sweep_cfg.sweeps[1], [1.0, 2.0], [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                sweep_cfg; kw...)
+            @test signature() == signature(; version = CD.Provenance.package_version())
+            @test signature() != signature(; version = "0.0.1")
             # a variant that shares the run identifier is a different run
             variant = joinpath(dir, "variant.toml")
             write(variant, read(cfg_path, String) * "hessian_chunk = 3\n")

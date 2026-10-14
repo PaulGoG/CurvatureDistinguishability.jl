@@ -14,7 +14,7 @@ using LinearAlgebra: BLAS
 export run_id_from_config, effective_config, identity_config,
     unique_run_dir, resolve_run_dir, snapshot_config, snapshot_manifest,
     backup_existing!, write_run_metadata, read_run_metadata,
-    write_hardware_fingerprint, git_state,
+    write_hardware_fingerprint, git_state, package_version, check_package_version,
     stage_key, completed_stages, mark_stage_complete!, abandoned_stages,
     note_figure_failure!
 
@@ -150,12 +150,57 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Version of this package as declared in its `Project.toml`; recorded in
+`metadata.toml` as `package_version` and compared before a run directory is
+continued ([`check_package_version`](@ref)).
+"""
+package_version() = string(pkgversion(@__MODULE__))
+
+# whether the running package may continue the outputs in `run_dir`: its
+# metadata records the same version, or there is no metadata yet (nothing
+# has been computed)
+function same_package_version(run_dir::AbstractString)
+    isfile(joinpath(run_dir, "metadata.toml")) || return true
+    return get(read_run_metadata(run_dir), "package_version", nothing) == package_version()
+end
+
+function version_mismatch_message(run_dir::AbstractString)
+    recorded = get(read_run_metadata(run_dir), "package_version", nothing)
+    origin =
+        recorded === nothing ? "a package version that predates the record" :
+        "package version $recorded"
+    return "$run_dir was produced by $origin; version $(package_version()) " *
+           "does not continue it"
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Throw an `ArgumentError` unless the outputs in `run_dir` may be continued by
+the running package: its `metadata.toml` must record the same
+`package_version`, or be absent (nothing has been computed yet). The run
+identifier hashes the configuration only, so a release that changes the
+scientific model maps an unchanged configuration onto the same identifier;
+this check keeps such a release from completing or reusing a run begun
+under another version, or under one that predates the record.
+"""
+function check_package_version(run_dir::AbstractString)
+    same_package_version(run_dir) ||
+        throw(ArgumentError(version_mismatch_message(run_dir) * "; start a new run"))
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Run directory for `config_path` under `base_dir` when an interrupted run is to
 be continued. The siblings `run_<id>`, `run_<id>_r2`, … are searched in order
 for one whose `config.toml` snapshot equals the effective configuration,
 execution sections included — so variants that share an identifier (another
-Hessian chunk, another backend) never continue each other. Returns
-`(directory, state)` with `state`
+Hessian chunk, another backend) never continue each other — and whose outputs
+were produced by the running package version ([`check_package_version`](@ref));
+a sibling that matches the configuration only is skipped with a warning.
+Returns `(directory, state)` with `state`
 
   - `:complete` — that run finished with every stage complete,
   - `:resume` — that run is unfinished, or finished with failed or abandoned stages,
@@ -169,11 +214,15 @@ function resolve_run_dir(base_dir::AbstractString, config_path::AbstractString)
     while isdir(dir)
         snapshot = joinpath(dir, "config.toml")
         if isfile(snapshot) && effective_config(snapshot) == config
-            meta = read_run_metadata(dir)
-            finished =
-                haskey(meta, "finished") && get(meta, "failed_stages", "") == "" &&
-                isempty(abandoned_stages(dir))
-            return dir, finished ? :complete : :resume
+            if same_package_version(dir)
+                meta = read_run_metadata(dir)
+                finished =
+                    haskey(meta, "finished") && get(meta, "failed_stages", "") == "" &&
+                    isempty(abandoned_stages(dir))
+                return dir, finished ? :complete : :resume
+            end
+            @warn "Skipping a sibling that matches the configuration: " *
+                  version_mismatch_message(dir)
         end
         k += 1
         dir = joinpath(base_dir, "$(run_id)_r$k")
