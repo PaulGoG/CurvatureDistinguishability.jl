@@ -248,8 +248,8 @@ corners at a very different ``\rho``.
 
 1.  **Mass vs. Time (`mass_vs_time_degeneracy`, 2 vs 3)** — the classic chirp-rate / arrival-time degeneracy; base ``\theta_0 = [5.0, 4.0, 20.0, 0.0, 0.8, 0.8]``.
 2.  **Spin 1 vs. Spin 2 (`spin1_vs_spin2_coupling`, 5 vs 6)** — the phase sees the spins only through ``\beta``, so the line ``\mathrm{d}\beta = 0`` is exactly flat: the mathematical zone diverges along it and the published zone is limited by the spin prior ``[-1, 1]`` there (a narrow wedge, since the loud source confines every measurable direction to a tiny radius).
-3.  **Mass vs. Spin 1 (`mass_vs_spin1_twist`, 2 vs 5)** — mass/spin phasing trade-off; the zone crosses the ``\chi_1 \le 1`` bound and is capped there.
+3.  **Mass vs. Spin 1 (`mass_vs_spin1_twist`, 2 vs 5)** — mass/spin phasing trade-off; the zone stays inside the ``\chi_1 \le 1`` bound.
 4.  **Time vs. Phase (`time_vs_phase_doppler`, 3 vs 4)** — absolute time translation vs orbital phase; the pure-phase direction is quasi-degenerate (``\partial^2_\varphi h \parallel`` tangent space), producing a near-singular boundary spike that the adaptive refinement resolves.
 5.  **Mass vs. Phase, low-mass system (`mass_vs_phase_low_mass`, 2 vs 4)** — the chirp-rate/phase degeneracy at the band-filling base ``\theta_0 = [3.0, 0.25, 25.0, 0.0, 0.9, 0.0]``.
 6.  **Time vs. Spin 1, high-spin system (`time_vs_spin1_high_spin`, 3 vs 5)** — the spin-orbit phase twist trades against arrival time at the strongly anti-aligned base ``\theta_0 = [5.0, 2.5, 10.0, 1.57, 0.7, -0.7]``.
-7.  **Phase vs. Spin 1, seed binary (`phase_vs_spin1_seed`, 4 vs 5)** — a weakly chirping light-seed source leaves phase and spin loosely constrained: the zone is terminated by the physical walls (phase topology ``\pm\pi`` and the spin prior) over a substantial fraction of directions.
+7.  **Phase vs. Spin 1, seed binary (`phase_vs_spin1_seed`, 4 vs 5)** — a weakly chirping light-seed source; the zone stays inside the phase cap ``\pm\pi`` and the spin prior in every direction.
