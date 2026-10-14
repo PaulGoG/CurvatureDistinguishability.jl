@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-14
+
+### Added
+
+- `metadata.toml` records `package_version`; `Provenance.package_version`
+  returns it and `Provenance.check_package_version` refuses a run directory
+  recorded by another version.
+- `ParameterBounds` carries a `deviation_cap` per periodic axis, separate
+  from the period. The four-argument constructor sets it to half the period,
+  as before.
+
+### Changed
+
+- A run is continued (`resume`, `run_dir`, the supervisor) only by the
+  package version that produced it. The run identifier still hashes the
+  configuration alone; `resolve_run_dir` skips a sibling recorded by another
+  version, or by a version before 2.1.0, with a warning and starts a new
+  one, and `run_pipeline(...; run_dir)` throws. Sweep checkpoints carry the
+  version in their signature.
+
+### Fixed
+
+- The coalescence phase is declared with its true period `4π`: harmonic `k`
+  carries `−(k/2)φ_c`, so a `2π` shift reverses the odd harmonics except at
+  equal mass. The confusion maps keep the deviation cap `|Δφ_c| ≤ π`, half
+  the period of the dominant harmonic; no map or table changes.
+- The parameter guide described the mass–spin and seed-binary zones as
+  capped at the prior walls; in the production configuration no direction
+  of either map is prior-limited.
+
 ## [2.0.4] - 2026-10-13
 
 ### Changed
@@ -161,7 +191,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.4...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.4...v2.1.0
 [2.0.4]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.1...v2.0.2
