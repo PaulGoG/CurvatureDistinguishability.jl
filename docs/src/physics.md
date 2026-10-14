@@ -72,7 +72,12 @@ so that ``\tilde h_k(f) \propto e^{-i\Psi_k(f)}``; the arrival-time term is
 common to every harmonic, and the stationary-phase time of harmonic ``k``
 is the Newtonian ``t_k = t(2f/k)`` with
 ``t(F) = t_c - 5\mathcal{M}/(256\, u^{8})``, ``u = (\pi\mathcal{M}F)^{1/3}``,
-which is where the detector motion of §5 is evaluated.
+which is where the detector motion of §5 is evaluated. Since harmonic
+``k`` carries ``-(k/2)\phi_c``, the waveform is ``4\pi``-periodic in
+``\phi_c``: a ``2\pi`` shift reverses the sign of the odd harmonics, which
+vanish only at equal mass. The confusion maps cap phase deviations at
+``|\Delta\phi_c| \le \pi``, half the period of the dominant harmonic,
+beyond which its contribution to ``D^2`` decreases again.
 
 ## 3. Harmonic amplitudes (0.5PN)
 

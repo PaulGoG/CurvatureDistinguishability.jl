@@ -85,7 +85,7 @@ corner_bisect_iters = 25
 
 [parameter_bounds]
 # hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
-# The phase is periodic (deviations capped at +-pi) regardless of this table.
+# The phase is periodic (period 4 pi, deviations capped at +-pi) regardless of this table.
 luminosity_distance = [0.0, inf]
 chirp_mass = [0.0, inf]
 coalescence_time = [0.0, inf]

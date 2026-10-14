@@ -13,7 +13,7 @@ public PARAM_KEYS, PHASE_INDEX, SPIN_INDICES
 
 """
 Index of the coalescence phase in the parameter vector — the one periodic
-coordinate (deviations live on `[-π, π]`).
+coordinate (period `4π`, deviations capped at `±π`; see [`default_bounds`](@ref)).
 """
 const PHASE_INDEX = 4
 
@@ -35,27 +35,52 @@ const PARAM_KEYS = ("luminosity_distance", "chirp_mass", "coalescence_time",
 Hard physical bounds on the O(1)-scaled parameter vector
 `θ = [A, M_c, t_c, φ_c, χ₁, χ₂]`. `lower`/`upper` are absolute bounds used by
 the constrained optimizer (`±Inf` allowed); `periodic` marks topological axes
-(the phase), whose *deviation* from any base point is limited to
-`±period/2` regardless of the absolute value.
+(the phase) with their `period`, and `deviation_cap` limits the *deviation*
+from any base point on those axes to `±deviation_cap` regardless of the
+absolute value (`0 < deviation_cap ≤ period/2`). The four-argument
+constructor sets the cap to half the period, the antipode on the circle.
 """
 struct ParameterBounds
     lower::NTuple{N_PARAMS,Float64}
     upper::NTuple{N_PARAMS,Float64}
     periodic::NTuple{N_PARAMS,Bool}
     period::NTuple{N_PARAMS,Float64}
+    deviation_cap::NTuple{N_PARAMS,Float64}
+    function ParameterBounds(lower, upper, periodic, period, deviation_cap)
+        for i in 1:N_PARAMS
+            periodic[i] || continue
+            0 < deviation_cap[i] <= period[i] / 2 || throw(
+                ArgumentError(
+                    "periodic component $i: the deviation cap ($(deviation_cap[i])) " *
+                    "must lie in (0, period/2] with period $(period[i])",
+                ),
+            )
+        end
+        return new(lower, upper, periodic, period, deviation_cap)
+    end
 end
+
+ParameterBounds(lower, upper, periodic, period) =
+    ParameterBounds(lower, upper, periodic, period, period ./ 2)
 
 """
 $(TYPEDSIGNATURES)
 
-Physical defaults: `D_L ≥ 0`, `M_c ≥ 0`, `t_c ≥ 0`, phase periodic with period
-`2π` (unbounded for the optimizer, deviation-limited to ±π), spins in `[−1, 1]`.
+Physical defaults: `D_L ≥ 0`, `M_c ≥ 0`, `t_c ≥ 0`, spins in `[−1, 1]`, and the
+phase unbounded for the optimizer with period `4π`: harmonic `k` carries
+`−(k/2)φ_c`, so a `2π` shift reverses the sign of the odd harmonics `k = 1, 3`
+(at equal mass they vanish and `2π` is already a period). Phase deviations
+from a base point are capped at `±π`, half the period of the dominant `k = 2`
+harmonic: along the pure-phase ray its contribution to `D²`, `∝ sin²(Δφ_c/2)`,
+grows monotonically up to `|Δφ_c| = π` and decreases beyond, where the radial
+confusion-zone construction no longer applies.
 """
 function default_bounds()
     return ParameterBounds((0.0, 0.0, 0.0, -Inf, -1.0, -1.0),
         (Inf, Inf, Inf, Inf, 1.0, 1.0),
         (false, false, false, true, false, false),
-        (0.0, 0.0, 0.0, 2π, 0.0, 0.0))
+        (0.0, 0.0, 0.0, 4π, 0.0, 0.0),
+        (0.0, 0.0, 0.0, π, 0.0, 0.0))
 end
 
 """
@@ -83,22 +108,23 @@ function bounds_from_config(cfg::AbstractDict)
                 throw(ArgumentError("[parameter_bounds].$key: lower must be < upper"))
         end
     end
-    return ParameterBounds(Tuple(lower), Tuple(upper), b.periodic, b.period)
+    return ParameterBounds(Tuple(lower), Tuple(upper), b.periodic, b.period,
+        b.deviation_cap)
 end
 
 """
 $(TYPEDSIGNATURES)
 
 Deviation-space prior box for the 2D map plane `(px, py)` around the base
-point `theta0`: `[lower_i − θ0_i, upper_i − θ0_i]` per axis, or `±period/2`
-for periodic axes. Errors if `theta0` does not lie strictly inside the
+point `theta0`: `[lower_i − θ0_i, upper_i − θ0_i]` per axis, or
+`±deviation_cap` for periodic axes. Errors if `theta0` does not lie strictly inside the
 bounds (the box must contain the origin for the polar capping to be exact).
 """
 function deviation_box(b::ParameterBounds, theta0::AbstractVector, px::Integer, py::Integer)
     lims = map((px, py)) do idx
         if b.periodic[idx]
-            half = b.period[idx] / 2
-            (-half, half)
+            cap = b.deviation_cap[idx]
+            (-cap, cap)
         else
             lo = b.lower[idx] - theta0[idx]
             hi = b.upper[idx] - theta0[idx]

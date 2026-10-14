@@ -17,8 +17,8 @@ D^2 \approx \frac{1}{16} K(u)\, \delta^4,
 
 The published zone-of-confusion maps are the exact intersection of this
 mathematical boundary with the hard physical parameter bounds
-(``D_L, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase topology
-``\pm\pi``) — along degenerate directions (e.g. the spin combination the
+(``D_L, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase deviations
+within ``\pm\pi``) — along degenerate directions (e.g. the spin combination the
 1.5PN phase cannot see) the zone is limited by the prior, not by
 curvature, and the figures mark those boundary segments distinctly.
 

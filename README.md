@@ -18,7 +18,7 @@ where δ is the parameter separation and K(u) the extrinsic curvature of the
 signal manifold. The discernibility boundary follows as
 δ_min(u) = (16 ρ²_thr / K(u))^{1/4}, and the 2D "zone of confusion" maps are
 the exact intersection of that boundary with the hard physical parameter
-bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase topology ±π).
+bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase deviations within ±π).
 
 ## At a glance
 

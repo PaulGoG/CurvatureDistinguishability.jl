@@ -226,6 +226,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 )
             @test lhs ≈ rhs rtol = 1e-12
         end
+        # harmonic k carries −(k/2)φ_c: the waveform is 4π-periodic in the
+        # phase, and a 2π shift reverses the odd harmonics unless the masses
+        # are equal
+        θ_ph = [1.0, 1.5, 2.0, 0.3, 0.5, 0.3]
+        phase_shifted(Δ) = θ_ph .+ Δ .* (1:6 .== 4)
+        for (eta, two_pi_periodic) in ((2 / 9, false), (0.25, true))
+            wp = waveform_params(; merge(FIX_PHYS, (; eta))...)
+            A0, E0 = channel_strain(θ_ph, FIX_FREQS, wp)
+            A4, E4 = channel_strain(phase_shifted(4π), FIX_FREQS, wp)
+            A2, E2 = channel_strain(phase_shifted(2π), FIX_FREQS, wp)
+            @test isapprox(A4, A0; rtol = 1e-10) && isapprox(E4, E0; rtol = 1e-10)
+            @test isapprox(A2, A0; rtol = 1e-10) == two_pi_periodic
+            @test isapprox(E2, E0; rtol = 1e-10) == two_pi_periodic
+        end
         # innermost stable orbit and the taper around it
         @test isco_frequency(4.925) ≈ 4.398e-3 rtol = 1e-3 # 10⁶ M⊙
         fi = isco_frequency(total_mass(Mc, 0.25))
@@ -442,6 +456,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         box_p = deviation_box(b, THETA0, 2, 4) # mass (lower −1.5) and periodic phase
         @test box_p[1] ≈ -1.5 && box_p[2] == Inf
         @test box_p[3] ≈ -π && box_p[4] ≈ π
+        @test b.period[4] ≈ 4π && b.deviation_cap[4] ≈ π
+        # the four-argument form caps at the antipode; a wider cap is refused
+        b_antipode = ParameterBounds(b.lower, b.upper, b.periodic, b.period)
+        @test deviation_box(b_antipode, THETA0, 2, 4)[4] ≈ 2π
+        @test_throws ArgumentError ParameterBounds(b.lower, b.upper, b.periodic,
+            b.period, (0.0, 0.0, 0.0, 3π, 0.0, 0.0))
 
         @test ray_box_crossing(1.0, 0.0, -1.8, 0.2, -1.8, 0.2) ≈ 0.2
         @test ray_box_crossing(-1.0, 0.0, -1.8, 0.2, -1.8, 0.2) ≈ 1.8

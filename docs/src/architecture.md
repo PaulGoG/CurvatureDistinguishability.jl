@@ -56,8 +56,8 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   integrals. Host-side signal processing behind a typed signature; the
   driver only persists its table.
 - **`Bounds.jl`** — hard physical parameter bounds (`[parameter_bounds]`),
-  deviation-space boxes around a base point (phase treated topologically,
-  ``\pm\pi``), ray–box crossing distances for the polar capping, and
+  deviation-space boxes around a base point (phase periodic with period
+  ``4\pi``, deviations capped at ``\pm\pi``), ray–box crossing distances for the polar capping, and
   interior clamping for the constrained optimizer.
 - **`Geometry.jl`** — the differential-geometry engine. One ForwardDiff
   Jacobian of the flattened response + modified Gram–Schmidt gives the
