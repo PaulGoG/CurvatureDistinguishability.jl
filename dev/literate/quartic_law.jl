@@ -52,8 +52,8 @@ end
 D2_theo = (K_norm / 16) .* deltas .^ 4
 D2_num ./ D2_theo
 
-# The ratios sit at unity across two decades of separation — the quartic
-# law, from nothing but the manifold's curvature. The comparison figure:
+# The ratios sit at unity across two decades of separation: the quartic law
+# follows from the curvature of the manifold alone. The comparison figure:
 
 fig = with_theme(publication_theme()) do
     fig = Figure(size = (700, 480))
