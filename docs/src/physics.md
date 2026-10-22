@@ -1,4 +1,4 @@
-# Physics and Waveform Model
+# Waveform Physics
 
 Equation-level description of the model implemented in `Physics.jl` and
 `Detector.jl`: a frequency-domain aligned-spin inspiral of a massive
@@ -59,8 +59,8 @@ The spins enter the 1.5PN phase only through the single scalar
 direction of the signal manifold at every mass ratio (tangent rank 5):
 at equal mass it is the antisymmetric combination ``\chi_a``, in general
 it is the null line ``(113 - 76\eta + 113\delta_m)\,\mathrm{d}\chi_1 +
-(113 - 76\eta - 113\delta_m)\,\mathrm{d}\chi_2 = 0`` — at ``\eta = 2/9``
-``\mathrm{d}\chi_2/\mathrm{d}\chi_1 = -2.29``, the ``\chi_s`` and ``\chi_a``
+(113 - 76\eta - 113\delta_m)\,\mathrm{d}\chi_2 = 0``. At ``\eta = 2/9`` the
+slope is ``\mathrm{d}\chi_2/\mathrm{d}\chi_1 = -2.29``, the ``\chi_s`` and ``\chi_a``
 coefficients being ``8.01`` and ``3.14``. Lifting it requires the 2PN
 spin–spin term ([Roadmap](roadmap.md)).
 
@@ -238,8 +238,8 @@ chirp time ``1/\sqrt{\dot f}`` multiplies the harmonic at ``t_k(f)``;
 for the lightest shipped systems (3.6 and 5.5 days). The window is smooth in
 ``t_k``, hence in ``\mathcal{M}`` and ``t_c``, through which its edges move in
 frequency; a hard cut would not be differentiable. It removes the band below
-``F_0`` with ``\tau(F_0) = t_c`` — 0.56 mHz for ``\mathcal{M} = 0.1`` s and
-``t_c = 0.63`` yr — and leaves the signal above about ``2F_0`` unchanged to
+``F_0`` with ``\tau(F_0) = t_c`` (0.56 mHz for ``\mathcal{M} = 0.1`` s and
+``t_c = 0.63`` yr) and leaves the signal above about ``2F_0`` unchanged to
 ``10^{-10}``. Without the key the window is absent and ``T_{\mathrm{obs}}``
 only sets the frequency resolution and the confusion-noise level. The
 distinction matters because the frequency grid is the analysis band of the
@@ -321,5 +321,5 @@ the long-wavelength limit of the detector. Consequences:
   included.
 
 The band and the mass scale are campaign choices
-([Complex Run Parameters](parameters.md)); the geometric law itself makes
+([Run Parameters](parameters.md)); the geometric law itself makes
 no assumption about them.

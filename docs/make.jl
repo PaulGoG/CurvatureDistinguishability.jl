@@ -31,7 +31,7 @@ makedocs(
         "System Architecture" => "architecture.md",
         "Scientific Context" => "science.md",
         "Waveform Physics" => "physics.md",
-        "Complex Run Parameters" => "parameters.md",
+        "Run Parameters" => "parameters.md",
         "Executable Example" => "generated/quartic_law.md",
         "Roadmap" => "roadmap.md",
         "API Reference" => "api.md",

@@ -1,9 +1,9 @@
-# API Reference & Module Documentation
+# API Reference
 
-Core functionality exported by `CurvatureDistinguishability.jl`, decoupled
-into physics, detector response, residual diagnostics, bounds, geometry,
-inference, backends, configuration, provenance, plotting, orchestration and
-run supervision.
+Public symbols of `CurvatureDistinguishability.jl`, by module: physics,
+detector response, residual diagnostics, bounds, geometry, inference,
+backends, configuration, provenance, plotting, orchestration and run
+supervision.
 
 ```@docs
 CurvatureDistinguishability
