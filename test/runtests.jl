@@ -57,15 +57,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # JET package analysis with error points restricted to this package's
         # modules (upstream abstract-interpretation artifacts in
-        # Base/Optim/Makie internals are out of scope). Exactly three known
-        # artifacts remain, all anchored at the deliberately untyped
-        # device-buffer barrier (launch_loss!/launch_loss_lanes!/
-        # column_sums_via!, one per kernel: loss_bins!, loss_bins_lanes!,
-        # partial_column_sums!): the GPU kernel-call method exists only once
-        # a GPU backend package is loaded, so the GPU branch of the backend
-        # union split reports as missing here while being unreachable by
-        # construction (get_best_backend returns only registered backends).
-        # A change in this count, in either direction, must be triaged.
+        # Base/Optim/Makie internals are out of scope). Under
+        # KernelAbstractions 0.9 exactly three known artifacts remain, all
+        # anchored at the deliberately untyped device-buffer barrier
+        # (launch_loss!/launch_loss_lanes!/column_sums_via!, one per kernel:
+        # loss_bins!, loss_bins_lanes!, partial_column_sums!): the GPU
+        # kernel-call method exists only once a GPU backend package is
+        # loaded, so the GPU branch of the backend union split reports as
+        # missing here while being unreachable by construction
+        # (get_best_backend returns only registered backends). From 0.10 the
+        # CPU backend launches through the same kernel interface as the GPU
+        # backends, the method exists for every backend and no artifact
+        # remains. A change in either count must be triaged.
         # JET tracks compiler internals and routinely breaks on pre-release
         # Julia (observed: internal UndefRefError on the CI `pre` leg), so
         # the analysis gates stable releases only
@@ -76,7 +79,8 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
             jet = JET.report_package(CD; target_modules = jet_modules,
                 toplevel_logger = nothing)
-            @test length(JET.get_reports(jet)) == 3
+            expected_reports = pkgversion(KernelAbstractions) < v"0.10" ? 3 : 0
+            @test length(JET.get_reports(jet)) == expected_reports
         end
     end
 
@@ -612,8 +616,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
 
         # guardrail: a GPU backend with host Arrays must fail loudly, not crash
         # deep inside a kernel launch (get_best_backend() returns a GPU whenever
-        # one is functional, so the mismatch is easy to hit from the REPL)
-        struct FakeGPU <: KernelAbstractions.GPU end
+        # one is functional, so the mismatch is easy to hit from the REPL).
+        # A bare Backend subtype: KernelAbstractions.GPU is deprecated in 0.10.
+        struct FakeGPU <: KernelAbstractions.Backend end
         @test_throws ArgumentError loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
             FIX_WP, FakeGPU())
 

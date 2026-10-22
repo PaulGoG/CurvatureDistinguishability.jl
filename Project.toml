@@ -1,6 +1,6 @@
 name = "CurvatureDistinguishability"
 uuid = "023135ff-521e-423d-a4c9-75a9bc432dee"
-version = "2.1.0"
+version = "2.1.1"
 authors = ["Paul-Adrian Gogîță"]
 
 [deps]
@@ -46,11 +46,11 @@ CUDA = "5, 6"
 CairoMakie = "0.13, 0.14, 0.15, 0.16"
 DataFrames = "1"
 Dates = "1"
-DocStringExtensions = "0.9"
+DocStringExtensions = "0.9, 0.10"
 DrWatson = "2"
 ForwardDiff = "1"
 InteractiveUtils = "1"
-KernelAbstractions = "0.9"
+KernelAbstractions = "0.9, 0.10"
 LaTeXStrings = "1"
 LinearAlgebra = "1"
 Logging = "1"
