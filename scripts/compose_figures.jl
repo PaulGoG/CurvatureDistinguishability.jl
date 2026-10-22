@@ -1,5 +1,5 @@
 # Assemble multi-panel publication figures from the persisted tables of one or
-# more completed runs — no geometry or optimization is recomputed. A TOML
+# more completed runs; no geometry or optimization is recomputed. A TOML
 # layout lists the figures (name, kind, grid) and their panels (run directory
 # and sweep or map name); all loading and drawing lives in src/RunFigures.jl
 # and src/Plotting.jl. Each figure is written as a {pdf,png} pair with backup

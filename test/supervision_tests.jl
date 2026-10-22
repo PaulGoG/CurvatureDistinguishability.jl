@@ -145,8 +145,8 @@ beat_program(
             ledger = joinpath(dir, "supervision.toml")
             log_of(attempt) = joinpath(dir, "logs", "attempt_$attempt.log")
 
-            # blocked: heartbeat once, then idle for ever — a hang, detected from
-            # no progress AND idle CPU; never productive, nothing to abandon
+            # blocked: heartbeat once, then idle for ever; a hang, detected from
+            # no progress and idle CPU; never productive, nothing to abandon
             spec = WorkerSpec(;
                 command = _ -> fake_worker(beat_program(beat, 1) * "; sleep(3600)"),
                 console_log = log_of, heartbeat_path = beat, status = () -> :incomplete)
@@ -163,7 +163,7 @@ beat_program(
             @test recorded["attempts"][1]["verdict"] == "hang"
             @test isfile(log_of(1)) && isfile(log_of(2))
 
-            # busy without progress: not a hang — left alone until busy_stall_s
+            # busy without progress: not a hang, left alone until busy_stall_s
             spec = WorkerSpec(;
                 command = _ -> fake_worker(beat_program(beat, 1) * "; while true end"),
                 console_log = log_of, heartbeat_path = beat, status = () -> :incomplete)

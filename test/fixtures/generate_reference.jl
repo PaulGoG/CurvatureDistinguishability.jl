@@ -14,7 +14,7 @@ const THETA0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
 const FIX_SN =
     analytic_noise_psd.(FIX_FREQS; noise = NoiseParams(confusion_enabled = false))
 
-# psd.csv: header-less (f, Sn) — instrumental noise only
+# psd.csv: header-less (f, Sn), instrumental noise only
 CSV.write(
     joinpath(FIXDIR, "psd.csv"),
     DataFrame(f = FIX_FREQS, Sn = FIX_SN);

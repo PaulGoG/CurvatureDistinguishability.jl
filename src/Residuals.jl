@@ -18,13 +18,13 @@ export residual_spectrum
 $(TYPEDSIGNATURES)
 
 Decimated residual spectrum (density units, `d(SNR²)/df = 4|x|²/Sn`) of the
-two-source data — the base source `theta0` plus a second source displaced by
+two-source data (the base source `theta0` plus a second source displaced by
 `delta` along the Fisher-normalized direction `u_norm` with amplitude ratio
-`amp_ratio` — the best-fit single source `best_fit` and the unabsorbed
+`amp_ratio`), the best-fit single source `best_fit` and the unabsorbed
 residual, for channels A and E on the grid `freqs` with PSD `Sn` and bin
 width `df`. Decimation windows are log-uniform in frequency (`n_windows` at
-most, capped at the bin count): each holds the window mean of the density
-— so the plotted curve integrates to the same `D²` as the full grid — and
+most, capped at the bin count): each holds the window mean of the density,
+so the plotted curve integrates to the same `D²` as the full grid, and
 its min/max envelope; log-sparse low-frequency windows pass single bins
 through unaveraged, and empty windows are skipped. Returns the spectrum
 table (`f` and, per channel, `sig_*`, `bf_*`, `res_*` mean/min/max columns)

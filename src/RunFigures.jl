@@ -62,7 +62,7 @@ function run_config(run_dir::AbstractString)
     snapshot = joinpath(run_dir, "config.toml")
     isfile(snapshot) ||
         throw(
-            ArgumentError("No config snapshot in $run_dir — cannot recover run metadata."),
+            ArgumentError("No config snapshot in $run_dir; cannot recover run metadata."),
         )
     return load_and_validate_config(snapshot)
 end
@@ -77,7 +77,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Scaling-panel data of one 1D sweep from its persisted CSVs — no geometry or
+Scaling-panel data of one 1D sweep from its persisted CSVs; no geometry or
 optimization is recomputed. Point classification always follows the
 production above-floor rule on the persisted optimizer floor
 (`Fitting.above_floor_mask`). With `refit = false` the slopes and correction
@@ -104,7 +104,7 @@ function sweep_panel_data(run_dir::AbstractString, case::AbstractString;
     meta_path = joinpath(dir, "sweep_meta.toml")
     isfile(meta_path) || throw(
         ArgumentError(
-            "No sweep_meta.toml in $dir — the sweep did not complete; " *
+            "No sweep_meta.toml in $dir: the sweep did not complete; " *
             "its figures cannot be rebuilt.",
         ),
     )
@@ -187,7 +187,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Rebuild the figures of one 1D sweep from its persisted CSVs — no geometry or
+Rebuild the figures of one 1D sweep from its persisted CSVs; no geometry or
 optimization is recomputed. The scaling data are loaded by
 [`sweep_panel_data`](@ref) (point classification, `refit` semantics and the
 quoted window exponent with its fallback are described there), the residual
@@ -286,7 +286,7 @@ $(TYPEDSIGNATURES)
 
 Zone-panel data of one 2D confusion map from the persisted contour CSV and the
 run's config snapshot (plane, base point and prior box) at the run's own
-threshold — no curvature is recomputed.
+threshold; no curvature is recomputed.
 
 Returns the NamedTuple `(x, y, prior_limited, px, py, box, prior_frac,
 degenerate_frac, x_math, y_math)`, accepted panel by panel by
@@ -311,14 +311,14 @@ end
 $(TYPEDSIGNATURES)
 
 Rebuild one 2D confusion-zone figure from the persisted contour CSV and the
-run's config snapshot (which supplies the plane, base point and prior box) —
+run's config snapshot (which supplies the plane, base point and prior box);
 no curvature is recomputed. With `rho` the boundary is rescaled exactly from
 the persisted per-direction curvature (`r_math = (16ρ²/K)^{1/4}`), re-capped
 at the stored prior box; `contour` then holds the rescaled contour table for
 persisting alongside the original (`nothing` otherwise) and `suffix` carries
 the `_rho…` tag. Caveat: the angular refinement was driven by the original
 threshold's prior-box crossover, so segments near a new crossover may be
-under-refined — rerun the map stage for publication-grade maps at a very
+under-refined; rerun the map stage for publication-grade maps at a very
 different ρ. The unscaled map is loaded by [`zone_panel_data`](@ref).
 """
 function zone_map_figure(run_dir::AbstractString, case::AbstractString;
@@ -475,7 +475,7 @@ end
 $(TYPEDSIGNATURES)
 
 Build the multi-panel publication figures described by the TOML layout at
-`layout_path` from the persisted tables of completed runs — no geometry or
+`layout_path` from the persisted tables of completed runs; no geometry or
 optimization is recomputed. Each `[[figures]]` table holds `name` (output
 base name), `kind` (`"scaling"`, `"zone"` or `"residual"`), the optional
 `ncols` (default 2), `panel_width` (default 600), `panel_height` (default 620

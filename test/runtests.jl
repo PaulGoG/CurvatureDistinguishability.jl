@@ -32,7 +32,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # coverage instrumentation (the instrumented child precompile of the
         # full dependency stack outruns the probe); the verdict is
         # platform-independent, so the probe is enforced on uninstrumented
-        # Linux — that is, every local Pkg.test()
+        # Linux, that is, on every local Pkg.test()
         run_probe = Sys.islinux() && Base.JLOptions().code_coverage == 0
         Aqua.test_all(CurvatureDistinguishability; persistent_tasks = run_probe)
         # the qualified-access publicity check is deliberately not enforced:
@@ -65,7 +65,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # a GPU backend package is loaded, so the GPU branch of the backend
         # union split reports as missing here while being unreachable by
         # construction (get_best_backend returns only registered backends).
-        # A change in this count — either direction — must be triaged.
+        # A change in this count, in either direction, must be triaged.
         # JET tracks compiler internals and routinely breaks on pre-release
         # Julia (observed: internal UndefRefError on the CI `pre` leg), so
         # the analysis gates stable releases only
@@ -1348,7 +1348,7 @@ enabled = true
         vb, _ = CD.Plotting.decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
-        # 10⁰ always renders as plain "1" — on decade ticks and the 1-2-5 series
+        # 10⁰ always renders as plain "1", on decade ticks and the 1-2-5 series
         _, l0 = CD.Plotting.decade_ticks(0.5, 50.0)
         @test l0[1].s == "\$1\$"
         v125, l125 = CD.Plotting.log_ticks_125(5e-2, 6.0)
@@ -1380,7 +1380,7 @@ enabled = true
         @test ot2[4] <= -1.15e-4 && ot2[5] >= 1.8e-4
 
         # per-tick common-exponent scientific notation (fallback when no
-        # clean integer-mantissa grid exists) — 5e-5 renders as 0.5×10⁻⁴,
+        # clean integer-mantissa grid exists): 5e-5 renders as 0.5×10⁻⁴,
         # never mixing 10⁻⁴ with 10⁻⁵ labels on one axis
         sl = CD.Plotting.sci_tick_labels([-1.5e-4, 0.0, 5e-5])
         @test occursin("-1.5", sl[1].s) && occursin("10^{-4}", sl[1].s)
@@ -1563,7 +1563,7 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             @test haskey(meta_s, "c1") && haskey(meta_s, "delta_valid")
 
             # unequal-amplitude sweep: in the perturbative (small-δ) regime the
-            # A_harm prefactor (2q/(1+q))² must make the ratio ≈ 1 — a missing
+            # A_harm prefactor (2q/(1+q))² must make the ratio ≈ 1; a missing
             # prefactor would show as ratio ≈ 2.25. (Only the small-δ rows: for
             # q ≠ 1 the midpoint symmetry that suppresses the odd O(δ⁵) term is
             # absent, so the higher-order departure sets in much earlier.)
@@ -1588,9 +1588,9 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 n = nrow(cm)
                 @test iseven(n)
                 half = n ÷ 2
-                # the MATHEMATICAL radius is exactly centrally symmetric by
+                # the mathematical radius is exactly centrally symmetric by
                 # construction (mirrored evaluation); the capped radius need
-                # not be — the prior box may be asymmetric about the base point
+                # not be, since the prior box may be asymmetric about the base point
                 @test cm.R_Math[1:half] == cm.R_Math[(half+1):end]
                 @test cm.K_Raw[1:half] == cm.K_Raw[(half+1):end]
                 @test all(cm.Angle[(half+1):end] .≈ cm.Angle[1:half] .+ π)
@@ -1604,7 +1604,7 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
                 @test !any(cm.Prior_Limited[.!on_wall])
                 # exact prior-crossover corners: at every capped/uncapped
                 # transition along the boundary polygon, one of the two rows
-                # must be the bisection-inserted vertex with r_math ≈ r_box —
+                # must be the bisection-inserted vertex with r_math ≈ r_box;
                 # otherwise the polygon chord chamfers the zone corner
                 n_trans = 0
                 for i in 1:n
@@ -1816,7 +1816,7 @@ case = "mini_sweep"
             stage_err = CD.PipelineStageError(out_base, ["mini_sweep", "mini_spin_map"])
             @test occursin("mini_sweep, mini_spin_map", sprint(showerror, stage_err))
 
-            # collect_plots subprocess: flat browsing PNGs from a run *path*
+            # collect_plots subprocess: flat browsing PNGs from a run path
             # selector plus a destination argument (same env scrubbing as the
             # replot child)
             collect_script = joinpath(dirname(@__DIR__), "scripts", "collect_plots.jl")

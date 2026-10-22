@@ -87,7 +87,7 @@ end
 $(TYPEDSIGNATURES)
 
 Orbital Doppler phase `2πf n̂·R_c(t)` of a wave from direction `n̂` received
-at the constellation centre `R_c = R(cos α, sin α, 0)` — a wavefront reaches
+at the constellation centre `R_c = R(cos α, sin α, 0)`: a wavefront reaches
 the centre `n̂·R_c` light-seconds before the solar-system barycentre, which
 in the `e^{-2πift}` Fourier convention multiplies the barycentric strain by
 `e^{+2πif n̂·R_c}`.

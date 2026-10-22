@@ -100,8 +100,8 @@ $(TYPEDSIGNATURES)
 Open the checkpoint at `path`, creating it when absent or empty. `signature`
 identifies the problem the rows belong to (grid, direction, base point,
 optimizer settings, seed); a file written under another signature is refused
-with an `ArgumentError`. An incomplete last line — a write cut short when the
-process was killed — is dropped; an unreadable line anywhere else is an
+with an `ArgumentError`. An incomplete last line (a write cut short when the
+process was killed) is dropped; an unreadable line anywhere else is an
 error.
 """
 function open_checkpoint(path::AbstractString, signature::AbstractString)

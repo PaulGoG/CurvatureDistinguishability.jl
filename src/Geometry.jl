@@ -139,7 +139,7 @@ end
 $(TYPEDSIGNATURES)
 
 Full detector response at parameters `p`, flattened to a real vector
-`[re(C₁); im(C₁); re(C₂); im(C₂); …]` over the active channels — the map
+`[re(C₁); im(C₁); re(C₂); im(C₂); …]` over the active channels: the map
 whose Jacobian defines the signal-manifold tangent space. Generic over dual
 numbers.
 """
@@ -162,7 +162,7 @@ end
 $(TYPEDSIGNATURES)
 
 Inverse of the [`flat_response`](@ref) layout. The channel count is a `Val`
-so the tuple length — and therefore the return type — is known to the
+so the tuple length, and therefore the return type, is known to the
 compiler.
 """
 function unflatten_channels(v::AbstractVector, n_bins::Integer, ::Val{NCH}) where {NCH}

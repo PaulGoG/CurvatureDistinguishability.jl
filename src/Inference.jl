@@ -299,7 +299,7 @@ $(TYPEDSIGNATURES)
 Squared noise-weighted distance between `data_stream` and the single-source
 model, as a closure over the scaled parameter vector. On the CPU backend an
 allocation-free scalar loop is used; on GPU backends a single fused
-KernelAbstractions kernel (2-channel only — disable the T channel, which is
+KernelAbstractions kernel (2-channel only; disable the T channel, which is
 identically zero, for GPU runs). Differentiable with `ForwardDiff`.
 """
 function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::AbstractVector,
@@ -333,7 +333,7 @@ function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::Abstr
         throw(
             ArgumentError(
                 "Backend is $(typeof(backend)) but the frequency/PSD/data arrays are CPU " *
-                "Arrays — move them with to_backend(x, backend), or pass backend = CPU(). " *
+                "Arrays; move them with to_backend(x, backend), or pass backend = CPU(). " *
                 "(get_best_backend() returns a GPU whenever one is functional, so pass the " *
                 "backend explicitly when your arrays live on the host.)",
             ),
@@ -353,7 +353,7 @@ single-source manifold, found by box-constrained optimization within the
 physical `bounds`:
 
 - `:ipnewton` (default): interior-point Newton using the exact ForwardDiff
-  Hessian — fast convergence and a much lower convergence floor than L-BFGS.
+  Hessian: fast convergence and a much lower convergence floor than L-BFGS.
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
 
 The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
@@ -408,11 +408,11 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
     # ForwardDiff configs are constructed once per solve (they depend only on
-    # the parameter length), not on every optimizer callback — per-call
+    # the parameter length), not on every optimizer callback; per-call
     # construction allocates fresh dual work arrays thousands of times per
     # sweep. hessian_chunk = c > 0 sets the ForwardDiff chunk of the outer and
     # the inner dual: (1+c)² lanes per kernel launch instead of 49, ⌈6/c⌉²
-    # launches per Hessian — for backends whose compiler or per-launch time
+    # launches per Hessian, for backends whose compiler or per-launch time
     # limit rejects the full nested-dual kernel.
     x_proto = collect(Float64, theta_guess)
     grad_cfg = ForwardDiff.GradientConfig(loss, x_proto)
@@ -425,7 +425,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     h!(H, x) = ForwardDiff.hessian!(H, loss, x, hess_cfg)
 
     # two convergence triggers: the projected-gradient norm, and the relative
-    # change of D² between Newton steps — the gradient floor of a
+    # change of D² between Newton steps; the gradient floor of a
     # million-bin objective sits orders of magnitude above g_tol while the
     # distance itself is converged to ten digits
     opts = Optim.Options(g_tol = g_tol, f_reltol = f_reltol, iterations = iterations,

@@ -151,7 +151,7 @@ $(TYPEDSIGNATURES)
 
 Integer power-of-10 ticks covering `[lo, hi]` only (no beyond-range ticks).
 The step is chosen so at most `maxticks` ticks appear, and tick exponents are
-anchored to multiples of the step — so every figure in a family whose data
+anchored to multiples of the step, so every figure in a family whose data
 share decades shares the same grid.
 """
 function decade_ticks(lo::Real, hi::Real; maxticks::Int = 7)
@@ -208,10 +208,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Ticks at rational multiples of π with a *single* denominator so that 5–9
+Ticks at rational multiples of π with a single denominator so that 5–9
 (or, failing that, 3–9) uniformly spaced ticks fit in `[lo, hi]`.
-Denominators are tried in readability order — halves/quarters before
-thirds — so a ±π range gets `π/4` ticks rather than the unusual `π/3`
+Denominators are tried in readability order (halves and quarters before
+thirds), so a ±π range gets `π/4` ticks rather than the unusual `π/3`
 family. Returns `nothing` when no denominator fits (caller falls back to
 linear ticks).
 """
@@ -234,7 +234,7 @@ $(TYPEDSIGNATURES)
 LaTeX fragment for a scalar with `sig` significant digits: plain decimal
 only while the exponent is in −1..1 (the range where the power-of-ten form
 would collapse anyway: 5×10⁰ → 5, 2×10¹ → 20, 2×10⁻¹ → 0.2), `m×10^e`
-everywhere else — for annotations, never bare `1e-05` e-notation.
+everywhere else; for annotations, never bare `1e-05` e-notation.
 """
 function sci_latex(v::Real; sig::Int = 3)
     v == 0 && return "0"
@@ -295,7 +295,7 @@ $(TYPEDSIGNATURES)
 Tick selection for small-value linear axes: every tick is an integer
 mantissa of one common power of 10 (the `exponent`, annotated once at the
 end of the axis by the caller), with mantissa steps preferring multiples of
-5 over 2 over 1, and the axis limits snapped *outward* to the outermost
+5 over 2 over 1, and the axis limits snapped outward to the outermost
 ticks so the frame ends exactly on labelled ticks. Two acceptance passes
 (4–8 ticks with ≤35% stretch, then 3–9 with ≤60%) keep the stretching
 modest; returns `nothing` when no clean grid exists (caller falls back to
@@ -326,7 +326,7 @@ $(TYPEDSIGNATURES)
 
 Tick values symmetric about zero inside `[-h, h]`, taken from the
 1–2–2.5–5 × 10ᵏ step series with the step chosen so that 5 or 7 labelled
-ticks fall strictly inside the limits — zero always among them, and the frame
+ticks fall strictly inside the limits, zero always among them, and the frame
 free to end between ticks. Returns `(values, k)`, where `k` is the power of
 ten of the step, so the mantissas `values / 10^k` are integers (half-integers
 for the 2.5 step); `nothing` when no usable step exists.
@@ -352,7 +352,7 @@ end
 $(TYPEDSIGNATURES)
 
 Fitted-slope annotation `value ± error` with the decimal places set by the
-error — one significant digit of the uncertainty, never fewer than three
+error: one significant digit of the uncertainty, never fewer than three
 decimals nor more than six (`3.9998 ± 0.0001`, `3.824 ± 0.043`); the bare
 three-decimal value when the error is not finite.
 """
@@ -385,11 +385,11 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Per-tick scientific-notation labels with a **common exponent** across the
-axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`) — the fallback for
+Per-tick scientific-notation labels with a common exponent across the
+axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`), the fallback for
 small-value axes where `offset_ticks` finds no clean integer-mantissa grid.
-The exponent is the *same* for every tick, so an axis never mixes 10⁻³
-with 10⁻⁴ labels.
+Every tick carries the same exponent, so an axis never mixes 10⁻³ with
+10⁻⁴ labels.
 """
 function sci_tick_labels(values)
     maxabs = maximum(abs, values; init = 0.0)
@@ -525,13 +525,13 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         yticklabelspace = ticklabelspace)
     # The ratio panel repeats the top panel's vocabulary exactly: dark-red
     # solid reference at 1 (the theory), blue dots, and floor-band points
-    # stricken through by the same thin X — their true ratio diverges, so
+    # stricken through by the same thin X; their true ratio diverges, so
     # they sit clamped at the panel top. Non-converged points carry no
     # special mark: the iteration/tolerance caps are strict enough that
     # flagged points at ratio ≈ 1 are genuine optima.
     ratio = d2_num ./ d2_theo
     hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
-    # points below the optimizer floor are discarded here — their ratio
+    # points below the optimizer floor are discarded here: their ratio
     # is floor-set and meaningless; the top panel shows them X-stricken
     keep = pos .& .!floored
     # symmetric, dynamically chosen y-limits around ratio 1: the smallest
@@ -597,9 +597,9 @@ one vocabulary: blue dots, and floor-band points stricken through by a thin
 X (clamped at the ratio-panel top, where their true ratio diverges);
 non-convergence carries no special mark. The legend sits on top:
 `D²_th`, `D²_opt` with the fitted exponent folded into its
-label, and — only when the band is drawn — a patch in the band's own grey
+label, and (only when the band is drawn) a patch in the band's own grey
 naming the optimizer floor. `clean` is the Bool mask of points used for the
-fits — the caller should pass the above-optimizer-floor mask. The panels are
+fits; the caller should pass the above-optimizer-floor mask. The panels are
 drawn by [`scaling_panel!`](@ref).
 """
 function scaling_figure(deltas::AbstractVector, d2_num::AbstractVector,
@@ -624,7 +624,7 @@ Number of passes of the five-point binomial kernel applied to the window means
 of the residual-spectrum figure before plotting. Oscillations of the density
 whose period is within a few decimation windows would otherwise alias into a
 sawtooth; the min–max envelope is drawn unsmoothed and keeps the full range.
-Display only — persisted tables are never smoothed.
+Display only; persisted tables are never smoothed.
 """
 const RESIDUAL_SMOOTHING_PASSES = 2
 
@@ -632,7 +632,7 @@ const RESIDUAL_SMOOTHING_PASSES = 2
 Depth of the drawn min–max envelopes of the residual-spectrum figure, as a
 fraction of the window mean: the window minima of an oscillating density
 reach its cancellation nodes many decades below the mean and would fill the
-frame with shading. Display only — the persisted tables keep the full range.
+frame with shading. Display only; the persisted tables keep the full range.
 """
 const ENVELOPE_DEPTH = 1e-3
 
@@ -643,7 +643,7 @@ $(TYPEDSIGNATURES)
 `[1, 4, 6, 4, 1]/16` to `v`, returning a new `Vector{Float64}` (`passes = 0`
 copies). The kernel acts on the values themselves, not their logarithms, so
 the area under the curve is preserved. At the ends the truncated kernel is
-renormalised by the weights actually used — no padding, no reflection —
+renormalised by the weights actually used (no padding, no reflection),
 and non-finite entries are skipped in the local average, a non-finite entry
 staying non-finite.
 """
@@ -704,7 +704,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     # Limits and ticks follow the plotted data: with log-uniform decimation
     # the first/last plotted frequencies sit at the band ends, so the
     # frame ends on the data with no gap at either side. Dense 1–2–5
-    # log ticks — whole decades alone are too sparse over ~3 decades.
+    # log ticks, since whole decades alone are too sparse over ~3 decades.
     fmin = minimum(spec.f)
     fmax = maximum(spec.f)
     x_ticks = log_ticks_125(fmin, fmax)
@@ -721,7 +721,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     end
 
     # channel = hue (A blue, E warm), role = shade + line style: data is
-    # the dark solid line, the best fit — which sits right on top of it —
+    # the dark solid line, the best fit, which sits right on top of it,
     # is a brighter dash-dotted line over it, the residual a medium solid
     col_data_A, col_bf_A, col_res_A = :steelblue4, :deepskyblue, :dodgerblue2
     col_data_E, col_bf_E, col_res_E = :sienna4, :orange, :darkorange3
@@ -771,8 +771,8 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
         linestyle = :dashdot, linewidth = 3.0)
     ylims!(ax1, ylo1, yhi1)
 
-    # y-range of the residual panel: cover the lines AND the min/max
-    # shadings — but cap the extra depth at ~1.6 decades below the mean
+    # y-range of the residual panel: cover the lines and the min/max
+    # shadings, but cap the extra depth at ~1.6 decades below the mean
     # floor, so a near-cancellation spike in a single decimation window
     # cannot compress the curves into a negligible band (the band then clips only
     # inside the dip), and at eight decades below the residual maximum. The
@@ -797,8 +797,8 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     noise_in_frame = noise_level < 30 * yhi2
     noise_in_frame && (yhi2 = max(yhi2, 3 * noise_level))
 
-    # annotations sit between the panels — above the bottom plot, outside
-    # its frame, on one line: the δ*/integral text left-aligned, and the
+    # annotations sit between the panels (above the bottom plot, outside
+    # its frame) on one line: the δ*/integral text left-aligned, and the
     # off-scale noise note right-aligned in the same row (only when the
     # 1/Δf reference cannot be drawn inside the frame)
     # compact panels stack the two annotations in rows 2 and 3 (the single
@@ -841,7 +841,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     ylims!(ax2, ylo2, yhi2)
 
     linkxaxes!(ax1, ax2)
-    xlims!(ax2, fmin, fmax) # frame ends on the data — no gap at either side
+    xlims!(ax2, fmin, fmax) # frame ends on the data, no gap at either side
     hidexdecorations!(ax1; grid = false, ticks = false)
     rowgap!(layout, 8) # keep the between-panel annotation block compact
     roles = ["Data", "Best fit", "Residual"]
@@ -855,8 +855,8 @@ $(TYPEDSIGNATURES)
 
 One-row channel legend of the residual-spectrum figures at `gp`, built from
 the `legend_A`/`legend_E` material of [`residual_panel!`](@ref): one grouped
-horizontal `Legend` whose two groups — each with its bold channel header and
-the three role entries — sit side by side on a single row.
+horizontal `Legend` whose two groups (each with its bold channel header and
+the three role entries) sit side by side on a single row.
 """
 function residual_legend_block!(gp, legend_A::NamedTuple, legend_E::NamedTuple)
     return Legend(gp, [legend_A.entries, legend_E.entries],
@@ -873,7 +873,7 @@ $(TYPEDSIGNATURES)
 
 Residual-spectrum figure in true density units: top panel `d(SNR²)/df` of the
 two-source data and the best-fit single source, bottom panel the unabsorbed
-residual `d(D²)/df` — the integral of the bottom curves is the D² of the
+residual `d(D²)/df`; the integral of the bottom curves is the D² of the
 scaling law. The legend sits on top of the figure as one row, the two channel
 groups (data / best fit / residual) side by side. Channel encodes hue
 (A blue, E warm); the best fit, which lies on top of the data, is a brighter
@@ -888,7 +888,7 @@ ticks on the frequency axis; the δ*/integral and
 off-scale-noise annotations sit between the panels, outside the frames.
 `spec` is the (log-uniformly decimated) spectrum table; `meta` is the
 [`ResidualFigureMeta`](@ref) annotation record. `delta_symbol` names the
-evaluation separation in the annotation — the default `\\delta^*` for the
+evaluation separation in the annotation: the default `\\delta^*` for the
 validity-window panel, `\\delta_{\\mathrm{thr}}` for the threshold
 companion. The panels are drawn by [`residual_panel!`](@ref).
 """
@@ -942,10 +942,10 @@ showing the deviation of parameter `param` over the symmetric range
 `[-h, h]` whose common power of ten is `exponent`. Phase axes: rational-π
 ticks. Every other axis: 5 or 7 ticks symmetric about zero from the
 1–2–2.5–5 step series, labelled by their mantissa with respect to one
-common power of 10 — annotated once at the end of the axis (right of the
-frame's bottom corner for x, above the frame for y), never per tick and
-never inside the axis label — while plain decimals are used where they read
-fine (`exponent == 0`). Fallback when no clean grid exists: per-tick
+common power of 10, which is annotated once at the end of the axis (right of
+the frame's bottom corner for x, above the frame for y), never per tick and
+never inside the axis label; plain decimals are used where they read fine
+(`exponent == 0`). Fallback when no clean grid exists: per-tick
 common-exponent scientific notation. The multiplier labels are placed in
 `layout`, the zone panel's `GridLayout` holding `ax` at `[1, 1]`. Returns the
 `(lo, hi)` limits.
@@ -999,7 +999,7 @@ const WALL_VERMILLION = "#D55E00"
 Fractional margin of the zone-map frame: each axis is limited symmetrically
 about zero at `(1 + ZONE_LIMIT_MARGIN)` times the largest coordinate that must
 be visible on it. The uncapped mathematical contour is not included in that
-maximum — along degenerate directions it is unbounded — and may leave the
+maximum (along degenerate directions it is unbounded) and may leave the
 frame.
 """
 const ZONE_LIMIT_MARGIN = 0.08
@@ -1018,8 +1018,8 @@ major axis of the polygon's second area moments about its centroid (shoelace
 form; vertex moments when the polygon is degenerate) and the aspect ratio
 `extent_∥ / extent_⊥` of the vertices in that frame (`Inf` for a line). Area
 moments are insensitive to how the edges are sampled, but the axis of a band
-cut obliquely by prior walls is off by `O((w/L)²)` — invisible in parameter
-units, visible once the transverse axis is stretched — so when the aspect
+cut obliquely by prior walls is off by `O((w/L)²)` (invisible in parameter
+units, visible once the transverse axis is stretched), so when the aspect
 reaches `NEEDLE_ASPECT` the angle is snapped to the longest polygon edge,
 which runs exactly along the null direction of the band.
 """
@@ -1083,20 +1083,20 @@ $(TYPEDSIGNATURES)
 
 Zone-of-confusion map from the capped boundary polygon. The filled zone is
 the exact intersection of the mathematical zone with the physical prior box,
-and its boundary is drawn SOLID throughout — Okabe–Ito blue where
+and its boundary is drawn solid throughout: Okabe–Ito blue where
 curvature-limited, heavier vermillion where it runs along a hard physical
 wall (|χ|≤1, positivity, phase ±π), the line weight keeping the two classes
 apart in grayscale.
-Where the prior cuts the zone off, the *uncapped mathematical* contour
+Where the prior cuts the zone off, the uncapped mathematical contour
 (`x_math`/`y_math`, when provided) continues past the wall as an empty
-dashed line with no fill — showing what curvature alone would allow; along
+dashed line with no fill, showing what curvature alone would allow; along
 degenerate directions it is unbounded and simply runs off the frame. The
 prior box itself is not drawn: the red runs mark where a wall is active, and
 the annotation names the active walls with their values (from `box`, e.g.
 "… prior-limited by Δχ₁ = 0.2"). Same-unit planes (spin–spin) are drawn
 with `DataAspect`, except a needle: a zone whose principal-axis aspect
-(`principal_axis`) reaches `NEEDLE_ASPECT` — the exact null spin direction of
-the 1.5PN model — is rotated into the frame of that direction (abscissa along
+(`principal_axis`) reaches `NEEDLE_ASPECT` (the exact null spin direction of
+the 1.5PN model) is rotated into the frame of that direction (abscissa along
 it, ordinate transverse, independent scales) so that its transverse width is
 visible; the x label quotes the null slope dχ₂/dχ₁, while wall detection and
 the annotation stay in parameter units. The map is drawn by
@@ -1156,7 +1156,7 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     x_math = nothing, y_math = nothing, compact::Bool = false)
     # Needle frame (same-unit planes only, where a rotation is meaningful): a
     # zone drawn as a needle along a null direction is rotated into its
-    # principal frame — abscissa along the needle, ordinate transverse — on
+    # principal frame (abscissa along the needle, ordinate transverse) on
     # independent scales, so the transverse width shows instead of an edge-on
     # line. Wall detection below keeps the parameter-unit coordinates. Remove
     # with the 2PN spin–spin term (roadmap §1), which closes the spin zone and
@@ -1169,7 +1169,7 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     font_shift = compact ? 2 : 0
 
     # Limits symmetric about zero on each axis, sized by everything that
-    # must be visible on it — the zone polygon with its wall runs — plus
+    # must be visible on it (the zone polygon with its wall runs), plus
     # ZONE_LIMIT_MARGIN. The uncapped mathematical contour does not enter:
     # along degenerate directions it is unbounded, and it is free to run
     # off the frame.
@@ -1213,7 +1213,7 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     # curvature-limited runs in blue, prior-limited runs in red along the
     # hard physical walls. Where the prior cuts the zone off, the uncapped
     # mathematical contour continues past the wall as an empty dashed line
-    # (no fill) — drawn first so the solid boundary sits on top of the
+    # (no fill), drawn first so the solid boundary sits on top of the
     # junctions.
     n = length(x)
     edge_prior = [prior_limited[i] && prior_limited[mod1(i + 1, n)] for i in 1:n]
@@ -1288,7 +1288,7 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
         )
         # on top of the plot, outside the box (a thin Label row above the
         # axis); tellwidth = false so the label's own width never dictates
-        # the column width — otherwise the axis collapses to a narrow strip
+        # the column width; otherwise the axis collapses to a narrow strip
         Label(layout[0, 1], latexstring(msg); fontsize = 18 - font_shift,
             color = :grey35, halign = :right, padding = (0, 4, 2, 0), tellwidth = false)
     end

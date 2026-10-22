@@ -245,7 +245,7 @@ $(TYPEDSIGNATURES)
 Thread-safe progress hook for a stage's work-item loop: returns a
 zero-argument closure that counts completed items and emits an `@info` line
 into the structured run log every `fraction` of `total` items (never at the
-final item — completion has its own log line). `fraction <= 0` disables the
+final item, since completion has its own log line). `fraction <= 0` disables the
 hook (`[monitoring].progress_log_fraction = 0`). Long stages are otherwise
 silent in `run.log` for hours, which detached campaign monitoring
 (`tail -f`) cannot distinguish from a hang.
@@ -307,7 +307,7 @@ struct RunContext{B,FD,SD}
 end
 
 # -----------------------------------------------------------------------------
-# Module 1: 1D parameter sweeps (δ⁴ validation)
+# Stage 1: one-dimensional parameter sweeps (δ⁴ validation)
 # -----------------------------------------------------------------------------
 
 """
@@ -367,8 +367,8 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
 
         # absolute separation grid in Fisher-normalized units (δ = 1 is one
         # Fisher σ along u). It reaches below the optimizer floor of the fits
-        # by design — floor points are detected, struck through in the figure
-        # and excluded from the fits — and must bracket δ_min for the
+        # by design (floor points are detected, struck through in the figure
+        # and excluded from the fits) and must bracket δ_min for the
         # threshold crossing to lie inside the sweep.
         deltas = 10 .^ range(cfg.min_log_delta, cfg.max_log_delta, length = cfg.n_deltas)
         logline(
@@ -417,7 +417,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         if cfg.n_starts > 1 && maximum(fits.multi_start_gain) > cfg.secondary_minimum_gain
             @warn "Sweep '$name': multi-start found a lower minimum than the canonical " *
                   "start for $(count(>(cfg.secondary_minimum_gain), fits.multi_start_gain))/$n separations (max gain " *
-                  "$(round(maximum(fits.multi_start_gain), digits = 2))) — evidence of secondary minima."
+                  "$(round(maximum(fits.multi_start_gain), digits = 2))): evidence of secondary minima."
         end
         any(fits.at_bound) &&
             @warn "Sweep '$name': the best fit sits on a physical bound for " *
@@ -510,8 +510,8 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
             data = map(a -> to_backend(a, ctx.backend), data)
         end
         # degenerate effective source: amplitude (1+q)A at the weighted
-        # midpoint, with q = A₂/A₁ the amplitude ratio — luminosity distance
-        # D/(1+q)
+        # midpoint, with q = A₂/A₁ the amplitude ratio, i.e. luminosity
+        # distance D/(1+q)
         guess = theta0 .+ (amp_ratio / (1 + amp_ratio) * d) .* u_norm
         guess[1] = theta0[1] / (1 + amp_ratio)
 
@@ -664,8 +664,8 @@ end
 $(TYPEDSIGNATURES)
 
 Persist a completed sweep into `out_dir`: the per-δ results table, the
-residual spectrum at the primary evaluation point δ* — the largest clean
-separation inside the fitted validity window — and, when it differs, the
+residual spectrum at the primary evaluation point δ* (the largest clean
+separation inside the fitted validity window) and, when it differs, the
 threshold companion, the `sweep_meta.toml` record, and the scaling and
 residual figures (a figure failure is logged and never loses the numerical
 results). `geometry` carries `K_norm`, `g_uu` and `delta_min`; `fits` and
@@ -701,12 +701,12 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
 
     # Residual-spectrum evaluation points. Primary δ*: among the clean
     # separations inside the fitted validity window of the leading-order law
-    # (δ ≤ delta_valid), the one nearest 2 δ_min — D² ≈ 16 ρ², the top of the
-    # perturbative window the law is meant to describe; on an absolute grid
+    # (δ ≤ delta_valid), the one nearest 2 δ_min, where D² ≈ 16 ρ², the top
+    # of the perturbative window the law is meant to describe; on an absolute grid
     # the largest separation may lie far beyond it. The plotted residual is
     # then the normal projection the quartic law integrates. Rule-of-thumb
     # companion: the separation nearest the discernibility threshold on the
-    # swept range. The companion is emitted only when the two points differ —
+    # swept range. The companion is emitted only when the two points differ;
     # for on-law directions the threshold point is itself inside the validity
     # window and one panel suffices.
     pos = findall(>(0), D2_num)
@@ -790,7 +790,7 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
 end
 
 # -----------------------------------------------------------------------------
-# Module 2: 2D confusion mapping (mirrored polar sampling, prior capping)
+# Stage 2: two-dimensional confusion mapping (mirrored polar sampling, prior capping)
 # -----------------------------------------------------------------------------
 
 """
@@ -831,8 +831,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         logline(log_io, "  [1/2] tangent basis (Jacobian at base point)")
         basis = compute_tangent_basis(theta0, ctx.freqs, ctx.Sn, ctx.df, wp)
         logline(log_io, "        basis rank: $(length(basis)) of $(length(theta0))")
-        # Directions are sampled uniformly in the Fisher-normalized plane —
-        # each axis measured in its own σ at the base point — and mapped to
+        # Directions are sampled uniformly in the Fisher-normalized plane
+        # (each axis measured in its own σ at the base point) and mapped to
         # parameter units: a plane whose axes differ by five orders of
         # magnitude in σ (a coalescence time against a phase for a loud
         # source) is a needle in parameter units that a uniform angular grid
@@ -1021,7 +1021,7 @@ Adaptive angular refinement of the half-circle `entries` (NamedTuples
 `(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE`
 mask of directions known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the midpoint
 direction wherever the capped radius of cyclically consecutive directions
-jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle —
+jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle;
 `r_cap_pair(e)` returns the capped radii of a direction and of its mirror
 image (in the normalized sampling plane), whose prior-box crossing differs
 when the box is asymmetric. Each
@@ -1103,7 +1103,7 @@ $(TYPEDSIGNATURES)
 
 Exact corner vertices at capping crossovers. The boundary polygon chords
 over the direction where the mathematical contour pierces a prior wall
-(`r_math = r_box`), chamfering the zone's corners — and the neighbor-ratio
+(`r_math = r_box`), chamfering the zone's corners, and the neighbor-ratio
 refinement cannot see it, because the capped radius saturates at `r_box`
 on the wall side. Scans the full circle (the box need not be
 mirror-symmetric), brackets every capped/uncapped transition between
@@ -1112,7 +1112,7 @@ consecutive directions, bisects each bracket on the capping predicate
 degenerate directions, where a sign-based bisection would hit `Inf - Inf`;
 all active brackets are evaluated as one batch per iteration), folds the
 vertices onto the half-circle, dedupes them and appends them to `entries`
-(kept sorted) with the wall mask of the side that ends on the wall — the
+(kept sorted) with the wall mask of the side that ends on the wall. The
 capping stage flags these vertices prior-limited by construction, since
 their `r_math = r_box` holds only to the bisection resolution. Returns
 `(n_brackets, n_inserted)`.
@@ -1145,7 +1145,7 @@ function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, ite
         end
     end
     # fold onto the half-circle (the mirror adds the antipode);
-    # dedupe — a mirror-symmetric box yields the same φ twice
+    # dedupe, since a mirror-symmetric box yields the same φ twice
     phis_new = Float64[]
     walls_new = UInt8[]
     for b in eachindex(lo)
@@ -1187,7 +1187,7 @@ Box-corner vertices: where two walls are simultaneously active,
 consecutive samples sit on different walls and their chord cuts the box
 corner. The corner direction is known analytically; if the ray through a
 finite box corner is capped there (`capped_at`), the true boundary passes
-through that exact corner — it is inserted into `entries` (one K
+through that exact corner, which is inserted into `entries` (one K
 evaluation per finite corner, at most four; kept sorted). `corner_angle`
 maps a parameter-space corner `(cx, cy)` to the sampling angle of the
 direction through it (the identity `atan(cy, cx)` unless the plane is
@@ -1332,12 +1332,12 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Unified orchestrator: validates the TOML configuration (hard errors on
-unusable input), allocates hardware within the `[safety]` memory budget,
-snapshots the configuration and provenance metadata into a
-configuration-hashed run directory, then executes the 1D sweep and 2D
-mapping modules. Each sweep/map is guarded individually — a failing stage is
-logged with its backtrace and the remaining stages continue.
+Run the pipeline: validate the TOML configuration (hard errors on unusable
+input), allocate hardware within the `[safety]` memory budget, snapshot the
+configuration and provenance metadata into a configuration-hashed run
+directory, then execute the sweep and mapping stages. Each sweep and map is
+guarded individually: a failing stage is logged with its backtrace and the
+remaining stages continue.
 
 Returns the run directory when every stage completed. When stages failed, the
 run is finished first (metadata written, log closed) and a
@@ -1551,7 +1551,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         @info "Pipeline complete in $(format_time(elapsed)); results in $out_base"
     else
         @warn "Pipeline finished in $(format_time(elapsed)) with failed stages: " *
-              "$(join(failures, ", ")) — see run.log for backtraces. Results in $out_base"
+              "$(join(failures, ", ")); see run.log for backtraces. Results in $out_base"
     end
     println("=" ^ 78)
     return failures

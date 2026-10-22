@@ -71,8 +71,8 @@ optimizer floor) separations whose `D²_num/D²_theo` ratio departs from
 unity by at most `max_departure`
 (`[pipeline.sweep_settings].correction_fit_max_departure`). The expansion
 `1 + c₁δ + c₂δ²` is perturbative in the departure from the leading-order
-law, so separations far off the law would bias `c₁` — and with it the
-validity window derived from it — rather than measure it.
+law, so separations far off the law would bias `c₁`, and with it the
+validity window derived from it, rather than measure it.
 """
 function perturbative_mask(ratio::AbstractVector, clean::AbstractVector{Bool},
     max_departure::Real)
@@ -85,7 +85,7 @@ $(TYPEDSIGNATURES)
 Bootstrap estimate of a sweep's optimizer floor: the floor-dominated points
 are the contiguous run of separations, starting from the smallest, whose
 `D²_num/D²_theo` ratio is at or above `ratio_threshold`
-(`[pipeline.sweep_settings].floor_detection_ratio`) — a flat floor under a
+(`[pipeline.sweep_settings].floor_detection_ratio`). A flat floor under a
 `δ⁴` theory makes that ratio decrease monotonically with `δ`, so
 super-threshold ratios at large `δ` mark the breakdown of the leading-order
 law, not the floor. The floor level is the largest floor-dominated
@@ -108,7 +108,7 @@ Production clean-point rule, shared by the sweep stage and all display-time
 figure regeneration (`RunFigures`): only points strictly above the optimizer
 floor are clean (all positive points when no floor was detected). Borderline
 points inside the floor band are excluded even when their ratio is close to
-unity, and convergence flags never exclude a point — the iteration and
+unity, and convergence flags never exclude a point: the iteration and
 tolerance caps are strict enough that flagged points at ratio ≈ 1 are
 genuine optima.
 """

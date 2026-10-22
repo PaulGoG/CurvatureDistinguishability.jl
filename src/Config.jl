@@ -121,7 +121,7 @@ Base.@kwdef struct PipelineSettings
 end
 
 """
-Recognized configuration keys per `[section]` context — the whitelist behind
+Recognized configuration keys per `[section]` context: the whitelist behind
 [`reject_unknown_keys`](@ref)'s typo protection.
 """
 const KNOWN_KEYS = Dict(
@@ -245,10 +245,10 @@ const DEFAULT_RAM_FRACTION = 0.8
 """
 $(TYPEDSIGNATURES)
 
-Parse a configuration TOML file — an overlay's `base_config` resolved and
-merged first ([`effective_config`](@ref)) — validating every field (types,
-ranges, name uniqueness, interior base points, unknown keys) with descriptive
-errors; warn on physically suspicious values.
+Parse a configuration TOML file, resolving and merging an overlay's
+`base_config` first ([`effective_config`](@ref)), and validate every field
+(types, ranges, name uniqueness, interior base points, unknown keys) with
+descriptive errors; warn on physically suspicious values.
 """
 function load_and_validate_config(config_path::AbstractString)
     isfile(config_path) || config_error("Configuration file not found: $config_path")
@@ -355,7 +355,7 @@ function parse_sweep_settings(config::AbstractDict)
         config_error("[pipeline.sweep_settings].max_iterations must be >= 1")
     max_iterations > 300 &&
         @warn "[pipeline.sweep_settings].max_iterations = $max_iterations: floor fits " *
-              "exhaust the full cap by construction — a large cap costs wall time " *
+              "exhaust the full cap by construction; a large cap costs wall time " *
               "without improving accuracy."
     floor_detection_ratio = get_number(
         sweep_settings, "floor_detection_ratio", 2.0, "pipeline.sweep_settings")
@@ -413,7 +413,7 @@ function parse_grid(config::AbstractDict)
         config_error("[grid]: need 0 < f_min < f_max, got f_min = $f_min, f_max = $f_max")
     n_bins = floor(Int, (f_max - f_min) * T_obs) + 1
     n_bins >= 8 || config_error(
-        "[grid]: only $n_bins frequency bins at df = 1/T_obs — " *
+        "[grid]: only $n_bins frequency bins at df = 1/T_obs; " *
         "increase T_obs or the [f_min, f_max] band",
     )
     return (; T_obs, f_min, f_max)
@@ -644,7 +644,7 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
             config_error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
         if amp_ratio != 1.0 && u[1] != 0
             config_error(
-                "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0 — amplitude " *
+                "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0; amplitude " *
                 "separation is expressed via amp_ratio (the A_harm law), not via the " *
                 "sweep direction.",
             )
@@ -743,7 +743,7 @@ end
 
 """
 Error unless every non-periodic component of `theta0` lies strictly inside
-its physical bounds — the local geometry expansion and zone capping
+its physical bounds: the local geometry expansion and the zone capping
 require an interior base point.
 """
 function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String)
@@ -752,7 +752,7 @@ function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String
         (b.lower[i] < theta0[i] < b.upper[i]) ||
             config_error(
                 "$what: theta_0[$i] = $(theta0[i]) is not strictly inside its physical " *
-                "bounds [$(b.lower[i]), $(b.upper[i])] — the local geometry expansion " *
+                "bounds [$(b.lower[i]), $(b.upper[i])]: the local geometry expansion " *
                 "and zone capping require an interior base point.",
             )
     end

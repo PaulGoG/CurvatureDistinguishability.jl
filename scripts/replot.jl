@@ -1,11 +1,11 @@
-# Regenerate every figure of a completed run from its persisted CSVs —
-# no geometry or optimization is recomputed. All rebuild logic lives in
+# Regenerate every figure of a completed run from its persisted CSVs; no
+# geometry or optimization is recomputed. All rebuild logic lives in
 # src/RunFigures.jl (shared with collect_plots.jl); this script only selects
 # the run and writes {pdf,png} pairs back into it with backup semantics.
 #
 #   julia scripts/replot.jl <run_dir> [--rho R] [--refit]
 #
-# With --rho R the discernibility threshold is changed WITHOUT recomputation:
+# With --rho R the discernibility threshold is changed without recomputation:
 # the boundary radius is r = (16ρ²/K)^{1/4} and K is persisted per direction,
 # so maps (and the scaling-plot threshold markers) are rescaled exactly and
 # written to *_rho<R> files, leaving the originals untouched.

@@ -271,7 +271,7 @@ function run_attempt(spec::WorkerSpec, s::SupervisionSettings, attempt::Int)
                 u !== nothing && u < s.cpu_idle_cores && (verdict = :hang)
             end
             if verdict !== :none
-                @warn "Attempt $attempt: $(verdict) — no progress for " *
+                @warn "Attempt $attempt ($(verdict)): no progress for " *
                       "$(round(Int, stall)) s; terminating pid $pid."
                 terminate!(proc, s) || (verdict = :wedged)
                 break
@@ -320,7 +320,7 @@ after each attempt; `abandoned` lists the units given up on).
 
 An attempt ends when the worker exits or when the watchdog ends it: no
 heartbeat within `startup_grace_s`; no progress for `idle_stall_s` while the
-CPU utilisation over that window is below `cpu_idle_cores` (a hang — the
+CPU utilisation over that window is below `cpu_idle_cores` (a hang: the
 process waits on something that never arrives); or no progress for
 `busy_stall_s` whatever the CPU does. Progress is any change of the heartbeat
 tick count or of the total size of `spec.progress_paths()`.

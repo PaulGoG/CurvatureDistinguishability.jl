@@ -1,4 +1,4 @@
-# Production configuration — CPU reference campaign. Physical rationale for
+# Production configuration: CPU reference campaign. Physical rationale for
 # the sweep/map cases and the grid: docs/src/parameters.md.
 [pipeline]
 run_1d_sweeps = true

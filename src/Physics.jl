@@ -73,8 +73,8 @@ const HARMONICS = (1, 2, 3)
 
 """
 Dimension of the waveform parameter vector θ = (A, 𝓜, t_c, Φ₀, χ₁, χ₂).
-Single source of truth for every parameter-count-dependent structure
-(bounds tuples, kernel parameter tuples, work-item validation).
+Every parameter-count-dependent structure (bounds tuples, kernel parameter
+tuples, work-item validation) is sized from it.
 """
 const N_PARAMS = 6
 
@@ -83,8 +83,8 @@ const N_PARAMS = 6
 const PSD_FLOOR = 1e-30
 
 """
-Seconds in one Julian year (365.25 d). Single source of truth for the
-detector's orbital period and the default observation time.
+Seconds in one Julian year (365.25 d). The detector's orbital period and the
+default observation time are both taken from it.
 """
 const SECONDS_PER_YEAR = 3.15576e7
 
@@ -132,8 +132,8 @@ const GALACTIC_CONFUSION_AMP = 9.0e-45
     NoiseParams(; kwargs...)
 
 Coefficients of the analytic LISA noise model. The instrumental part is the
-Michelson-channel PSD of Robson et al. (2019) Eq. 12 (strain-referred, *not*
-sky-averaged — antenna response is applied explicitly by `Detector`), built
+Michelson-channel PSD of Robson et al. (2019) Eq. 12 (strain-referred and not
+sky-averaged; the antenna response is applied explicitly by `Detector`), built
 from the Eq. 10 optical-metrology noise `oms_amplitude` [m Hz⁻¹ᐟ²] with its
 `oms_reddening_freq` [Hz] low-frequency term, the Eq. 11 acceleration noise
 `acc_amplitude` [m s⁻² Hz⁻¹ᐟ²] with shoulders `acc_knee_low`/`acc_knee_high`
@@ -196,15 +196,15 @@ function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
         return PSD_FLOOR
     end
 
-    # Optical Metrology Noise (Robson Eq. 10)
+    # optical metrology noise (Robson Eq. 10)
     p_oms = noise.oms_amplitude^2 * (1 + (noise.oms_reddening_freq / f)^4)
 
-    # Acceleration Noise (Robson Eq. 11)
+    # acceleration noise (Robson Eq. 11)
     p_acc =
         noise.acc_amplitude^2 * (1 + (noise.acc_knee_low / f)^2) *
         (1 + (f / noise.acc_knee_high)^4)
 
-    # Total Instrumental Noise (Robson Eq. 12); f★ = c/(2πL)
+    # total instrumental noise (Robson Eq. 12); f★ = c/(2πL)
     L = noise.arm_length
     f_star = C_LIGHT / (2 * π * L)
     s_inst = (p_oms / L^2) + (2 * p_acc / ((2 * π * f)^4 * L^2)) * (1 + cos(f / f_star)^2)
@@ -213,7 +213,7 @@ function analytic_noise_psd(f::Real; noise::NoiseParams = NoiseParams())
         return s_inst
     end
 
-    # Galactic binary confusion noise (Robson Eq. 14): a two-channel
+    # galactic binary confusion noise (Robson Eq. 14): a two-channel
     # sensitivity-level fit, converted to the per-channel PSD by Eq. 9
     s_gal =
         noise.confusion_amp * f^(-7 / 3) *
@@ -411,7 +411,7 @@ $(TYPEDSIGNATURES)
 Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency
 `F`, TaylorF2 to 1.5PN order in the total-mass velocity
 `v = (π M F)^{1/3}`:
-`(3/(128 η v⁵)) [1 + (3715/756 + 55η/9) v² + (4β − 16π) v³]` — the Newtonian
+`(3/(128 η v⁵)) [1 + (3715/756 + 55η/9) v² + (4β − 16π) v³]`: the Newtonian
 term, the 1PN term, the 1.5PN tail and the spin–orbit term with `beta` from
 [`spin_beta`](@ref).
 """
@@ -457,7 +457,7 @@ $(TYPEDSIGNATURES)
 Weight of the signal emitted at time `t` for an observation over
 `[0, observation_time]`:
 `W(t) = ½ [tanh(t/Δ) − tanh((t − T)/Δ)]` with `T = observation_time` and
-`Δ = edge_time` — unity inside the observation, ½ at either end, zero outside,
+`Δ = edge_time`: unity inside the observation, ½ at either end, zero outside,
 with edges of time scale `Δ`. In the stationary-phase approximation a window
 that varies slowly against the local chirp time `1/√ḟ` multiplies each
 harmonic at its emission time `t_k(f)` ([`spa_time`](@ref)); `Δ` must
@@ -518,7 +518,7 @@ $(TYPEDSIGNATURES)
 
 Parameter vector of the second source of a two-source configuration:
 `theta0` displaced by `delta` along `u_norm`, with the luminosity distance
-set to `theta0[1] / amp_ratio` — an amplitude ratio `A₂/A₁ = amp_ratio` at
+set to `theta0[1] / amp_ratio`, an amplitude ratio `A₂/A₁ = amp_ratio` at
 equal chirp mass, the amplitude separation being carried by the ratio and
 never by the direction.
 """

@@ -4,7 +4,7 @@ include(joinpath(PROJECT_ROOT, "activate.jl"))
 using CurvatureDistinguishability
 
 const USAGE = """
-Curvature-Distinguishability Unified Pipeline
+CurvatureDistinguishability pipeline
 
     julia --threads=auto scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
                                                  [--resume] [--run-dir DIR]
@@ -12,7 +12,7 @@ Curvature-Distinguishability Unified Pipeline
 
     --config PATH       TOML configuration, relative to the project root
                         (shipped scenarios live in configs/; the default is
-                        the minutes-scale configs/quickstart.toml —
+                        the minutes-scale configs/quickstart.toml;
                         production campaigns are selected explicitly, e.g.
                         configs/production_cpu.toml)
     --output-dir DIR    output directory relative to the project root
@@ -80,8 +80,8 @@ catch err
     rethrow()
 end
 
-# Load a GPU package only when the configuration asks for one AND it is
-# installed in this environment — no blind try/catch, loud diagnostics. The
+# Load a GPU package only when the configuration asks for one and it is
+# installed in this environment: no blind try/catch, loud diagnostics. The
 # package extension activates whichever of the two is loaded last, so the
 # GPU package may follow the package itself; the [hardware] table is read
 # from the effective configuration (an overlay merged onto its base).

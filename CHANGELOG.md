@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation pages, README and docstrings reworded in plain prose; the
+  Scientific Context page is rewritten and the parameter guide is retitled
+  Run Parameters. Error and warning messages are punctuated with colons and
+  semicolons instead of dashes. No change in behaviour or results.
+
 ## [2.1.0] - 2026-10-14
 
 ### Added

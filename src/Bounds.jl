@@ -12,7 +12,7 @@ export ParameterBounds,
 public PARAM_KEYS, PHASE_INDEX, SPIN_INDICES
 
 """
-Index of the coalescence phase in the parameter vector — the one periodic
+Index of the coalescence phase in the parameter vector, the one periodic
 coordinate (period `4π`, deviations capped at `±π`; see [`default_bounds`](@ref)).
 """
 const PHASE_INDEX = 4
@@ -35,7 +35,7 @@ const PARAM_KEYS = ("luminosity_distance", "chirp_mass", "coalescence_time",
 Hard physical bounds on the O(1)-scaled parameter vector
 `θ = [A, M_c, t_c, φ_c, χ₁, χ₂]`. `lower`/`upper` are absolute bounds used by
 the constrained optimizer (`±Inf` allowed); `periodic` marks topological axes
-(the phase) with their `period`, and `deviation_cap` limits the *deviation*
+(the phase) with their `period`, and `deviation_cap` limits the deviation
 from any base point on those axes to `±deviation_cap` regardless of the
 absolute value (`0 < deviation_cap ≤ period/2`). The four-argument
 constructor sets the cap to half the period, the antipode on the circle.

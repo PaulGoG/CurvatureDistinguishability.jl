@@ -40,7 +40,7 @@ Parsed configuration with its base file resolved. A top-level
 `base_config = "file.toml"` (path relative to the overlay's directory)
 names a base whose tables are deep-merged beneath the overlay's: sub-tables
 recurse, while scalars, arrays and arrays of tables (`[[sweeps]]`,
-`[[maps]]`) present in the overlay replace the base's. One level only — a
+`[[maps]]`) present in the overlay replace the base's. One level only: a
 base that itself declares `base_config` is an error, as is a missing base.
 The `base_config` key is stripped, so the result is the self-contained
 table every consumer (validation, run-ID hashing, snapshots) operates on; a
@@ -109,7 +109,7 @@ $(TYPEDSIGNATURES)
 Deterministic run identifier: the first 8 hex characters of the SHA-256 of
 the canonically serialized identity table of the effective configuration
 ([`effective_config`](@ref) with the [`EXECUTION_SECTIONS`](@ref) removed by
-[`identity_config`](@ref); keys sorted, values only — never the wall
+[`identity_config`](@ref); keys sorted, values only, never the wall
 clock). Identical physical/numerical content therefore maps to identical
 IDs whatever hardware executes it; reruns on other machines land in
 suffixed sibling directories whose `metadata.toml` records backend, host
@@ -127,7 +127,7 @@ $(TYPEDSIGNATURES)
 
 Create and return an output directory for `run_id` under `base_dir`. If the
 directory already exists (a rerun of the same configuration), a `_r2`,
-`_r3`, … suffix is appended — existing results are never overwritten.
+`_r3`, … suffix is appended; existing results are never overwritten.
 """
 function unique_run_dir(base_dir::AbstractString, run_id::AbstractString)
     mkpath(base_dir)
@@ -196,15 +196,15 @@ $(TYPEDSIGNATURES)
 Run directory for `config_path` under `base_dir` when an interrupted run is to
 be continued. The siblings `run_<id>`, `run_<id>_r2`, … are searched in order
 for one whose `config.toml` snapshot equals the effective configuration,
-execution sections included — so variants that share an identifier (another
-Hessian chunk, another backend) never continue each other — and whose outputs
-were produced by the running package version ([`check_package_version`](@ref));
-a sibling that matches the configuration only is skipped with a warning.
-Returns `(directory, state)` with `state`
+execution sections included (so variants that share an identifier, such as
+another Hessian chunk or another backend, never continue each other), and
+whose outputs were produced by the running package version
+([`check_package_version`](@ref)); a sibling that matches the configuration
+only is skipped with a warning. Returns `(directory, state)` with `state`
 
-  - `:complete` — that run finished with every stage complete,
-  - `:resume` — that run is unfinished, or finished with failed or abandoned stages,
-  - `:fresh` — no sibling matches; a new one was created ([`unique_run_dir`](@ref)).
+  - `:complete`: that run finished with every stage complete,
+  - `:resume`: that run is unfinished, or finished with failed or abandoned stages,
+  - `:fresh`: no sibling matches; a new one was created ([`unique_run_dir`](@ref)).
 """
 function resolve_run_dir(base_dir::AbstractString, config_path::AbstractString)
     run_id = run_id_from_config(config_path)
