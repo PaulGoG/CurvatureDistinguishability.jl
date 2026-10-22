@@ -6,8 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-22
+
 ### Changed
 
+- `[compat]` admits KernelAbstractions 0.10 alongside 0.9, in the package
+  and in the test and benchmark environments, and DocStringExtensions 0.10
+  alongside 0.9. Under KernelAbstractions 0.10 the CPU backend launches
+  kernels through the same interface as the GPU backends, so the static
+  analysis of the test suite no longer sees the three known kernel-call
+  artifacts of 0.9; the suite expects the count of the resolved version.
+  Numerical results are unchanged.
 - Documentation pages, README and docstrings reworded in plain prose; the
   Scientific Context page is rewritten and the parameter guide is retitled
   Run Parameters. Error and warning messages are punctuated with colons and
@@ -198,7 +207,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.4...v2.1.0
 [2.0.4]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.2...v2.0.3
