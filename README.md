@@ -8,15 +8,15 @@
 [![Release](https://img.shields.io/github/v/release/PaulGoG/CurvatureDistinguishability.jl)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Computational proof of the **quartic distinguishability law** for space-based
-gravitational-wave interferometry: the squared noise-weighted distance between
-a two-source signal and the best-fit *single*-source template scales as
+Computational proof of the quartic distinguishability law for space-based
+gravitational-wave interferometry. The squared noise-weighted distance
+between a two-source signal and the best-fit single-source template scales as
 
-**D² ≈ (1/16) · K(u) · δ⁴**,
+D² ≈ (1/16) · K(u) · δ⁴,
 
 where δ is the parameter separation and K(u) the extrinsic curvature of the
 signal manifold. The discernibility boundary follows as
-δ_min(u) = (16 ρ²_thr / K(u))^{1/4}, and the 2D "zone of confusion" maps are
+δ_min(u) = (16 ρ²_thr / K(u))^{1/4}. The 2D "zone of confusion" maps are
 the exact intersection of that boundary with the hard physical parameter
 bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase deviations within ±π).
 
@@ -66,12 +66,14 @@ The full annotated tree is in [Full file tree](#full-file-tree) below.
 ## Environment setup
 
 Julia ≥ 1.12 (`[compat]`), installed through `juliaup`; development and
-verification run on Julia 1.13. `Manifest.toml` is not version-controlled:
-each environment resolves on first activation, and every run directory
-receives a copy of the resolved manifest for provenance. Each environment
-ships a pure-Julia activation script that activates and instantiates it
-silently; every entry point includes the script of its environment, so no
-`--project` flag is needed, and `julia -i` on one opens a REPL in it:
+verification run on Julia 1.13. `Manifest.toml` is not version-controlled.
+Each environment resolves on first activation, and every run directory
+receives a copy of the resolved manifest for provenance.
+
+Each environment ships a pure-Julia activation script that activates and
+instantiates it silently. Every entry point includes the script of its
+environment, so no `--project` flag is needed. `julia -i` on a script opens
+a REPL in its environment:
 
 ```bash
 julia -i activate.jl        # package environment
@@ -86,10 +88,10 @@ To use the package as a library from another environment (unregistered):
 Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
 ```
 
-GPU support is optional: install the vendor package matching the hardware
+GPU support is optional. Install the vendor package matching the hardware
 (`CUDA`, `AMDGPU`, `Metal` or `oneAPI`) into the default (stacked)
-environment; the pipeline loads it according to `[hardware].gpu_backend` and
-the matching package extension activates. Without one the pipeline runs on
+environment. The pipeline loads it according to `[hardware].gpu_backend`,
+and the matching package extension activates. Without one the pipeline runs on
 the multi-threaded CPU backend (`gpu_backend = "none"` forces this).
 `[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
 run before any output when no functional GPU backend resolves.
@@ -132,48 +134,57 @@ julia --threads=auto bench/run_benchmarks.jl
 julia docs/make.jl
 ```
 
-Everything tunable lives in the `configs/` scenario files (grid, physics, the full
-Robson-2019 noise model — confusion and instrumental parameters alike —
-mapping resolution/refinement, `[parameter_bounds]`, optimizer, `[safety]`
-memory budgets). `[monitoring].enabled = true` additionally prints an
-in-terminal UnicodePlots diagnostic after each completed sweep and map (TTY
-sessions only; detached logs stay clean). The configuration is validated up front: unusable
-values and **unknown keys** abort with an error naming the offending key,
-suspicious values warn. Each run lands in
-`data/run_<confighash>/` with a config snapshot, `metadata.toml`
-(git commit, backend, timings), `hardware.txt`, a copy of the resolved
-`Manifest.toml`, per-sweep work-item checkpoints (`checkpoint.csv`) and a
-structured, ANSI-free `run.log`; reruns
-get suffixed directories and `safesave`-style backups — results are never
+Everything tunable lives in the `configs/` scenario files: grid, physics,
+the full Robson-2019 noise model (confusion and instrumental parameters
+alike), mapping resolution/refinement, `[parameter_bounds]`, optimizer and
+`[safety]` memory budgets. `[monitoring].enabled = true` additionally prints
+an in-terminal UnicodePlots diagnostic after each completed sweep and map.
+It does so in TTY sessions only; detached logs stay clean.
+
+The configuration is validated up front. Unusable values and unknown keys
+abort with an error naming the offending key. Suspicious values warn.
+
+Each run lands in `data/run_<confighash>/`. The directory holds a config
+snapshot, `metadata.toml` (git commit, backend, timings), `hardware.txt`, a
+copy of the resolved `Manifest.toml`, per-sweep work-item checkpoints
+(`checkpoint.csv`) and a structured, ANSI-free `run.log`. Reruns get
+suffixed directories and `safesave`-style backups, so results are never
 overwritten. `scripts/run_pipeline.jl` exits with status 0 only when every
 stage completed, 2 on a configuration error and 3 when one or more stages
-failed (the remaining stages still run and the failures are listed in
-`metadata.toml`).
+failed. In that case the remaining stages still run, and the failures are
+listed in `metadata.toml`.
 
 ## Outputs
 
-- **1D sweeps** (`sweeps/<name>/`): `results.csv` (per-δ D², best-fit
-  parameters, convergence diagnostics, active-bound flags, multi-start gain),
-  `residual_spectrum.csv`, `sweep_meta.toml` (fitted log-log slope ± stderr
-  over all clean points and over the perturbative window (`slope_window`),
-  the O(δ⁵) correction coefficients c₁/c₂ — fitted on the points within
-  `correction_fit_max_departure` of the law — with a 10%-validity radius,
-  optimizer floor level, δ*, amp_ratio), `scaling_plot.{pdf,png}` (log–log
-  panel plus a D²_num/D²_theo ratio panel with the correction-fit overlay),
-  `residual_plot.{pdf,png}` (d(SNR²)/df and d(D²)/df densities for channels
-  A and E; the bottom panel integrates to D²). Sweeps support unequal
-  amplitudes (`amp_ratio`, the A_harm law) and opt-in multi-start seeding
-  (`n_starts`, seeded by `[pipeline].rng_seed`).
-- **2D maps** (`maps/<name>/`): `confusion_contour.csv` (angle, capped
-  boundary, `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K, g),
-  `confusion_zone.{pdf,png}` with prior-limited boundary segments (wall
-  color, active wall values annotated) visually distinct from
-  curvature-limited ones; the uncapped mathematical contour continues past
-  each wall as a dashed curve. Directions are sampled uniformly in the
-  Fisher-normalized plane (each axis in its own σ) so that strongly
-  anisotropic planes are resolved uniformly; K is computed on [0, π) only
-  and mirrored (K(u) is exactly even), with adaptive angular refinement
-  near boundary spikes.
+- 1D sweeps write to `sweeps/<name>/`:
+  - `results.csv`: per-δ D², best-fit parameters, convergence diagnostics,
+    active-bound flags and multi-start gain.
+  - `residual_spectrum.csv`: the decimated residual spectrum the residual
+    plot is drawn from.
+  - `sweep_meta.toml`: fitted log-log slope ± stderr over all clean points
+    and over the perturbative window (`slope_window`). It also holds the
+    O(δ⁵) correction coefficients c₁/c₂ with a 10%-validity radius, the
+    optimizer floor level, δ* and amp_ratio. The coefficients are fitted on
+    the points within `correction_fit_max_departure` of the law.
+  - `scaling_plot.{pdf,png}`: log–log panel plus a D²_num/D²_theo ratio
+    panel with the correction-fit overlay.
+  - `residual_plot.{pdf,png}`: d(SNR²)/df and d(D²)/df densities for
+    channels A and E. The bottom panel integrates to D².
+
+  Sweeps support unequal amplitudes (`amp_ratio`, the A_harm law) and opt-in
+  multi-start seeding (`n_starts`, seeded by `[pipeline].rng_seed`).
+- 2D maps write to `maps/<name>/`:
+  - `confusion_contour.csv`: angle, capped boundary,
+    `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K and g.
+  - `confusion_zone.{pdf,png}`: prior-limited boundary segments (wall
+    color, active wall values annotated) are visually distinct from
+    curvature-limited ones. The uncapped mathematical contour continues
+    past each wall as a dashed curve.
+
+  Directions are sampled uniformly in the Fisher-normalized plane (each axis
+  in its own σ), so strongly anisotropic planes are resolved uniformly. K is
+  computed on [0, π) only and mirrored, since K(u) is exactly even. Angular
+  refinement is adaptive near boundary spikes.
 
 ## Status of components
 
