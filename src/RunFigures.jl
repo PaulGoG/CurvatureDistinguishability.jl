@@ -16,6 +16,7 @@ using ..Bounds: deviation_box
 using ..Geometry: boundary_radius, cap_unbounded_radii!, cap_at_prior
 using ..Config: load_and_validate_config
 using ..Plotting
+using ..Plotting: display_scale
 using ..Fitting:
     MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
     above_floor_mask, perturbative_mask
@@ -289,11 +290,13 @@ run's config snapshot (plane, base point and prior box) at the run's own
 threshold; no curvature is recomputed.
 
 Returns the NamedTuple `(x, y, prior_limited, px, py, box, prior_frac,
-degenerate_frac, x_math, y_math)`, accepted panel by panel by
+degenerate_frac, x_math, y_math, scale)`, accepted panel by panel by
 `Plotting.composite_zone_figure`: the capped boundary polygon with its
 prior-limited flags, the parameter indices of the plane, the deviation-space
 prior box, the prior-limited and degenerate direction fractions, and the
-uncapped mathematical contour.
+uncapped mathematical contour, all in the rescaled coordinates, and the
+display-unit factors of the run's waveform scales
+(`Plotting.display_scale`).
 """
 function zone_panel_data(run_dir::AbstractString, case::AbstractString)
     stored = load_map(run_dir, case)
@@ -304,7 +307,8 @@ function zone_panel_data(run_dir::AbstractString, case::AbstractString)
         prior_frac = count(prior) / max(1, length(prior)),
         degenerate_frac = count(stored.degen) / max(1, length(stored.degen)),
         x_math = contour.R_Math .* contour.Dir_Cos,
-        y_math = contour.R_Math .* contour.Dir_Sin)
+        y_math = contour.R_Math .* contour.Dir_Sin,
+        scale = display_scale(stored.cfg.wp))
 end
 
 """
@@ -328,7 +332,7 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
         figure = zone_figure(d.x, d.y, d.prior_limited;
             px = d.px, py = d.py, box = d.box,
             prior_frac = d.prior_frac, degenerate_frac = d.degenerate_frac,
-            x_math = d.x_math, y_math = d.y_math)
+            x_math = d.x_math, y_math = d.y_math, scale = d.scale)
         return (figure = figure, contour = nothing, suffix = "")
     end
     stored = load_map(run_dir, case)
@@ -355,7 +359,7 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
         px = stored.px, py = stored.py, box = stored.box,
         prior_frac = count(prior) / max(1, length(prior)),
         degenerate_frac = count(degen) / max(1, length(degen)),
-        x_math = x_math, y_math = y_math)
+        x_math = x_math, y_math = y_math, scale = display_scale(stored.cfg.wp))
     return (figure = figure, contour = contour, suffix = suffix)
 end
 

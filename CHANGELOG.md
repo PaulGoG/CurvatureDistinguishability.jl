@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Confusion-zone maps are drawn in physical units with the unit on each axis:
+  chirp mass in solar masses, coalescence time in seconds, phase in radians,
+  luminosity distance in Gpc (`Plotting.display_scale`, from the run's
+  `mass_scale`, `time_scale` and `distance_scale`). Computation and persisted
+  contour tables stay in the rescaled coordinates; numerical results are
+  unchanged.
+
 ## [2.1.1] - 2026-10-22
 
 ### Changed

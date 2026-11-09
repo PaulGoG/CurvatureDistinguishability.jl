@@ -17,6 +17,7 @@ using MathTeXEngine: texfont
 using Printf: Printf, @sprintf
 using UnicodePlots: UnicodePlots
 using ..Provenance: backup_existing!
+using ..Physics: GIGAPARSEC_SEC, SOLAR_MASS_SEC, WaveformParams
 
 export publication_theme,
     save_figure, canvas_width, scaling_figure, residual_figure,
@@ -25,7 +26,7 @@ export publication_theme,
     composite_scaling_figure, composite_zone_figure, composite_residual_figure
 public decade_ticks, pi_ticks, log_ticks_125, offset_ticks, sci_tick_labels,
     sci_latex, coef_latex, slope_latex, axis_exponent, sweep_diagnostic_panel,
-    map_diagnostic_panel
+    map_diagnostic_panel, display_scale
 
 """
     ResidualFigureMeta
@@ -50,6 +51,34 @@ const PARAM_LABELS =
     (L"D_L", L"\mathcal{M}", L"t_c", L"\phi_c", L"\chi_1", L"\chi_2")
 
 deviation_label(idx) = latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
+
+"""
+Display units of the six model parameters on map axes, as LaTeX fragments:
+luminosity distance in Gpc, chirp mass in solar masses, coalescence time in
+seconds, phase in radians; the spins carry none.
+"""
+const PARAM_UNITS = ("\\mathrm{Gpc}", "M_\\odot", "\\mathrm{s}", "\\mathrm{rad}", "", "")
+
+# deviation label with its display unit in square brackets (none for the spins)
+function deviation_label_unit(idx)
+    unit = PARAM_UNITS[idx]
+    isempty(unit) && return deviation_label(idx)
+    return latexstring("\\Delta ", PARAM_LABELS[idx][2:(end-1)], "\\ [", unit, "]")
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Factors converting deviations in the rescaled coordinates of `wp` into the
+display units of `PARAM_UNITS`: `D_L` in Gpc, chirp mass in solar masses,
+coalescence time in seconds; phase and spins unchanged. Figures only: the
+computation and the persisted tables stay in the rescaled coordinates. With
+the default scales the factors are `(1, 2.03e5, 1e6, 1, 1, 1)`.
+"""
+display_scale(wp::WaveformParams) = (
+    Float64(wp.distance_scale / GIGAPARSEC_SEC),
+    Float64(wp.mass_scale / SOLAR_MASS_SEC),
+    Float64(wp.time_scale), 1.0, 1.0, 1.0)
 
 """
 $(TYPEDSIGNATURES)
@@ -1099,20 +1128,24 @@ with `DataAspect`, except a needle: a zone whose principal-axis aspect
 the 1.5PN model) is rotated into the frame of that direction (abscissa along
 it, ordinate transverse, independent scales) so that its transverse width is
 visible; the x label quotes the null slope dχ₂/dχ₁, while wall detection and
-the annotation stay in parameter units. The map is drawn by
+the annotation stay in parameter units. With `scale` (the factors of
+[`display_scale`](@ref)) the coordinates, contour and box are converted to
+display units before drawing and the axis labels carry the units; without it
+the rescaled coordinates are drawn unlabelled. The map is drawn by
 [`zone_panel!`](@ref).
 """
 function zone_figure(x::AbstractVector, y::AbstractVector,
     prior_limited::AbstractVector{Bool};
     px::Int, py::Int, box::NTuple{4,Float64},
     prior_frac::Real, degenerate_frac::Real,
-    x_math = nothing, y_math = nothing)
+    x_math = nothing, y_math = nothing,
+    scale::Union{Nothing,NTuple{6,Float64}} = nothing)
     same_units, needle, _ = zone_frame(x, y, px, py, x_math, y_math)
     with_theme(publication_theme()) do
         # squarer canvas for equal-aspect same-unit planes to avoid wide side margins
         fig = Figure(size = (same_units && !needle) ? (820, 830) : (960, 720))
         zone_panel!(fig[1, 1], x, y, prior_limited;
-            px, py, box, prior_frac, degenerate_frac, x_math, y_math)
+            px, py, box, prior_frac, degenerate_frac, x_math, y_math, scale)
         return fig
     end
 end
@@ -1145,7 +1178,8 @@ Draw the zone-of-confusion map of [`zone_figure`](@ref) into the grid
 position (or `GridLayout`) `gp`: the axis at row 1 of a nested `GridLayout`,
 the prior-wall annotation and any y-axis multiplier in its row 0, any x-axis
 multiplier in its column 2. `compact` selects the half-width variant for
-composites (annotation two points smaller).
+composites (annotation two points smaller); `scale` converts to display units
+as in [`zone_figure`](@ref).
 
 Returns the NamedTuple `(layout, axis, needle, same_units)`.
 """
@@ -1153,7 +1187,16 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     prior_limited::AbstractVector{Bool};
     px::Int, py::Int, box::NTuple{4,Float64},
     prior_frac::Real, degenerate_frac::Real,
-    x_math = nothing, y_math = nothing, compact::Bool = false)
+    x_math = nothing, y_math = nothing, compact::Bool = false,
+    scale::Union{Nothing,NTuple{6,Float64}} = nothing)
+    # display units: every coordinate of the plane, the box included, is
+    # multiplied by its axis factor, so wall detection is unaffected
+    if scale !== nothing
+        sx, sy = scale[px], scale[py]
+        x, y = x .* sx, y .* sy
+        x_math === nothing || ((x_math, y_math) = (x_math .* sx, y_math .* sy))
+        box = (box[1] * sx, box[2] * sx, box[3] * sy, box[4] * sy)
+    end
     # Needle frame (same-unit planes only, where a rotation is meaningful): a
     # zone drawn as a needle along a null direction is rotated into its
     # principal frame (abscissa along the needle, ordinate transverse) on
@@ -1193,8 +1236,9 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
             ")")
         ylabel = L"\Delta\chi_{\perp}"
     else
-        xlabel = deviation_label(px)
-        ylabel = deviation_label(py)
+        label = scale === nothing ? deviation_label : deviation_label_unit
+        xlabel = label(px)
+        ylabel = label(py)
     end
     ax = Axis(layout[1, 1]; xlabel = xlabel, ylabel = ylabel)
     same_units && !needle && (ax.aspect = DataAspect())
@@ -1247,6 +1291,9 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
         # point sits exactly on the box edge its ray exited through, so an
         # edge is active iff some capped point lies on it
         devtex(idx) = string("\\Delta ", PARAM_LABELS[idx][2:(end-1)])
+        unittex(idx) =
+            (scale === nothing || isempty(PARAM_UNITS[idx])) ? "" :
+            string("\\,", PARAM_UNITS[idx])
         fmt_edge(v, isphase) =
             isphase && isapprox(abs(v), π; atol = 1e-9) ?
             (v < 0 ? "-\\pi" : "\\pi") : sci_latex(v)
@@ -1261,10 +1308,24 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
             hi_hit = isfinite(hi_e) && any(v -> abs(v - hi_e) < tol, vals)
             isph = idx == PHASE_INDEX
             if lo_hit && hi_hit && isapprox(lo_e, -hi_e; rtol = 1e-9)
-                push!(walls, string(devtex(idx), " = \\pm ", fmt_edge(abs(hi_e), isph)))
+                push!(walls,
+                    string(
+                        devtex(idx),
+                        " = \\pm ",
+                        fmt_edge(abs(hi_e), isph),
+                        unittex(idx),
+                    ))
             else
-                lo_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(lo_e, isph)))
-                hi_hit && push!(walls, string(devtex(idx), " = ", fmt_edge(hi_e, isph)))
+                lo_hit &&
+                    push!(
+                        walls,
+                        string(devtex(idx), " = ", fmt_edge(lo_e, isph), unittex(idx)),
+                    )
+                hi_hit &&
+                    push!(
+                        walls,
+                        string(devtex(idx), " = ", fmt_edge(hi_e, isph), unittex(idx)),
+                    )
             end
         end
         # worded without a hyphen (the math engine sets "-" as a minus sign)
@@ -1387,8 +1448,8 @@ $(TYPEDSIGNATURES)
 Multi-panel zone-of-confusion figure: one [`zone_panel!`](@ref) per entry of
 `panels`, placed row-major on an `ncols`-column grid (no legend).
 Each entry of `panels` is a NamedTuple with the fields `x, y, prior_limited,
-px, py, box, prior_frac, degenerate_frac, x_math, y_math` (as returned by
-`RunFigures.zone_panel_data`). `panel_size` is the canvas share
+px, py, box, prior_frac, degenerate_frac, x_math, y_math` and optionally
+`scale` (as returned by `RunFigures.zone_panel_data`). `panel_size` is the canvas share
 `(width, height)` of one panel; `labels`, when given, are written at the
 top-left corner of the panels, none by default; a single-column layout draws
 the panels at full size.
@@ -1408,7 +1469,8 @@ function composite_zone_figure(panels::AbstractVector; ncols::Int = 2,
             zone_panel!(fig[r, c], p.x, p.y, p.prior_limited;
                 px = p.px, py = p.py, box = p.box, prior_frac = p.prior_frac,
                 degenerate_frac = p.degenerate_frac,
-                x_math = p.x_math, y_math = p.y_math, compact = ncols > 1)
+                x_math = p.x_math, y_math = p.y_math, compact = ncols > 1,
+                scale = hasproperty(p, :scale) ? p.scale : nothing)
         end
         colgap!(fig.layout, 24)
         rowgap!(fig.layout, 20)

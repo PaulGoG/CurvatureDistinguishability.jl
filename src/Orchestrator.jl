@@ -32,7 +32,7 @@ using ..Provenance
 using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!
 using ..Checkpoint: CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!
 using ..Plotting
-using ..Plotting: map_diagnostic_panel, sweep_diagnostic_panel
+using ..Plotting: display_scale, map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
     MIN_FIT_POINTS, above_floor_mask, loglog_slope, optimizer_floor,
     perturbative_mask, ratio_correction_fit
@@ -963,7 +963,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             println(stdout, map_diagnostic_panel(polar.angle, r_cap, prior_frac))
         end
 
-        persist_map_results(out_dir, map_spec, box, polar, prior_frac, degen_frac)
+        persist_map_results(out_dir, map_spec, box, polar, prior_frac, degen_frac,
+            display_scale(wp))
 
         elapsed = format_time(time() - t0)
         logline(log_io, "  [done] map '$name' completed in $elapsed")
@@ -1290,11 +1291,12 @@ $(TYPEDSIGNATURES)
 Persist a completed map into `out_dir`: the contour table
 (`confusion_contour.csv`) from the capped polar table `polar`
 ([`mirror_to_full_circle`](@ref), unbounded directions already capped for
-the polygon) and the zone figure (a figure failure is logged and never
-loses the numerical results).
+the polygon) and the zone figure in the display units of `scale` (a figure
+failure is logged and never loses the numerical results).
 """
 function persist_map_results(out_dir::AbstractString, map_spec::MapSpec,
-    box::NTuple{4,Float64}, polar, prior_frac::Real, degen_frac::Real)
+    box::NTuple{4,Float64}, polar, prior_frac::Real, degen_frac::Real,
+    scale::NTuple{6,Float64})
     name = map_spec.name
     px = map_spec.param_x
     py = map_spec.param_y
@@ -1313,7 +1315,7 @@ function persist_map_results(out_dir::AbstractString, map_spec::MapSpec,
             px = px, py = py, box = box,
             prior_frac = prior_frac, degenerate_frac = degen_frac,
             x_math = polar.r_math .* polar.dir_cos,
-            y_math = polar.r_math .* polar.dir_sin)
+            y_math = polar.r_math .* polar.dir_sin, scale = scale)
         save_figure(fig, joinpath(out_dir, "confusion_zone"))
     catch err
         err isa Union{InterruptException,OutOfMemoryError} && rethrow()

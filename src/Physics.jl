@@ -60,6 +60,14 @@ One gigaparsec in light-seconds, the default luminosity-distance unit.
 const GIGAPARSEC_SEC = 3.0856775814913673e25 / C_LIGHT
 
 """
+Solar mass in seconds, G M⊙/c³, from the nominal solar mass parameter
+(GM)⊙ = 1.3271244 × 10²⁰ m³ s⁻² of IAU 2015 Resolution B3 (Prša et al. 2016,
+doi:10.3847/0004-6256/152/2/41). Used to quote chirp masses in solar masses on
+figure axes; the computation keeps masses in seconds.
+"""
+const SOLAR_MASS_SEC = 1.3271244e20 / C_LIGHT^3
+
+"""
 Orbital radius of the constellation centre, 1 AU in light-seconds.
 """
 const R_ORBIT_SEC = 499.00478383615643

@@ -1458,6 +1458,23 @@ enabled = true
         ax_round = first(filter(c -> c isa CD.Plotting.Axis, fig_round.content))
         @test ax_round.xlabel[] == CD.Plotting.deviation_label(5)
         @test ax_round.aspect[] isa CD.Plotting.DataAspect
+        # display units: coordinates and frame follow the display_scale
+        # factors and the labels carry the units; the computation's rescaled
+        # coordinates stay unlabelled (above)
+        scale = CD.Plotting.display_scale(CD.Physics.WaveformParams())
+        @test scale[2] ≈ 1 / 4.925490947e-6 rtol = 1e-9
+        @test scale[3] == 1.0e6
+        fig_units = CD.Plotting.Figure()
+        panel_units = CD.Plotting.zone_panel!(fig_units[1, 1],
+            1e-4 .* cos.(φ_round), 2e-6 .* sin.(φ_round), falses(length(φ_round));
+            px = 2, py = 3, box = (-1.0, 1.0, -1.0, 1.0),
+            prior_frac = 0.0, degenerate_frac = 0.0, scale)
+        @test occursin("\\mathcal{M}\\ [M_\\odot]", panel_units.axis.xlabel[])
+        @test occursin("t_c\\ [\\mathrm{s}]", panel_units.axis.ylabel[])
+        (_, xhi), (_, yhi) = panel_units.axis.limits[]
+        margin = 1 + CD.Plotting.ZONE_LIMIT_MARGIN
+        @test xhi ≈ margin * maximum(abs, 1e-4 .* cos.(φ_round)) * scale[2] rtol = 1e-9
+        @test yhi ≈ margin * maximum(abs, 2e-6 .* sin.(φ_round)) * scale[3] rtol = 1e-9
     end
 
     @testset "Plotting: residual panel range" begin
