@@ -343,7 +343,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         amp_ratio != 1.0 && logline(
             log_io,
             @sprintf("  amplitude ratio : A₂/A₁ = %.4g (A_harm prefactor %.5f)",
-                amp_ratio, amp_prefactor)
+                amp_ratio, amp_prefactor),
         )
 
         logline(log_io, "  [1/3] manifold geometry (K(u), g(u,u))")
@@ -374,7 +374,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
         logline(
             log_io,
             @sprintf("        separation grid          : [%.3e, %.3e] = [%.2e, %.2e] δ_min",
-                deltas[1], deltas[end], deltas[1] / delta_min, deltas[end] / delta_min)
+                deltas[1], deltas[end], deltas[1] / delta_min, deltas[end] / delta_min),
         )
         if !(deltas[1] < delta_min < deltas[end])
             logline(
@@ -622,7 +622,7 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
         log_io,
         @sprintf(
             "        fit points (above optimizer floor) %d/%d; fitted log-log slope %.4f ± %.4f",
-            count(clean), n, slope, slope_err)
+            count(clean), n, slope, slope_err),
     )
     # the correction expansion is fitted only where the ratio is still
     # perturbatively close to unity (Fitting.perturbative_mask)
@@ -654,7 +654,7 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
             log_io,
             @sprintf(
                 "        O(δ⁵) fit: ratio ≈ 1 + c₁δ + c₂δ² with c₁ = %.4g ± %.2g, c₂ = %.4g (%.0f%%-validity δ ≈ %.3g)",
-                c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid)
+                c1, c1_err, c2, 100cfg.correction_validity_fraction, delta_valid),
         )
     return (; D2_theo, ratio, floor_level, clean, slope, slope_err,
         slope_window, slope_window_err, c1, c1_err, c2, delta_valid)
@@ -842,7 +842,7 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         logline(
             log_io,
             @sprintf("        axis Fisher σ: %.3e × %.3e (sampling anisotropy %.2e)",
-                sigma_x, sigma_y, max(sigma_x, sigma_y) / min(sigma_x, sigma_y))
+                sigma_x, sigma_y, max(sigma_x, sigma_y) / min(sigma_x, sigma_y)),
         )
         direction = phi -> unit_direction(phi, sigma_x, sigma_y)
         # boundary radius in the normalized plane (constant for an ellipse
@@ -918,13 +918,13 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 log_io,
                 @sprintf(
                     "        corner bisection: %d crossover(s) located, %d exact corner vertex(es) inserted (%d iterations)",
-                    n_brackets, n_vertices, cfg.corner_bisect_iters)
+                    n_brackets, n_vertices, cfg.corner_bisect_iters),
             )
             n_corners = insert_box_corner_vertices!(entries, eval_angles, capped_at, box,
                 (cx, cy) -> atan(cy / sigma_y, cx / sigma_x))
             n_corners > 0 && logline(
                 log_io,
-                @sprintf("        box-corner vertices: %d inserted", n_corners)
+                @sprintf("        box-corner vertices: %d inserted", n_corners),
             )
         end
         finish!(prog)
@@ -942,12 +942,12 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
         degen_frac = count(polar.degenerate) / length(polar.degenerate)
         logline(
             log_io,
-            @sprintf("        prior-limited directions : %.1f%%", 100prior_frac)
+            @sprintf("        prior-limited directions : %.1f%%", 100prior_frac),
         )
         degen_frac > 0 &&
             logline(
                 log_io,
-                @sprintf("        degenerate directions    : %.1f%%", 100degen_frac)
+                @sprintf("        degenerate directions    : %.1f%%", 100degen_frac),
             )
         if px in SPIN_INDICES && py in SPIN_INDICES && prior_frac > SPIN_PRIOR_NOTE_FRACTION
             logline(

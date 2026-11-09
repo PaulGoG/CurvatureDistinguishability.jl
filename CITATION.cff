@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Gogîță"
     given-names: "Paul-Adrian"
-version: "2.1.1"
-date-released: "2026-10-22"
+version: "2.1.2"
+date-released: "2026-11-09"
 repository-code: "https://github.com/PaulGoG/CurvatureDistinguishability.jl"
 license: MIT
 abstract: >-
