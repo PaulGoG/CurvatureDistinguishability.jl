@@ -104,6 +104,21 @@ non-spinning term is known, so with spins that order omits terms of
 evaluations of the literature forms at five points of ``(\eta, \chi_1, \chi_2)``,
 two of them with ``\chi_s\chi_a \neq 0``.
 
+The phase of harmonic ``k`` in the ``e^{-2\pi i f t}`` Fourier convention is
+```math
+\Psi_k(f) = 2\pi f t_c - \frac{k}{2}\phi_c + \frac{k}{2}\,\psi_{\mathrm{PN}}(2f/k) - \frac{\pi}{4},
+```
+so that ``\tilde h_k(f) \propto e^{-i\Psi_k(f)}``; the arrival-time term is
+common to every harmonic, and the stationary-phase time of harmonic ``k``
+is the Newtonian ``t_k = t(2f/k)`` with
+``t(F) = t_c - 5\mathcal{M}/(256\, u^{8})``, ``u = (\pi\mathcal{M}F)^{1/3}``,
+which is where the detector motion of §5 is evaluated. Since harmonic
+``k`` carries ``-(k/2)\phi_c``, the waveform is ``4\pi``-periodic in
+``\phi_c``: a ``2\pi`` shift reverses the sign of the odd harmonics, which
+vanish only at equal mass. The confusion maps cap phase deviations at
+``|\Delta\phi_c| \le \pi``, half the period of the dominant harmonic,
+beyond which its contribution to ``D^2`` decreases again.
+
 ### Spin directions of the tangent space
 
 At order 1.5 the spins enter the phase only through the single scalar
@@ -139,21 +154,6 @@ order and the rank is 5 on the line ``\chi_1 = \chi_2``. The second spin
 combination stays the weakest direction of the tangent space at every order,
 which is why sweeps from order 2 on need the fit in whitened coordinates
 ([System Architecture](architecture.md)).
-
-The phase of harmonic ``k`` in the ``e^{-2\pi i f t}`` Fourier convention is
-```math
-\Psi_k(f) = 2\pi f t_c - \frac{k}{2}\phi_c + \frac{k}{2}\,\psi_{\mathrm{PN}}(2f/k) - \frac{\pi}{4},
-```
-so that ``\tilde h_k(f) \propto e^{-i\Psi_k(f)}``; the arrival-time term is
-common to every harmonic, and the stationary-phase time of harmonic ``k``
-is the Newtonian ``t_k = t(2f/k)`` with
-``t(F) = t_c - 5\mathcal{M}/(256\, u^{8})``, ``u = (\pi\mathcal{M}F)^{1/3}``,
-which is where the detector motion of §5 is evaluated. Since harmonic
-``k`` carries ``-(k/2)\phi_c``, the waveform is ``4\pi``-periodic in
-``\phi_c``: a ``2\pi`` shift reverses the sign of the odd harmonics, which
-vanish only at equal mass. The confusion maps cap phase deviations at
-``|\Delta\phi_c| \le \pi``, half the period of the dominant harmonic,
-beyond which its contribution to ``D^2`` decreases again.
 
 ## 3. Harmonic amplitudes (0.5PN)
 
