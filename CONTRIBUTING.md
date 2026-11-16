@@ -17,6 +17,7 @@ file and the relevant part of `run.log`. A run directory's `metadata.toml`,
 ```bash
 julia -i activate.jl                                    # package environment
 julia -e 'include("activate.jl"); using Pkg; Pkg.test()'
+julia -e 'include("activate.jl"); using Pkg; Pkg.test(test_args = ["physics"])'  # one group
 julia -e 'using JuliaFormatter; format(".")'            # .JuliaFormatter.toml
 julia docs/make.jl                                      # strict documentation build
 julia --threads=auto bench/run_benchmarks.jl

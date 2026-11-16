@@ -125,7 +125,8 @@ julia scripts/compose_figures.jl configs/figures/quickstart_composites.toml [--o
 # render all figures of one or more runs as a flat PNG view (plots/ by default)
 julia scripts/collect_plots.jl [dest_dir] [run_id ...]
 
-# test suite (unit, physics validation, static QA, end-to-end)
+# test suite (unit, physics validation, static QA, end-to-end); a subset by group:
+# Pkg.test(test_args = ["physics", "geometry"])
 julia -e 'include("activate.jl"); Pkg.test()'
 
 # benchmarks (own environment; the package resolves by path)
@@ -309,7 +310,10 @@ CurvatureDistinguishability/
 │   ├── collect_plots.jl    # flat PNG browsing view of one or more runs
 │   └── compose_figures.jl  # multi-panel composites from a TOML layout over run tables
 ├── test/
-│   ├── runtests.jl         # physics validation + A/B regression + E2E
+│   ├── runtests.jl         # runs the test groups below, all or those named in test_args
+│   ├── common.jl           # fixture grid and physical setup shared by the groups
+│   ├── qa.jl, physics.jl, geometry.jl, inference.jl, config.jl,
+│   │   fitting_plotting.jl, orchestrator.jl, e2e.jl  # one file per group
 │   ├── supervision_tests.jl  # watchdog, checkpoint and continuation tests
 │   ├── Project.toml
 │   ├── activate.jl         # interactive test sandbox via TestEnv.jl
