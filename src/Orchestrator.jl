@@ -63,7 +63,6 @@ Base.showerror(io::IO, e::ResourceBudgetError) = print(io, "ResourceBudgetError:
 # Helpers
 # -----------------------------------------------------------------------------
 
-# angular tolerance below which two map directions are the same vertex
 """
     PipelineStageError(run_dir, failed_stages)
 
@@ -100,6 +99,7 @@ function Base.showerror(io::IO, err::DegenerateDirectionError)
         err.g_uu, " below the degeneracy threshold ", err.threshold)
 end
 
+# angular tolerance below which two map directions are the same vertex
 const ANGLE_DEDUPE_TOL = 1e-10
 # prior-limited boundary fraction above which the spin-plane null-direction
 # advisory is logged
@@ -286,11 +286,12 @@ end
 """
 Immutable per-run context threaded through the sweep and map stages:
 validated configuration, output base directory, frequency grid and PSD
-(host and device copies), and the planned stage concurrencies (the sweep
+(host and device copies), the planned stage concurrencies (the sweep
 stage is pinned to one task on GPU backends; the CPU-only mapping stage is
-not), and the number of the process launch working on the run directory
-(`attempt`, above 1 when an interrupted run is continued). Parametric over the backend and device-array types so every per-δ
-solve closure captures concrete fields.
+not) and the number of the process launch working on the run directory
+(`attempt`, above 1 when an interrupted run is continued). Parametric over
+the backend and device-array types so every per-δ solve closure captures
+concrete fields.
 """
 struct RunContext{B,FD,SD}
     cfg::PipelineSettings
@@ -560,8 +561,8 @@ end
 $(TYPEDSIGNATURES)
 
 Identifier of the fitting problem behind a sweep checkpoint: SHA-256 of the
-sweep definition, the separation grid, the normalized direction, every
-setting that enters a fit and the package `version` that computes it. Rows
+sweep definition, the separation grid, the normalized direction, the
+optimizer and grid settings and the package `version` that computes it. Rows
 written under another signature are refused.
 """
 function sweep_signature(sweep::SweepSpec, deltas::AbstractVector,
@@ -601,7 +602,7 @@ $(TYPEDSIGNATURES)
 
 Compare the fitted distances with the quartic law: the theoretical `D²`
 (with the amplitude-ratio prefactor), the numerical/theoretical ratio, the
-bootstrapped optimizer floor with its clean-point mask, the log-log slope
+detected optimizer floor with its clean-point mask, the log-log slope
 over the clean window and over the perturbative window of the correction fit
 (`slope_window`), and the `O(δ⁵)` ratio-correction fit with its
 validity radius. The fit summary is logged to `log_io`.
@@ -612,7 +613,7 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
     D2_theo = (amp_prefactor / 16.0) .* K_norm .* deltas .^ 4
     ratio = D2_num ./ D2_theo
     # the slope and ratio fits use only points strictly above the
-    # bootstrapped optimizer floor (see optimizer_floor/above_floor_mask)
+    # detected optimizer floor (see optimizer_floor/above_floor_mask)
     floor_level = optimizer_floor(D2_num, ratio, cfg.floor_detection_ratio)
     clean = above_floor_mask(D2_num, floor_level)
     slope, slope_err =
@@ -664,8 +665,8 @@ end
 $(TYPEDSIGNATURES)
 
 Persist a completed sweep into `out_dir`: the per-δ results table, the
-residual spectrum at the primary evaluation point δ* (the largest clean
-separation inside the fitted validity window) and, when it differs, the
+residual spectrum at the primary evaluation point δ* (the clean separation
+inside the fitted validity window nearest `2δ_min`) and, when it differs, the
 threshold companion, the `sweep_meta.toml` record, and the scaling and
 residual figures (a figure failure is logged and never loses the numerical
 results). `geometry` carries `K_norm`, `g_uu` and `delta_min`; `fits` and
@@ -706,9 +707,7 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
     # the largest separation may lie far beyond it. The plotted residual is
     # then the normal projection the quartic law integrates. Rule-of-thumb
     # companion: the separation nearest the discernibility threshold on the
-    # swept range. The companion is emitted only when the two points differ;
-    # for on-law directions the threshold point is itself inside the validity
-    # window and one panel suffices.
+    # swept range. The companion is emitted only when the two points differ.
     pos = findall(>(0), D2_num)
     idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
     in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
@@ -1019,15 +1018,15 @@ end
 $(TYPEDSIGNATURES)
 
 Adaptive angular refinement of the half-circle `entries` (NamedTuples
-`(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE`
-mask of directions known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the midpoint
-direction wherever the capped radius of cyclically consecutive directions
-jumps by more than `cfg.neighbor_ratio_tol` on either half of the circle;
-`r_cap_pair(e)` returns the capped radii of a direction and of its mirror
-image (in the normalized sampling plane), whose prior-box crossing differs
-when the box is asymmetric. Each
-pass evaluates all midpoints as one batch through `eval_angles`. Leaves
-`entries` sorted by angle and returns the number of directions added.
+`(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE` mask of directions
+known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the
+midpoint direction wherever the capped radius of cyclically consecutive
+directions jumps by more than `cfg.neighbor_ratio_tol` on either half of the
+circle; `r_cap_pair(e)` returns the capped radii of a direction and of its
+mirror image (in the normalized sampling plane), whose prior-box crossing
+differs when the box is asymmetric. Each pass evaluates all midpoints as one
+batch through `eval_angles`. Leaves `entries` sorted by angle and returns the
+number of directions added.
 """
 function refine_directions!(entries::Vector, eval_angles, r_cap_pair,
     cfg::PipelineSettings)
@@ -1239,13 +1238,13 @@ direction at the prior box: K and g are exactly even in the direction, so
 exactly negated direction components (the prior box need not be
 symmetric). `direction(phi)` maps a sampling angle to the unit direction
 `(cos, sin)` in parameter units ([`unit_direction`](@ref) for
-Fisher-normalized sampling; the identity by default). Vertices whose wall mask marks the evaluated side are capped
-exactly at the wall and flagged prior-limited; every other direction goes
-through [`cap_at_prior`](@ref). Directions with `g < g_uu_degenerate` are
-flagged degenerate.
-Returns the per-direction polar table as a NamedTuple of vectors
-(`angle`, `K_raw`, `g_uu`, `r_math`, `r_box`, `r_cap`, `dir_cos`,
-`dir_sin`, `prior_limited`, `degenerate`).
+Fisher-normalized sampling; the identity by default). Vertices whose wall
+mask marks the evaluated side are capped exactly at the wall and flagged
+prior-limited; every other direction goes through [`cap_at_prior`](@ref).
+Directions with `g < g_uu_degenerate` are flagged degenerate. Returns the
+per-direction polar table as a NamedTuple of vectors (`angle`, `K_raw`,
+`g_uu`, `r_math`, `r_box`, `r_cap`, `dir_cos`, `dir_sin`, `prior_limited`,
+`degenerate`).
 """
 function mirror_to_full_circle(entries::Vector, box::NTuple{4,Float64}, r_math_of,
     g_uu_degenerate::Real; direction = phi -> (cos(phi), sin(phi)))
@@ -1339,7 +1338,7 @@ input), allocate hardware within the `[safety]` memory budget, snapshot the
 configuration and provenance metadata into a configuration-hashed run
 directory, then execute the sweep and mapping stages. Each sweep and map is
 guarded individually: a failing stage is logged with its backtrace and the
-remaining stages continue.
+remaining stages continue. `output_dir` is resolved relative to `project_root`.
 
 Returns the run directory when every stage completed. When stages failed, the
 run is finished first (metadata written, log closed) and a

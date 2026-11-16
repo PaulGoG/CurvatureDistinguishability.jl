@@ -33,7 +33,7 @@ const PARAM_KEYS = ("luminosity_distance", "chirp_mass", "coalescence_time",
     ParameterBounds
 
 Hard physical bounds on the O(1)-scaled parameter vector
-`θ = [A, M_c, t_c, φ_c, χ₁, χ₂]`. `lower`/`upper` are absolute bounds used by
+`θ = [D_L, M_c, t_c, φ_c, χ₁, χ₂]`. `lower`/`upper` are absolute bounds used by
 the constrained optimizer (`±Inf` allowed); `periodic` marks topological axes
 (the phase) with their `period`, and `deviation_cap` limits the deviation
 from any base point on those axes to `±deviation_cap` regardless of the

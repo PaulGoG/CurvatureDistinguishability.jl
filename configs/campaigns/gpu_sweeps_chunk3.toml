@@ -14,6 +14,6 @@ require_gpu = true
 hessian_chunk = 3
 
 [safety]
-# device memory budget and the share reserved for the OS [GB], > 0
+# device memory budget [GB], > 0, and the share reserved for the OS [GB], >= 0
 max_vram_gb = 8.0
 os_vram_overhead_gb = 1.0

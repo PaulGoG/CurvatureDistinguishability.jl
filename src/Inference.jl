@@ -42,7 +42,7 @@ end
 
 # Kernel launches are serialized library-wide and device buffers are cached.
 # Vendor runtimes are not safe under concurrent multi-task access, and
-# allocating device buffers per evaluation (10³–10⁴ per sweep) destabilises
+# allocating device buffers per evaluation (10³–10⁴ per sweep) destabilizes
 # long sessions. The lock is never taken on CPU paths and costs nothing on a
 # GPU, where the device serializes kernels anyway; the cache holds one buffer
 # per (backend, element type, shape).
@@ -301,6 +301,7 @@ model, as a closure over the scaled parameter vector. On the CPU backend an
 allocation-free scalar loop is used; on GPU backends a single fused
 KernelAbstractions kernel (2-channel only; disable the T channel, which is
 identically zero, for GPU runs). Differentiable with `ForwardDiff`.
+`freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
 """
 function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::AbstractVector,
     df::Real, wp::WaveformParams, backend)
@@ -357,9 +358,9 @@ physical `bounds`:
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
 
 The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
-keyword (defaults to the model defaults). Returns
+keyword (default `WaveformParams()`). Returns
 `(D², best_fit, optim_result)`. Throws `DimensionMismatch`/`ArgumentError` on
-inconsistent arguments.
+inconsistent arguments. `freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
 
 Keywords:
 

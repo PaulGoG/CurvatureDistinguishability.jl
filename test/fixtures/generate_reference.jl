@@ -21,7 +21,7 @@ CSV.write(
     header = false,
 )
 
-# sweep.csv: the reference direction on the existing Delta grid
+# sweep.csv: the reference direction on a log-spaced δ grid
 u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
 K_u, g_uu = compute_extrinsic_curvature(THETA0, u_raw, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
 K_norm = K_u / g_uu^2

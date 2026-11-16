@@ -44,7 +44,7 @@ $(TYPEDSIGNATURES)
 
 Sky- and polarization-averaged signal response of the two low-frequency LISA
 channels, Robson et al. (2019) Eq. 9: `R(f) = (3/10) / (1 + 0.6 (f/f★)²)`
-with `f★ = c/(2π L)` from `arm_length` [m]. It relates a two-channel
+at `f` [Hz], with `f★ = c/(2π L)` from `arm_length` [m]. It relates a two-channel
 sensitivity-level spectral density to the per-channel PSD (their Eq. 1,
 `S_n = P_n / R`), and its roll-off is the square of the transfer factor
 `Detector` applies to every harmonic. Used by [`analytic_noise_psd`](@ref)
@@ -80,7 +80,7 @@ proportional to the mass asymmetry).
 const HARMONICS = (1, 2, 3)
 
 """
-Dimension of the waveform parameter vector θ = (A, 𝓜, t_c, Φ₀, χ₁, χ₂).
+Dimension of the waveform parameter vector θ = (D_L, 𝓜, t_c, φ_c, χ₁, χ₂).
 Every parameter-count-dependent structure (bounds tuples, kernel parameter
 tuples, work-item validation) is sized from it.
 """
@@ -190,7 +190,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-One-sided noise PSD of one channel at frequency `f` [Hz]: the Robson et
+One-sided noise PSD [Hz⁻¹] of one channel at frequency `f` [Hz]: the Robson et
 al. (2019) Eq. 12 instrumental noise `P_n(f)` plus the Eq. 14 galactic
 confusion fit `S_c(f)` brought to the same level by the Eq. 9 response,
 `P_n(f) + R(f) S_c(f)` (togglable via `noise.confusion_enabled`). Dividing
@@ -257,7 +257,7 @@ end
 
 Immutable, isbits container for every fixed parameter of the waveform and
 detector-response model, safe to pass into GPU kernels. Parameter units:
-`mass_scale` (chirp mass, geometrised seconds), `time_scale` (coalescence
+`mass_scale` (chirp mass, geometrized seconds), `time_scale` (coalescence
 time, s) and `distance_scale` (luminosity distance, s; default one
 gigaparsec) restore the physical values of the O(1) parameter vector. The
 symmetric mass ratio `eta` ∈ (0, 1/4] is fixed per configuration (the
@@ -267,17 +267,16 @@ inclination `inclination` (angle between the propagation direction and the
 orbital angular momentum) and polarization angle `polarization` in the LISA
 science ground segment conventions (Baghi et al. 2026). `orbit_phase` and
 `constellation_phase` are the orbital and cartwheel phases of the constellation
-at `t = 0`, `arm_length`
-[m] sets the orbital eccentricity of the spacecraft and the transfer
-frequency, and `cutoff_width` is the relative width of the
+at `t = 0`, `arm_length` [m] sets the orbital eccentricity of the spacecraft
+and the transfer frequency, and `cutoff_width` is the relative width of the
 innermost-stable-orbit taper. `observation_time` [s] is the duration of the
 observation that starts at `t = 0`: when positive, every harmonic is weighted
 by [`observation_window`](@ref) at its stationary-phase emission time, with
 edges of time scale `window_edge_time` [s]; at the default `0` the signal
-fills the whole frequency band whenever it was emitted. The active channel count (2, or 3 with the
-identically zero T channel, requested through the `include_t_channel`
-keyword) is carried only as the type parameter `NCH`. `geometry` holds the
-derived response constants.
+fills the whole frequency band whenever it was emitted. The active channel
+count (2, or 3 with the identically zero T channel, requested through the
+`include_t_channel` keyword) is carried only as the type parameter `NCH`.
+`geometry` holds the derived response constants.
 """
 struct WaveformParams{T<:Real,NCH}
     mass_scale::T
@@ -370,6 +369,7 @@ end
 $(TYPEDSIGNATURES)
 
 Total mass `M = 𝓜 η^{-3/5}` from the chirp mass and the symmetric mass ratio.
+`M` is in the unit of `chirp_mass` ([s] throughout the package).
 """
 @inline total_mass(chirp_mass, eta) = chirp_mass * eta^(-3 / 5)
 
@@ -383,7 +383,7 @@ Mass asymmetry `δ = (m₁ − m₂)/M = √(1 − 4η)` (non-negative: `m₁ �
 """
 $(TYPEDSIGNATURES)
 
-Gravitational-wave frequency of the innermost stable circular orbit of a
+Gravitational-wave frequency [Hz] of the innermost stable circular orbit of a
 Schwarzschild binary of total mass `total_mass` [s]: `1/(6^{3/2} π M)`.
 
 ```jldoctest
@@ -452,7 +452,8 @@ end
 $(TYPEDSIGNATURES)
 
 Newtonian stationary-phase time at which the (2,2) harmonic radiates at
-frequency `F`: `t_c − 5𝓜/(256 v⁸)` with `v = (π 𝓜 F)^{1/3}`.
+frequency `F` [Hz]: `t_c − 5𝓜/(256 v⁸)` with `v = (π 𝓜 F)^{1/3}`.
+`chirp_mass` [s], `coalescence_time` [s]; returns a time [s].
 """
 @inline function spa_time(F, chirp_mass, coalescence_time)
     v = (π * chirp_mass * F)^(1 / 3)
@@ -462,10 +463,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Weight of the signal emitted at time `t` for an observation over
-`[0, observation_time]`:
+Dimensionless weight of the signal emitted at time `t` [s] for an observation over
+`[0, observation_time]` [s]:
 `W(t) = ½ [tanh(t/Δ) − tanh((t − T)/Δ)]` with `T = observation_time` and
-`Δ = edge_time`: unity inside the observation, ½ at either end, zero outside,
+`Δ = edge_time` [s]: unity inside the observation, ½ at either end, zero outside,
 with edges of time scale `Δ`. In the stationary-phase approximation a window
 that varies slowly against the local chirp time `1/√ḟ` multiplies each
 harmonic at its emission time `t_k(f)` ([`spa_time`](@ref)); `Δ` must
@@ -481,16 +482,17 @@ end
 $(TYPEDSIGNATURES)
 
 Smooth end-of-inspiral window applied to a harmonic radiating at (2,2)
-frequency `F`: `½[1 − tanh((F/f_isco − 1)/width)]`, unity well below the
+frequency `F` [Hz]: `½[1 − tanh((F/f_isco − 1)/width)]`, unity well below the
 innermost stable orbit and zero well above it, differentiable in every
-parameter (the cutoff moves with the total mass).
+parameter (the cutoff moves with the total mass). `f_isco` [Hz]; `width` is
+dimensionless.
 """
 @inline inspiral_taper(F, f_isco, width) = 0.5 * (1 - tanh((F / f_isco - 1) / width))
 
 """
 $(TYPEDSIGNATURES)
 
-Stationary-phase amplitudes `(a₊, a×)` of harmonic `k` at frequency `f` for a
+Stationary-phase amplitudes `(a₊, a×)` of harmonic `k` at frequency `f` [Hz] for a
 source at luminosity `distance` [s]: the polarization amplitudes of
 Blanchet, Iyer, Will & Wiseman (leading order for `k = 2`, 0.5PN order for
 `k = 1, 3`, both ∝ the mass asymmetry `δ`),
@@ -502,6 +504,7 @@ phase approximation: harmonic `k` has phase `kψ`, so
 Newtonian chirp rate at its (2,2) frequency `F = 2f/k`. The `×`
 amplitudes multiply `sin(kψ)` and enter the strain with a factor `−i`. For
 `k = 2` this reproduces `√(5/24) π^{-2/3} 𝓜^{5/6} f^{-7/6} (1 + c²)/(2D)`.
+`chirp_mass` [s], `inclination` [rad]; the amplitudes are in [Hz⁻¹].
 """
 @inline function harmonic_amplitudes(f, k::Integer, chirp_mass, eta, inclination, distance)
     F = 2 * f / k

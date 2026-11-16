@@ -5,7 +5,7 @@ idle CPU, termination with signal escalation, and relaunch under a retry
 budget. A lost GPU dispatch, a reset device context or a crashed driver cannot
 be recovered inside the affected process; they are recovered by replacing it.
 
-The module is independent of the pipeline (standard library only): a
+The module is independent of the pipeline: a
 [`WorkerSpec`](@ref) describes how to launch the worker and how to observe its
 progress.
 """
@@ -43,7 +43,7 @@ configuration). Times in seconds.
     hang, ≥ 4 `poll_interval_s`.
   - `busy_stall_s = 7200`: no progress with the CPU busy for this long ends the
     attempt, ≥ `idle_stall_s`.
-  - `cpu_idle_cores = 0.05`: utilisation below which the worker is idle, in (0, 1].
+  - `cpu_idle_cores = 0.05`: utilization below which the worker is idle, in (0, 1].
   - `term_grace_s = 60`: wait between `SIGTERM` and `SIGKILL`, > 0.
   - `kill_wait_s = 120`: wait for the process to disappear after `SIGKILL`, > 0.
   - `backoff_s = 30`: pause before a relaunch, ≥ 0.
@@ -193,7 +193,7 @@ function observe(spec::WorkerSpec)
     return (ticks = beat === nothing ? -1 : beat.ticks, bytes = bytes)
 end
 
-# CPU utilisation in cores over the trailing window, or `nothing` until the
+# CPU utilization in cores over the trailing window, or `nothing` until the
 # samples span 80 % of it
 function trailing_utilisation(samples::Vector{Tuple{Float64,Float64}}, window_s::Real)
     isempty(samples) && return nothing
@@ -320,17 +320,17 @@ after each attempt; `abandoned` lists the units given up on).
 
 An attempt ends when the worker exits or when the watchdog ends it: no
 heartbeat within `startup_grace_s`; no progress for `idle_stall_s` while the
-CPU utilisation over that window is below `cpu_idle_cores` (a hang: the
+CPU utilization over that window is below `cpu_idle_cores` (a hang: the
 process waits on something that never arrives); or no progress for
 `busy_stall_s` whatever the CPU does. Progress is any change of the heartbeat
 tick count or of the total size of `spec.progress_paths()`.
 
-After an attempt that is neither complete nor a configuration error the worker
-is relaunched, at most `max_retries` times. Attempts that finish no new work
-item are counted; `max_stalled_retries` of them in a row abandon the blocking
-unit (`spec.abandon_stalled!`), so a deterministic failure ends in a few
-attempts while failures that arrive after some progress draw on `max_retries`
-only.
+The worker is relaunched after an attempt that is not complete, partial, a
+configuration error or wedged, at most `max_retries` times. Attempts that
+finish no new work item are counted; `max_stalled_retries` of them in a row
+abandon the blocking unit (`spec.abandon_stalled!`), so a deterministic
+failure ends in a few attempts while failures that arrive after some
+progress draw on `max_retries` only.
 """
 function supervise(spec::WorkerSpec, settings::SupervisionSettings;
     ledger_path::AbstractString)

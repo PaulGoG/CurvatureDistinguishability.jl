@@ -81,10 +81,10 @@ catch err
 end
 
 # Load a GPU package only when the configuration asks for one and it is
-# installed in this environment: no blind try/catch, loud diagnostics. The
-# package extension activates whichever of the two is loaded last, so the
-# GPU package may follow the package itself; the [hardware] table is read
-# from the effective configuration (an overlay merged onto its base).
+# installed in this environment; a requested package that is not installed
+# is reported. The package extension activates whichever of the two is loaded
+# last, so the GPU package may follow the package itself; the [hardware] table
+# is read from the effective configuration (an overlay merged onto its base).
 const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
     "metal" => "Metal", "oneapi" => "oneAPI")
 let hw = get(effective_config(config_path), "hardware", Dict{String,Any}())

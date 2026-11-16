@@ -75,7 +75,8 @@ retry budget of its `[supervision]` table. The worker is
 into the same run directory after a hang, a crash or a failed stage; finished
 stages and work items are never recomputed. Returns `(run_dir, result)` with a
 `Supervision.SupervisionResult`; a configuration whose run is already complete
-returns at once with status `:complete` and no attempts.
+returns at once with status `:complete` and no attempts. `output_dir` is
+resolved relative to `project_root`.
 
 Keywords: `worker_script` (path of `scripts/run_pipeline.jl`), `julia` (binary,
 default: the running one), `threads` (worker thread specification, default

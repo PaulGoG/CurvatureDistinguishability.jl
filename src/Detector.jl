@@ -90,7 +90,7 @@ Orbital Doppler phase `2πf n̂·R_c(t)` of a wave from direction `n̂` received
 at the constellation centre `R_c = R(cos α, sin α, 0)`: a wavefront reaches
 the centre `n̂·R_c` light-seconds before the solar-system barycentre, which
 in the `e^{-2πift}` Fourier convention multiplies the barycentric strain by
-`e^{+2πif n̂·R_c}`.
+`e^{+2πif n̂·R_c}`. `f` [Hz]; returns a phase [rad].
 """
 @inline function doppler_phase(f, cos_alpha, sin_alpha, geometry::ResponseGeometry)
     n = geometry.source_direction
@@ -101,7 +101,7 @@ end
 $(TYPEDSIGNATURES)
 
 Antenna patterns of the noise-orthogonal channels at time `t` [s]:
-`(F⁺_A, F×_A, F⁺_E, F×_E)`. Each spacecraft `i` synthesises a Michelson
+`(F⁺_A, F×_A, F⁺_E, F×_E)`. Each spacecraft `i` synthesizes a Michelson
 interferometer with detector tensor `D_i = ½(â⊗â − b̂⊗b̂)` from its two arm
 unit vectors, giving `F⁺_i = D_i : e⁺` and `F×_i = D_i : e×` with the
 wave-frame polarization tensors of [`ResponseGeometry`](@ref); the three
@@ -150,9 +150,10 @@ over the harmonics `k` of [`harmonic_amplitudes`](@ref), each with its own
 stationary-phase phase [`harmonic_phase`](@ref), its own emission time
 `t_k = t(2f/k)` ([`spa_time`](@ref)) at which the antenna patterns
 [`channel_patterns`](@ref) and the Doppler phase [`doppler_phase`](@ref) are
-evaluated, the finite-observation weight ([`observation_window`](@ref), when
-`wp.observation_time > 0`), the innermost-stable-orbit window `w_k` ([`inspiral_taper`](@ref)
-at the harmonic's (2,2) frequency) and the transfer roll-off
+evaluated, the weight `w_k`, product of the finite-observation window
+([`observation_window`](@ref), when `wp.observation_time > 0`) and the
+innermost-stable-orbit taper ([`inspiral_taper`](@ref) at the harmonic's (2,2)
+frequency), and the transfer roll-off
 `𝒯 = [1 + 0.6 (f/f★)²]^{-1/2}`. The 0.5PN harmonics are skipped at equal
 mass, where their amplitudes vanish. Generic over `Real` (including
 `ForwardDiff.Dual`); the single scalar core shared by the broadcast model,
@@ -205,7 +206,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Observed channel strains over `freqs` for the O(1)-scaled parameter vector
+Observed channel strains [Hz⁻¹] over `freqs` [Hz] for the O(1)-scaled parameter vector
 `theta = [D_L, 𝓜, t_c, φ_c, χ₁, χ₂]` (physical units restored through the
 scales in `wp`), as `(A, E)` or `(A, E, T)` with `T` identically zero
 (long-wavelength null channel) according to the channel count of `wp`. One

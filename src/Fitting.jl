@@ -15,7 +15,7 @@ public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask,
 
 """
 Minimum number of clean points for the log-log slope and the
-ratio-correction fits; with fewer points both return `NaN`.
+ratio-correction fits; with fewer points neither fit is reported (`NaN`).
 """
 const MIN_FIT_POINTS = 3
 # determinant underflow guard of the 2×2 ratio-correction normal equations
@@ -24,9 +24,13 @@ const DET_UNDERFLOW = 1e-300
 """
 $(TYPEDSIGNATURES)
 
-Least-squares slope of `log10(y)` against `log10(x)` with its standard
-error (NaN with fewer than 3 points). Fits the quartic-law exponent of a
-sweep's clean window; shared with the display-time refit in `RunFigures`.
+Unweighted least-squares slope of `log10(y)` against `log10(x)` with its
+standard error (`NaN` with fewer than 3 points; the slope itself needs 2).
+Fits the quartic-law exponent of a sweep's clean window; shared with the
+display-time refit in `RunFigures`. The points are deterministic, so the
+standard error measures their scatter about a power law over the fitted
+window, not a statistical uncertainty: the fitted value is an effective
+slope over that window.
 """
 function loglog_slope(x::AbstractVector, y::AbstractVector)
     lx, ly = log10.(x), log10.(y)
@@ -44,6 +48,8 @@ $(TYPEDSIGNATURES)
 Least-squares fit of `ratio − 1 ≈ c₁δ + c₂δ²` (2×2 normal equations solved in
 closed form), quantifying the leading `O(δ⁵)` correction to the quartic law
 relative to `D²_th`. Returns NaNs with fewer than 3 points.
+`c₁_err` is the unweighted least-squares standard error of `c₁`, a measure of scatter in
+the same sense as that of [`loglog_slope`](@ref).
 """
 function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     n = length(deltas)
@@ -82,7 +88,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Bootstrap estimate of a sweep's optimizer floor: the floor-dominated points
+Estimate of a sweep's optimizer floor: the floor-dominated points
 are the contiguous run of separations, starting from the smallest, whose
 `D²_num/D²_theo` ratio is at or above `ratio_threshold`
 (`[pipeline.sweep_settings].floor_detection_ratio`). A flat floor under a

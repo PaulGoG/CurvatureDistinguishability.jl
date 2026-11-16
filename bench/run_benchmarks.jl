@@ -1,6 +1,5 @@
-# Performance benchmarks, kept out of the test suite by design (benchmarks
-# measure, tests assert). Uses its own environment (activate.jl); the
-# package resolves by path via [sources].
+# Performance benchmarks, kept out of the test suite. Uses its own environment
+# (activate.jl); the package resolves by path via [sources].
 #
 #   julia --threads=auto bench/run_benchmarks.jl
 #

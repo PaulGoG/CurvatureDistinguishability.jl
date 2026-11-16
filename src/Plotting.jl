@@ -415,8 +415,8 @@ end
 $(TYPEDSIGNATURES)
 
 Per-tick scientific-notation labels with a common exponent across the
-axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`), the fallback for
-small-value axes where `offset_ticks` finds no clean integer-mantissa grid.
+axis (e.g. `-1×10⁻³, -0.5×10⁻³, 0, 0.5×10⁻³, 1×10⁻³`), the fallback of the
+zone-map axes when `symmetric_ticks` finds no clean grid.
 Every tick carries the same exponent, so an axis never mixes 10⁻³ with
 10⁻⁴ labels.
 """
@@ -455,7 +455,7 @@ the linked ratio axis `D²_num/D²_theo` at row 2 of a nested `GridLayout`.
 Everything of the single figure is drawn except the legend, whose material is
 returned instead. With `slope_in_axis = true` the fitted slope is written at
 the top left of the main axis and the numerical series label is the plain
-`D²_numerical`; otherwise the slope is folded into that label. `compact`
+`D²_opt`; otherwise the slope is folded into that label. `compact`
 selects the half-width variant for composites (at most five decade ticks per
 axis, narrower tick-label space, in-axis annotations two points smaller).
 
@@ -491,7 +491,7 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
     theory_line = lines!(ax1, deltas, d2_theo; color = :darkred, linewidth = 4.0)
     numerical_scatter = scatter!(ax1, deltas[pos], d2_num[pos]; color = :dodgerblue,
         strokecolor = :black, strokewidth = 1.4, markersize = 22)
-    # points inside the optimizer-floor band are stricken through by a
+    # points inside the optimizer-floor band are struck through by a
     # thin X stretching over the symbol (no legend entry): the floor, not
     # the physics, sets them
     floored =
@@ -501,7 +501,7 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         marker = '×', color = :grey15, markersize = 42)
     ylims!(ax1, ylo, yhi)
 
-    # legend material: the fitted slope is part of the D²_numerical label
+    # legend material: the fitted slope is part of the D²_opt label
     # (or written in the axis), not a separate item, and the sub-floor band
     # is named by a patch in its own colour rather than by an in-axis text
     # (which the δ_min line crosses whenever δ_min sits in the last decade)
@@ -552,16 +552,15 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
         xlabel = L"\delta",
         ylabel = L"D^2_{\mathrm{opt}}/D^2_{\mathrm{th}}", xticks = x_ticks,
         yticklabelspace = ticklabelspace)
-    # The ratio panel repeats the top panel's vocabulary exactly: dark-red
-    # solid reference at 1 (the theory), blue dots, and floor-band points
-    # stricken through by the same thin X; their true ratio diverges, so
-    # they sit clamped at the panel top. Non-converged points carry no
-    # special mark: the iteration/tolerance caps are strict enough that
-    # flagged points at ratio ≈ 1 are genuine optima.
+    # The ratio panel repeats the top panel's vocabulary: dark-red solid
+    # reference at 1 (the theory) and blue dots; floor-band points are left
+    # out (below). Non-converged points carry no special mark: the
+    # iteration/tolerance caps are strict enough that flagged points at
+    # ratio ≈ 1 are genuine optima.
     ratio = d2_num ./ d2_theo
     hlines!(ax2, [1.0]; color = :darkred, linewidth = 3.0)
     # points below the optimizer floor are discarded here: their ratio
-    # is floor-set and meaningless; the top panel shows them X-stricken
+    # is floor-set and meaningless; the top panel strikes them through
     keep = pos .& .!floored
     # symmetric, dynamically chosen y-limits around ratio 1: the smallest
     # symmetry-appealing half-width that holds every kept point with
@@ -622,9 +621,9 @@ Quartic-scaling validation figure: log–log D²(δ) with the δ⁴ prediction
 optimizer-floor band, and a linked ratio panel `D²_num/D²_theo` that makes
 prefactor agreement and higher-order departures visible (navy fitted
 departure curve, from the first point to the right margin). Both panels use
-one vocabulary: blue dots, and floor-band points stricken through by a thin
-X (clamped at the ratio-panel top, where their true ratio diverges);
-non-convergence carries no special mark. The legend sits on top:
+one vocabulary of blue dots; floor-band points are struck through by a thin X
+in the main panel and left out of the ratio panel, where their ratio is set by
+the floor; non-convergence carries no special mark. The legend sits on top:
 `D²_th`, `D²_opt` with the fitted exponent folded into its
 label, and (only when the band is drawn) a patch in the band's own grey
 naming the optimizer floor. `clean` is the Bool mask of points used for the
@@ -671,8 +670,8 @@ $(TYPEDSIGNATURES)
 `passes` applications of the symmetric five-point binomial kernel
 `[1, 4, 6, 4, 1]/16` to `v`, returning a new `Vector{Float64}` (`passes = 0`
 copies). The kernel acts on the values themselves, not their logarithms, so
-the area under the curve is preserved. At the ends the truncated kernel is
-renormalised by the weights actually used (no padding, no reflection),
+the sum of the values is preserved away from the ends. At the ends the truncated kernel is
+renormalized by the weights actually used (no padding, no reflection),
 and non-finite entries are skipped in the local average, a non-finite entry
 staying non-finite.
 """
@@ -781,7 +780,6 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
         xticks = x_ticks,
         yticks = decade_ticks(ylo1, yhi1; maxticks = maxticks),
         yticklabelspace = ticklabelspace)
-    # envelopes clamped at the frame bottom: no shading below the frame
     # envelopes: the window minima of an oscillating density reach the
     # cancellation nodes, decades below the means; the drawn envelope stops
     # ENVELOPE_DEPTH below the window mean and at the frame bottom
@@ -1122,7 +1120,7 @@ dashed line with no fill, showing what curvature alone would allow; along
 degenerate directions it is unbounded and simply runs off the frame. The
 prior box itself is not drawn: the red runs mark where a wall is active, and
 the annotation names the active walls with their values (from `box`, e.g.
-"… prior-limited by Δχ₁ = 0.2"). Same-unit planes (spin–spin) are drawn
+"Prior walls Δχ₁ = 0.2 bound …"). Same-unit planes (spin–spin) are drawn
 with `DataAspect`, except a needle: a zone whose principal-axis aspect
 (`principal_axis`) reaches `NEEDLE_ASPECT` (the exact null spin direction of
 the 1.5PN model) is rotated into the frame of that direction (abscissa along
@@ -1367,7 +1365,7 @@ $(TYPEDSIGNATURES)
 
 Argument check of the composite builders: at least one panel, `ncols ≥ 1`,
 positive panel sizes, and either no labels or one per panel. Returns the
-panel labels, generated as `(a)`, `(b)`, … when `labels` is empty.
+panel labels, none when `labels` is empty.
 """
 function composite_labels(panels::AbstractVector, ncols::Int,
     panel_size::Tuple{Int,Int}, labels::AbstractVector{<:AbstractString})

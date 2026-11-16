@@ -57,7 +57,7 @@ end
 
 """
 Validated configuration from a run directory's config snapshot; errors when
-the snapshot is absent (pre-snapshot runs cannot be regenerated faithfully).
+the snapshot is absent (without it a run cannot be regenerated faithfully).
 """
 function run_config(run_dir::AbstractString)
     snapshot = joinpath(run_dir, "config.toml")
@@ -86,7 +86,7 @@ coefficients are the persisted run-time values from `sweep_meta.toml`; with
 `refit = true` they are refitted from the CSV with the current fitting code
 (persisted metadata is never modified). With `refit = false` a missing or
 sentinel (negative) `slope_window` in `sweep_meta.toml` is recomputed from
-the CSV, so runs that predate the key regenerate with the window exponent.
+the CSV.
 
 Returns the NamedTuple `(deltas, d2_num, d2_theo, rho_sq, delta_min, slope,
 slope_err, clean, floor_level, c1, c2, slope_all, slope_all_err, slope_window,
@@ -131,7 +131,7 @@ function sweep_panel_data(run_dir::AbstractString, case::AbstractString;
         slope_all_err = Float64(get(meta, "slope_err", NaN))
         c1 = Float64(get(meta, "c1", NaN))
         c2 = Float64(get(meta, "c2", NaN))
-        # negative: sentinel for NaN, or a run that predates the key
+        # negative: sentinel for NaN, or the key is absent
         slope_window = Float64(get(meta, "slope_window", -1.0))
         slope_window_err = Float64(get(meta, "slope_window_err", -1.0))
         if slope_window < 0
@@ -195,14 +195,15 @@ quoted window exponent with its fallback are described there), the residual
 spectra by [`residual_panel_data`](@ref).
 With `rho` the discernibility threshold is rescaled exactly from
 the persisted normalized curvature and the sweep's amplitude ratio: `suffix`
-carries the `_rho…` tag and `residual` is `nothing` (the residual spectrum is
-threshold-independent). `delta_min` is the threshold separation drawn in the
-scaling figure.
+carries the `_rho…` tag and `residual` and `residual_threshold` are `nothing`
+(the residual spectra are threshold-independent). `delta_min` is the threshold
+separation drawn in the scaling figure.
 
 Returns the NamedTuple `(scaling, residual, residual_threshold, suffix,
 delta_min, slope, slope_err, slope_window, slope_window_err)`: the figures,
 the threshold data, and the all-clean and window log-log slopes with their
-standard errors (NaN when not fittable).
+standard errors (NaN when not fittable). `slope` is the fit over all clean
+points; `slope_window` the perturbative-window fit.
 """
 function sweep_figures(run_dir::AbstractString, case::AbstractString;
     refit::Bool = false, rho::Union{Nothing,Real} = nothing)
@@ -231,8 +232,7 @@ function sweep_figures(run_dir::AbstractString, case::AbstractString;
         star = residual_panel_data(run_dir, case; spectrum = "star")
         residual = residual_figure(star.spec, star.meta; delta_symbol = star.delta_symbol)
     end
-    # threshold companion (persisted only when the threshold point lies
-    # outside the validity window of the leading-order fit)
+    # threshold companion (persisted only when the threshold point differs from δ*)
     residual_threshold = nothing
     thr_path = joinpath(dir, "residual_spectrum_threshold.csv")
     if rho === nothing && isfile(thr_path) && haskey(meta, "delta_thr")

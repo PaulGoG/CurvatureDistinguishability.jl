@@ -54,7 +54,7 @@ end
 Fully parsed and validated pipeline configuration. Construction goes through
 [`load_and_validate_config`](@ref), which fails fast with a descriptive
 error for unusable input, emits warnings for suspicious-but-runnable
-values, and warns on every unknown key (typo protection). Constructed by
+values, and rejects every unknown key (typo protection). Constructed by
 keyword only (every field is required): the per-section parse helpers
 return NamedTuples keyed by field name, so no positional field order exists
 to get wrong.
@@ -433,8 +433,7 @@ function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
     reject_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
     number(key, default) = get_number(phys, key, default, "physics")
-    # finite observation [0, T_obs]: off unless requested, so that a
-    # configuration without the key computes what it always computed
+    # finite observation [0, T_obs]: off unless requested
     windowed = get_boolean(phys, "observation_window", false, "physics")
     window_edge_time = number("window_edge_time", wp_default.window_edge_time)
     window_edge_time > 0 ||
@@ -645,7 +644,7 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
         if amp_ratio != 1.0 && u[1] != 0
             config_error(
                 "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0; amplitude " *
-                "separation is expressed via amp_ratio (the A_harm law), not via the " *
+                "separation is expressed via amp_ratio, not via the " *
                 "sweep direction.",
             )
         end

@@ -15,7 +15,7 @@ fake_worker(program::AbstractString) =
 # A worker process reproduces a sweep table of the test process only up to the
 # summation order of its code generation: Pkg.test runs the in-process
 # reference with --check-bounds=yes (and coverage instrumentation in CI), which
-# changes the vectorised reductions of the geometry stage in the last bits.
+# changes the vectorized reductions of the geometry stage in the last bits.
 # Optimizer-trajectory columns are excluded, the physical columns are compared
 # to floating-point rounding, the discrete ones exactly.
 const TRAJECTORY_COLUMNS = ("Iterations", "GradNorm", "MultiStartGain")

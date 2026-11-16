@@ -94,6 +94,7 @@ end
 $(TYPEDSIGNATURES)
 
 Noise-weighted inner product `4 df Σ Re(h1* h2)/Sn` over the frequency grid.
+`h1`, `h2` [Hz⁻¹], `Sn_vals` [Hz⁻¹], `df` [Hz]; returns a dimensionless number.
 """
 function inner_product(
     h1::AbstractVector,
@@ -114,7 +115,8 @@ end
 $(TYPEDSIGNATURES)
 
 Sum of [`inner_product`](@ref) over corresponding channels of the tuples
-`H1`, `H2` (generic over 2-channel A/E and 3-channel A/E/T configurations).
+`H1`, `H2` [Hz⁻¹] (generic over 2-channel A/E and 3-channel A/E/T configurations).
+`Sn_vals` [Hz⁻¹], `df` [Hz]; returns a dimensionless number.
 """
 function multi_channel_inner_product(
     H1::Tuple,
