@@ -56,9 +56,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `InterruptException` and `OutOfMemoryError` raised inside a work-item task
   end the run, as documented, instead of being recorded as a stage failure.
 - A configuration value of the wrong type (a number where a string, a table or
-  an array of tables is expected) is a configuration error naming the key, and
-  a finite interval for the periodic `coalescence_phase` in
-  `[parameter_bounds]` is refused.
+  an array of tables is expected; a Boolean, an infinity or a NaN where a
+  number is expected) is a configuration error naming the key, and a finite
+  interval for the periodic `coalescence_phase` in `[parameter_bounds]` is
+  refused.
 - The `clean` mask passed to `scaling_figure` and `scaling_panel!` selects the
   floor-band points; it was ignored in favour of a recomputed rule.
 

@@ -183,11 +183,13 @@ end
 
 """
 Fetch `key` from table `t` (or `default`) as a `Float64`, erroring with the
-offending `[context]` path on a non-numeric value.
+offending `[context]` path on a value that is not a finite number (a Boolean
+is not a number here, although Julia would convert it).
 """
 get_number(t, key, default, context) = begin
     v = get(t, key, default)
-    v isa Real || config_error("[$context].$key must be a number, got $(typeof(v))")
+    (v isa Real && !(v isa Bool) && isfinite(v)) ||
+        config_error("[$context].$key must be a finite number, got $(repr(v))")
     Float64(v)
 end
 
@@ -229,7 +231,7 @@ offending `[context]` path on a non-integer value.
 """
 get_integer(t, key, default, context) = begin
     v = get(t, key, default)
-    (v isa Integer || (v isa Real && isinteger(v))) ||
+    (!(v isa Bool) && (v isa Integer || (v isa Real && isinteger(v)))) ||
         config_error("[$context].$key must be an integer, got $(repr(v))")
     Int(v)
 end

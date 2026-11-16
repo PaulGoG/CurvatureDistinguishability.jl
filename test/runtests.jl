@@ -926,6 +926,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 write_cfg(dir, "[supervision]\nmax_retries = -1\n"))
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[supervision]\nmax_retries = 1.5\n"))
+            # a Boolean is not a number and an infinite or undefined value is
+            # not a setting: both are refused with the key named
+            for (bad, key) in (
+                ("[supervision]\nmax_retries = true\n", "[supervision].max_retries"),
+                ("[supervision]\nbackoff_s = inf\n", "[supervision].backoff_s"),
+                ("[physics]\nmass_scale = inf\n", "[physics].mass_scale"),
+                ("[physics]\neta = nan\n", "[physics].eta"),
+                ("[mapping]\nn_angles = true\n", "[mapping].n_angles"),
+                ("[physics]\nphase_pn_order = true\n", "[physics].phase_pn_order"),
+            )
+                @test_throws key load_and_validate_config(write_cfg(dir, bad))
+            end
             # an explicit run directory that holds the snapshot of another
             # configuration is refused before anything is computed
             other = joinpath(dir, "other_run")
