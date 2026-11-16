@@ -967,6 +967,17 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 "is limited by the physical spin prior [-1, 1], not by curvature.",
             )
         end
+        if px in SPIN_INDICES && py in SPIN_INDICES &&
+           prior_frac > SPIN_PRIOR_NOTE_FRACTION && cfg.wp.phase_pn_order == 2
+            logline(
+                log_io,
+                "  [note] at 2PN order the spins enter the phase through β and σ; " *
+                "a spin zone limited by the prior marks a base point on or near " *
+                "the line where their gradients are parallel (zero spins; equal " *
+                "spins at equal mass), on which one spin combination is flat to " *
+                "first order.",
+            )
+        end
 
         if cfg.monitoring_enabled && progress_enabled()
             println(stdout, map_diagnostic_panel(polar.angle, r_cap, prior_frac))

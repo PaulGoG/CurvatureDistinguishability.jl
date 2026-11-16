@@ -410,7 +410,20 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 1.0)
         @test (@inferred channel_strain(THETA0, FIX_FREQS, wp_2pn)) isa
               NTuple{2,Vector{ComplexF64}}
-        # the default model is untouched by the switch: same strain, bit for bit
+        # the default order evaluates the 1.5PN bracket itself: the 2PN term
+        # with an exact zero changes no bit, for values and for dual numbers
+        for eta in (0.25, 0.16)
+            beta = spin_beta(0.7, -0.2, eta)
+            bracket_15pn(F) =
+                let v = (π * total_mass(Mc, eta) * F)^(1 / 3)
+                    (3 / (128 * eta * v^5)) *
+                    (1 + (3715 / 756 + 55 * eta / 9) * v^2 + (4 * beta - 16 * π) * v^3)
+                end
+            @test pn_phase(3e-3, Mc, eta, beta) == bracket_15pn(3e-3)
+            @test ForwardDiff.derivative(F -> pn_phase(F, Mc, eta, beta), 3e-3) ==
+                  ForwardDiff.derivative(bracket_15pn, 3e-3)
+        end
+        # naming the default order changes nothing
         @test channel_strain(THETA0, FIX_FREQS, FIX_WP) ==
               channel_strain(THETA0, FIX_FREQS,
             waveform_params(; FIX_PHYS..., phase_pn_order = 1.5))
@@ -669,6 +682,18 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             q -> CD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data[1], data[2],
                 FIX_DF, FIX_WP, CPU())
         @test ForwardDiff.gradient(dl, p) ≈ g_loop rtol = 1e-12
+        # the same at 2PN order: the kernel reads the order from its waveform
+        # parameters
+        wp2 = waveform_params(; FIX_PHYS..., phase_pn_order = 2)
+        data2 = map((a, b) -> a .+ b, channel_strain(THETA0, FIX_FREQS, wp2),
+            channel_strain(θ2, FIX_FREQS, wp2))
+        loop2 = loss_function(data2, FIX_FREQS, FIX_SN, FIX_DF, wp2, CPU())
+        dl2 =
+            q -> CD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data2[1], data2[2],
+                FIX_DF, wp2, CPU())
+        @test dl2(p) ≈ loop2(p) rtol = 1e-12
+        @test ForwardDiff.gradient(dl2, p) ≈ ForwardDiff.gradient(loop2, p) rtol = 1e-12
+        @test loop2(p) != loop(p)
         # lanes path: nested (Hessian) duals through the same kernel layout
         @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
         # chunked Hessians through the lanes layout equal the full 49-lane one on
@@ -908,7 +933,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             cp(write_cfg(dir, "[physics]\neta = 0.2\n"), joinpath(other, "config.toml"))
             @test_throws "another configuration" run_pipeline(
                 write_cfg(dir, "[physics]\neta = 0.21\n"), dir, "out"; run_dir = other)
-            @test !isdir(joinpath(dir, "out"))
+            @test readdir(other) == ["config.toml"]
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[physics]\necliptic_latitude = 2.0\n"))
             @test_throws ArgumentError load_and_validate_config(
@@ -1379,6 +1404,14 @@ enabled = true
         @test CD.Fitting.angular_fraction(uniform, falses(8)) == 0.0
         @test CD.Fitting.angular_fraction(Float64[], Bool[]) == 0.0
         @test_throws DimensionMismatch CD.Fitting.angular_fraction([0.0, 1.0], [true])
+        # a grid that lists both 0 and 2π shares one direction between the copies
+        @test CD.Fitting.angular_fraction([0.0, π / 2, π, 3π / 2, 2π],
+            [true, false, false, false, true]) ≈ 0.25 rtol = 1e-12
+        @test CD.Fitting.angular_fraction([0.0, π / 2, π, 3π / 2],
+            [true, false, false, false]) ≈ 0.25 rtol = 1e-12
+        # more than one turn has no angular measure
+        @test_throws ArgumentError CD.Fitting.angular_fraction([0.0, 3π, 6π],
+            [true, false, false])
     end
 
     @testset "Orchestrator: resource planning, seeding, mirroring" begin
@@ -1726,7 +1759,6 @@ enabled = true
         @test lims_top[2][1] ≈ max(minimum(sig), maximum(sig) * 1e-8) / 3 rtol = 1e-6
         @test lims_top[2][2] ≈ maximum(sig) * 3 rtol = 1e-6
         lims_bot = p.bottom.limits[]
-        @test CD.Plotting.FRAME_DEPTH == 1e-8
         @test lims_bot[2][1] ≈ maximum(spec.res_max_A) * CD.Plotting.FRAME_DEPTH rtol = 1e-6
         fig_r = residual_figure(spec, meta)
         @test fig_r isa CD.Plotting.Figure

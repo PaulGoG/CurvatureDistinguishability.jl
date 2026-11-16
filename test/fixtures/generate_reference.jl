@@ -15,24 +15,21 @@ const FIX_SN =
     analytic_noise_psd.(FIX_FREQS; noise = NoiseParams(confusion_enabled = false))
 
 # largest relative change of the numeric columns shared by a committed table and
-# its regenerated values; rows with a zero committed value are skipped
+# its regenerated values. Entries below 1e-8 of their column's largest magnitude
+# are skipped: on directions whose curvature is round-off they are noise
 function max_relative_change(old::DataFrame, new::DataFrame)
     worst = 0.0
     for name in intersect(names(old), names(new))
-        for (a, b) in zip(old[!, name], new[!, name])
-            (a isa Real && b isa Real && a != 0) || continue
+        col = old[!, name]
+        eltype(col) <: Real || continue
+        floor = 1e-8 * maximum(abs, col; init = 0.0)
+        for (a, b) in zip(col, new[!, name])
+            (b isa Real && abs(a) > floor) || continue
             worst = max(worst, abs(b / a - 1))
         end
     end
     return worst
 end
-
-# psd.csv: header-less (f, Sn), instrumental noise only
-CSV.write(
-    joinpath(FIXDIR, "psd.csv"),
-    DataFrame(f = FIX_FREQS, Sn = FIX_SN);
-    header = false,
-)
 
 # sweep.csv: the reference direction on a log-spaced δ grid
 u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
@@ -60,6 +57,14 @@ worst < 2e-3 || error(
     "sweep fixture not written: optimized and predicted D² differ by up to $worst")
 sweep = DataFrame(Delta = deltas, D2_Numerical = d2_num, D2_Theoretical = d2_theo,
     K_u_Norm = fill(K_norm, length(deltas)))
+# psd.csv: header-less (f, Sn), instrumental noise only; written once the sweep
+# has passed its guard, so a refused regeneration leaves every table as it was
+psd_path = joinpath(FIXDIR, "psd.csv")
+psd = DataFrame(f = FIX_FREQS, Sn = FIX_SN)
+isfile(psd_path) && println("psd.csv: max relative change ",
+    max_relative_change(CSV.read(psd_path, DataFrame; header = [:f, :Sn]), psd))
+CSV.write(psd_path, psd; header = false)
+
 sweep_path = joinpath(FIXDIR, "sweep.csv")
 isfile(sweep_path) && println("sweep.csv: max relative change ",
     max_relative_change(CSV.read(sweep_path, DataFrame), sweep))

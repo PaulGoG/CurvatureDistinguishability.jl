@@ -128,8 +128,10 @@ Fraction of the full circle subtended by the directions flagged in `mask`.
 Each direction of the cyclic grid `angle` [rad] (any order, spanning one
 turn) carries half the gap to either neighbour, so the result is an angular
 measure whatever the local sampling density; a plain count over-weights
-refined regions. Returns `0.0` for an empty grid and the flag itself for a
-single direction.
+refined regions. A gap between a flagged and an unflagged direction counts
+half, so the fraction is resolved to about one sampling gap per transition.
+Returns `0.0` for an empty grid and the flag itself for a single direction; a
+grid that spans more than one turn is an `ArgumentError`.
 """
 function angular_fraction(angle::AbstractVector{<:Real}, mask::AbstractVector{Bool})
     length(angle) == length(mask) || throw(
@@ -141,6 +143,13 @@ function angular_fraction(angle::AbstractVector{<:Real}, mask::AbstractVector{Bo
     n = length(angle)
     n == 0 && return 0.0
     n == 1 && return mask[1] ? 1.0 : 0.0
+    lo, hi = extrema(angle)
+    hi - lo <= 2π || throw(
+        ArgumentError(
+            "angular_fraction: the grid must span at most one turn, got angles " *
+            "from $lo to $hi",
+        ),
+    )
     order = sortperm(angle)
     flagged = 0.0
     for k in 1:n
