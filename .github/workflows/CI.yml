@@ -19,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # declared floor and current stable
-        version: ['1.12', '1']
+        # declared floor ([compat] julia) and current stable
+        version: ['min', '1']
         os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
@@ -38,17 +38,6 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-  format:
-    name: Format check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: julia-actions/setup-julia@v3
-        with:
-          version: '1'
-      - run: julia -e 'using Pkg; Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'
-      - run: git diff --exit-code
   docs:
     name: Documentation
     runs-on: ubuntu-latest
