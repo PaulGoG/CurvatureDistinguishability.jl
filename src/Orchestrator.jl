@@ -948,7 +948,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 log_io,
                 @sprintf("        degenerate directions    : %.1f%%", 100degen_frac),
             )
-        if px in SPIN_INDICES && py in SPIN_INDICES && prior_frac > SPIN_PRIOR_NOTE_FRACTION
+        if px in SPIN_INDICES && py in SPIN_INDICES &&
+           prior_frac > SPIN_PRIOR_NOTE_FRACTION && cfg.wp.phase_pn_order == 1.5
             logline(
                 log_io,
                 "  [note] the 1.5PN phase depends on the spins only through β; " *

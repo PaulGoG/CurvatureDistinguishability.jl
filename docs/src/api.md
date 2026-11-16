@@ -45,6 +45,8 @@ CurvatureDistinguishability.Physics.total_mass
 CurvatureDistinguishability.Physics.mass_asymmetry
 CurvatureDistinguishability.Physics.isco_frequency
 CurvatureDistinguishability.Physics.spin_beta
+CurvatureDistinguishability.Physics.spin_sigma
+CurvatureDistinguishability.Physics.phase_coefficient_2pn
 CurvatureDistinguishability.Physics.pn_phase
 CurvatureDistinguishability.Physics.harmonic_phase
 CurvatureDistinguishability.Physics.spa_time

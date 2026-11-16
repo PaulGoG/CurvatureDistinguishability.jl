@@ -364,6 +364,104 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             1e-12
     end
 
+    @testset "2PN phase: spin–spin coefficient and the lifted spin degeneracy" begin
+        Mc = 1.5
+        # σ and ψ₄ against exact rational evaluations of the literature forms
+        # (Arun et al. 2009 with its erratum, reduced to aligned spins, and
+        # Khan et al. 2016, Appendix B)
+        for (eta, chi1, chi2, sigma_ref, psi4_ref) in (
+            (1 / 4, 1 / 2, 1 / 2, 5 / 4, 8571995 / 254016),
+            (2 / 9, 7 / 10, 1 / 2, 28961 / 14400, 550410989 / 22861440),
+            (4 / 25, 7 / 10, -1 / 5, 2749 / 2000, 1655708177 / 63504000),
+            (2 / 9, 3 / 10, -3 / 10, 89 / 1600, 997479149 / 22861440),
+        )
+            sigma = spin_sigma(chi1, chi2, eta)
+            @test sigma ≈ sigma_ref rtol = 1e-13
+            @test CD.Physics.phase_coefficient_2pn(eta, sigma) ≈ psi4_ref rtol = 1e-13
+        end
+        # per body: spin1–spin2 coupling 79/8 = (721 − 247)/48, then
+        # quadrupole–monopole 5 plus self-spin 1/16 weighted by (mᵢ/M)²
+        @test spin_sigma(0.9, -0.4, 0.16) ≈
+              (79 / 8) * 0.16 * 0.9 * (-0.4) +
+              (5 + 1 / 16) * (0.8^2 * 0.9^2 + 0.2^2 * 0.4^2) rtol = 1e-13
+        # exchanging the bodies at equal mass leaves σ unchanged
+        @test spin_sigma(0.7, -0.2, 0.25) ≈ spin_sigma(-0.2, 0.7, 0.25) rtol = 1e-14
+        # the 2PN term adds (3/(128 η v⁵)) ψ₄ v⁴ to the phase and nothing else;
+        # with ψ₄ = 0 the phase is the 1.5PN one
+        for eta in (0.25, 0.16)
+            beta = spin_beta(0.7, -0.2, eta)
+            psi4 = CD.Physics.phase_coefficient_2pn(eta, spin_sigma(0.7, -0.2, eta))
+            v = (π * total_mass(Mc, eta) * 3e-3)^(1 / 3)
+            @test pn_phase(3e-3, Mc, eta, beta, psi4) - pn_phase(3e-3, Mc, eta, beta) ≈
+                  3 * psi4 / (128 * eta * v) rtol = 1e-10
+            @test pn_phase(3e-3, Mc, eta, beta, 0.0) == pn_phase(3e-3, Mc, eta, beta)
+            @test harmonic_phase(3e-3, 3, Mc, eta, 200.0, 0.3, beta, 0.0) ==
+                  harmonic_phase(3e-3, 3, Mc, eta, 200.0, 0.3, beta)
+        end
+        @test (@inferred pn_phase(1e-3, 1.5, 0.16, 2.0, 30.0)) isa Float64
+        @test (@inferred spin_sigma(0.5, 0.3, 0.16)) isa Float64
+
+        # the model switch: 1.5PN by default, 2PN on request, nothing else
+        @test FIX_WP.phase_pn_order == 1.5
+        wp_2pn = waveform_params(; FIX_PHYS..., phase_pn_order = 2)
+        @test wp_2pn.phase_pn_order == 2.0
+        @test isbitstype(typeof(wp_2pn))
+        @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 2.5)
+        @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 1.0)
+        @test (@inferred channel_strain(THETA0, FIX_FREQS, wp_2pn)) isa
+              NTuple{2,Vector{ComplexF64}}
+        # the default model is untouched by the switch: same strain, bit for bit
+        @test channel_strain(THETA0, FIX_FREQS, FIX_WP) ==
+              channel_strain(THETA0, FIX_FREQS,
+            waveform_params(; FIX_PHYS..., phase_pn_order = 1.5))
+        @test channel_strain(THETA0, FIX_FREQS, wp_2pn)[1] !=
+              channel_strain(THETA0, FIX_FREQS, FIX_WP)[1]
+
+        # Tangent rank. At 1.5PN the spins enter through β alone: rank 5 at
+        # every base point. At 2PN they enter through β and σ, and the rank is
+        # 6 except where ∇σ ∥ ∇β, the line χ₂/χ₁ = q(807 − 713q)/(807q − 713),
+        # q = m₁/m₂, through the origin of the spin plane: χ₂ = χ₁ at equal
+        # mass (exchange symmetry), χ₂ = −(1238/901)χ₁ at η = 2/9
+        tangent_rank(theta, wp) =
+            length(compute_tangent_basis(theta, FIX_FREQS, FIX_SN, FIX_DF, wp))
+        base_point(chi1, chi2) = [1.0, 1.5, 2.0, 0.0, chi1, chi2]
+        for (eta, slope) in ((0.25, 1.0), (2 / 9, -1238 / 901))
+            wp15 = waveform_params(; merge(FIX_PHYS, (; eta))...)
+            wp2 = waveform_params(; merge(FIX_PHYS, (; eta, phase_pn_order = 2))...)
+            on_line = base_point(0.5, 0.5 * slope)
+            off_line = base_point(0.5, 0.5 * slope + 0.3)
+            @test tangent_rank(on_line, wp15) == 5
+            @test tangent_rank(off_line, wp15) == 5
+            @test tangent_rank(on_line, wp2) == 5
+            @test tangent_rank(off_line, wp2) == 6
+            @test tangent_rank(base_point(0.0, 0.0), wp2) == 5
+        end
+
+        # Fisher norm along the 1.5PN null direction at equal mass, u = e₅ − e₆
+        # (χ_a → χ_a + s at fixed χ_s): β is unchanged, σ = 5χ_s² + χ_a²/16
+        # changes at the rate χ_a/8, and only the k = 2 harmonic radiates, so
+        # ∂_u h̃ = i (χ_a/8) [30/(128 η v)] h̃ and
+        # g(u,u) = (χ_a/8)² · 4 df Σ_C Σ_f [30/(128 η v)]² |h̃_C|²/S_n
+        let chi1 = 0.8, chi2 = 0.2, eta = 0.25
+            theta = base_point(chi1, chi2)
+            u = [0.0, 0.0, 0.0, 0.0, 1.0, -1.0]
+            A, E = channel_strain(theta, FIX_FREQS, wp_2pn)
+            M = total_mass(theta[2] * wp_2pn.mass_scale, eta)
+            closed =
+                ((chi1 - chi2) / 2 / 8)^2 * 4 * FIX_DF *
+                sum(
+                    (30 / (128 * eta * (π * M * f)^(1 / 3)))^2 * (abs2(a) + abs2(e)) / s
+                    for (f, a, e, s) in zip(FIX_FREQS, A, E, FIX_SN)
+                )
+            _, g_2pn =
+                compute_extrinsic_curvature(theta, u, FIX_FREQS, FIX_SN, FIX_DF, wp_2pn)
+            _, g_15pn =
+                compute_extrinsic_curvature(theta, u, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+            @test g_2pn ≈ closed rtol = 1e-9
+            @test g_15pn < 1e-18 * g_2pn
+        end
+    end
+
     @testset "Geometry A/B against reference fixtures" begin
         # 1D sweep geometry
         sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
@@ -757,6 +855,17 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 write_cfg(dir, "[physics]\neta = 0.3\n"))
             @test load_and_validate_config(write_cfg(dir, "[physics]\neta = 0.2\n")).wp.eta ==
                   0.2
+            # post-Newtonian order of the phase: 1.5 (default) or 2, as a number
+            @test load_and_validate_config(write_cfg(dir, "")).wp.phase_pn_order == 1.5
+            for order in ("2", "2.0")
+                @test load_and_validate_config(
+                    write_cfg(dir, "[physics]\nphase_pn_order = $order\n"),
+                ).wp.phase_pn_order == 2.0
+            end
+            for bad in ("2.5", "1", "\"2PN\"")
+                @test_throws "[physics].phase_pn_order" load_and_validate_config(
+                    write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))
+            end
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[physics]\necliptic_latitude = 2.0\n"))
             @test_throws ArgumentError load_and_validate_config(

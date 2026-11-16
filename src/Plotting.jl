@@ -1033,8 +1033,8 @@ const ZONE_LIMIT_MARGIN = 0.08
 
 # A same-unit zone whose principal-axis aspect ratio reaches this value is a
 # needle along a null direction and is drawn in its principal frame (see
-# `zone_figure`); the 2PN spin–spin term (roadmap §1) closes the spin zone
-# and removes the need for this branch.
+# `zone_figure`). It is the spin zone of the 1.5PN phase; at 2PN order the
+# spin zone closes and the criterion does not fire.
 const NEEDLE_ASPECT = 20.0
 
 """
@@ -1199,9 +1199,8 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
     # zone drawn as a needle along a null direction is rotated into its
     # principal frame (abscissa along the needle, ordinate transverse) on
     # independent scales, so the transverse width shows instead of an edge-on
-    # line. Wall detection below keeps the parameter-unit coordinates. Remove
-    # with the 2PN spin–spin term (roadmap §1), which closes the spin zone and
-    # returns the parameter frame.
+    # line. Wall detection below keeps the parameter-unit coordinates. At 2PN
+    # order the spin zone closes and the parameter frame is kept.
     same_units, needle, ϑ = zone_frame(x, y, px, py, x_math, y_math)
     rotate(u, v) = (u .* cos(ϑ) .+ v .* sin(ϑ), v .* cos(ϑ) .- u .* sin(ϑ))
     xd, yd = needle ? rotate(x, y) : (x, y)

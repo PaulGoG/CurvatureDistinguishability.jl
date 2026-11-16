@@ -1,7 +1,8 @@
 """
 Analytic LISA noise model (Robson et al. 2019, Eq. 10–14, Table 1) and the
 post-Newtonian inspiral model shared by the CPU loss loop and the GPU
-kernels: 1.5PN TaylorF2 phasing for aligned spins and unequal masses,
+kernels: TaylorF2 phasing for aligned spins and unequal masses to 1.5PN
+order or, on request, to 2PN order with the spin–spin coupling,
 0.5PN-amplitude harmonics, an innermost-stable-orbit taper and the physical
 source parameters (luminosity distance, chirp mass, coalescence time and
 phase, aligned spins).
@@ -10,12 +11,12 @@ module Physics
 
 using DocStringExtensions: TYPEDSIGNATURES
 export NoiseParams, robson_confusion_params, analytic_noise_psd, sky_averaged_response,
-    WaveformParams, waveform_params, spin_beta, pn_phase, harmonic_phase,
+    WaveformParams, waveform_params, spin_beta, spin_sigma, pn_phase, harmonic_phase,
     harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
 public N_PARAMS, LISA_ARM_LENGTH, GIGAPARSEC_SEC, HARMONICS, C_LIGHT, R_ORBIT_SEC,
-    transfer_frequency, mass_asymmetry, spa_time, inspiral_taper, observation_window,
-    ResponseGeometry
+    transfer_frequency, mass_asymmetry, phase_coefficient_2pn, spa_time, inspiral_taper,
+    observation_window, ResponseGeometry
 
 """
 Speed of light [m s⁻¹]; converts the arm length and the distance unit to
@@ -45,7 +46,7 @@ $(TYPEDSIGNATURES)
 Sky- and polarization-averaged signal response of the two low-frequency LISA
 channels, Robson et al. (2019) Eq. 9: `R(f) = (3/10) / (1 + 0.6 (f/f★)²)`
 at `f` [Hz], with `f★ = c/(2π L)` from `arm_length` [m]. It relates a two-channel
-sensitivity-level spectral density to the per-channel PSD (their Eq. 1,
+sensitivity-level spectral density to the per-channel PSD (their Eq. 2,
 `S_n = P_n / R`), and its roll-off is the square of the transfer factor
 `Detector` applies to every harmonic. Used by [`analytic_noise_psd`](@ref)
 to bring the Eq. 14 confusion fit to the level of the Eq. 12 channel noise.
@@ -146,7 +147,11 @@ from the Eq. 10 optical-metrology noise `oms_amplitude` [m Hz⁻¹ᐟ²] with it
 `oms_reddening_freq` [Hz] low-frequency term, the Eq. 11 acceleration noise
 `acc_amplitude` [m s⁻² Hz⁻¹ᐟ²] with shoulders `acc_knee_low`/`acc_knee_high`
 [Hz], and the `arm_length` [m] (which also sets the transfer frequency
-`f★ = c/(2π L)`). The galactic confusion part is Eq. 14,
+`f★ = c/(2π L)`). The low-frequency factor `1 + (f_red/f)⁴` of the
+optical-metrology noise and the factor `1 + (f/f_high)⁴` of the acceleration noise
+are those of the arXiv version of the paper (arXiv:1803.01944, Eqs. 10–11); the
+journal version prints the two equations without them. The galactic confusion part
+is Eq. 14,
 `S_c(f) = A f^{-7/3} e^{-f^α + β f sin(κf)} [1 + tanh(γ(f_k - f))]`,
 defaulting to the 1-yr column of Table 1. Eq. 14 is calibrated on the
 two-channel sensitivity curve (their Eq. 1, `S_n = P_n/R + S_c`), so
@@ -264,8 +269,11 @@ symmetric mass ratio `eta` ∈ (0, 1/4] is fixed per configuration (the
 heavier body carries `chi1`). The source sits at ecliptic longitude
 `ecliptic_longitude` and latitude `ecliptic_latitude` [rad], with
 inclination `inclination` (angle between the propagation direction and the
-orbital angular momentum) and polarization angle `polarization` in the LISA
-science ground segment conventions (Baghi et al. 2026). `orbit_phase` and
+orbital angular momentum) and polarization angle `polarization` of the wave-frame
+vectors of the LISA science ground segment conventions (Baghi et al. 2026). The
+polarization amplitudes are those of Blanchet et al. (1996), whose vectors lie along
+and across the line of nodes, a quarter turn from those of the conventions: the
+polarization angle of that document is `polarization + π/2`. `orbit_phase` and
 `constellation_phase` are the orbital and cartwheel phases of the constellation
 at `t = 0`, `arm_length` [m] sets the orbital eccentricity of the spacecraft
 and the transfer frequency, and `cutoff_width` is the relative width of the
@@ -273,9 +281,11 @@ innermost-stable-orbit taper. `observation_time` [s] is the duration of the
 observation that starts at `t = 0`: when positive, every harmonic is weighted
 by [`observation_window`](@ref) at its stationary-phase emission time, with
 edges of time scale `window_edge_time` [s]; at the default `0` the signal
-fills the whole frequency band whenever it was emitted. The active channel
-count (2, or 3 with the identically zero T channel, requested through the
-`include_t_channel` keyword) is carried only as the type parameter `NCH`.
+fills the whole frequency band whenever it was emitted. `phase_pn_order` is the
+post-Newtonian order of the phase, `1.5` (default) or `2`; at order 2 the phase carries
+the 2PN coefficient with the spin–spin coupling ([`phase_coefficient_2pn`](@ref)). The
+active channel count (2, or 3 with the identically zero T channel, requested through
+the `include_t_channel` keyword) is carried only as the type parameter `NCH`.
 `geometry` holds the derived response constants.
 """
 struct WaveformParams{T<:Real,NCH}
@@ -293,6 +303,7 @@ struct WaveformParams{T<:Real,NCH}
     cutoff_width::T
     observation_time::T
     window_edge_time::T
+    phase_pn_order::T
     geometry::ResponseGeometry{T}
 end
 
@@ -327,12 +338,14 @@ function WaveformParams(; mass_scale::Real = 1.0, time_scale::Real = 1.0e6,
     orbit_phase::Real = 0.0, constellation_phase::Real = 0.0,
     arm_length::Real = LISA_ARM_LENGTH, cutoff_width::Real = 0.1,
     observation_time::Real = 0.0, window_edge_time::Real = 1.0e6,
-    include_t_channel::Bool = false)
+    phase_pn_order::Real = 1.5, include_t_channel::Bool = false)
+    phase_pn_order in (1.5, 2) || throw(
+        ArgumentError("phase_pn_order must be 1.5 or 2, got $phase_pn_order"))
     fields = promote(float(mass_scale), float(time_scale), float(distance_scale),
         float(eta), float(ecliptic_longitude), float(ecliptic_latitude),
         float(inclination), float(polarization), float(orbit_phase),
         float(constellation_phase), float(arm_length), float(cutoff_width),
-        float(observation_time), float(window_edge_time))
+        float(observation_time), float(window_edge_time), float(phase_pn_order))
     T = typeof(fields[1])
     geometry = response_geometry(fields[5], fields[6], fields[8], fields[10], fields[11])
     return WaveformParams{T,include_t_channel ? 3 : 2}(fields..., geometry)
@@ -344,7 +357,7 @@ const WAVEFORM_KEYWORDS = (
     :mass_scale, :time_scale, :distance_scale, :eta, :ecliptic_longitude,
     :ecliptic_latitude, :inclination, :polarization, :orbit_phase,
     :constellation_phase, :arm_length, :cutoff_width, :observation_time,
-    :window_edge_time, :include_t_channel,
+    :window_edge_time, :phase_pn_order, :include_t_channel,
 )
 
 """
@@ -416,17 +429,53 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency
-`F`, TaylorF2 to 1.5PN order in the total-mass velocity
-`v = (π M F)^{1/3}`:
-`(3/(128 η v⁵)) [1 + (3715/756 + 55η/9) v² + (4β − 16π) v³]`: the Newtonian
-term, the 1PN term, the 1.5PN tail and the spin–orbit term with `beta` from
-[`spin_beta`](@ref).
+2PN spin–spin phase coefficient for black holes with aligned spins,
+`σ = (79/8) η χ₁χ₂ + (81/16) Σᵢ (mᵢ/M)² χᵢ²`: the spin1–spin2 coupling plus,
+for each body, the quadrupole–monopole and self-spin terms (Arun et al. 2009,
+with its erratum; Khan et al. 2016, Appendix B). Written with the symmetric
+and antisymmetric spins and the mass asymmetry `δ`:
+`σ = (81/16 − η/4) χ_s² + (81/16 − 20η) χ_a² + (81/8) δ χ_s χ_a`.
+`chi1` is the spin of the heavier body.
+
+```jldoctest
+julia> spin_sigma(0.5, 0.5, 0.25)
+1.25
+```
 """
-@inline function pn_phase(F, chirp_mass, eta, beta)
+@inline function spin_sigma(chi1, chi2, eta)
+    chi_s = 0.5 * (chi1 + chi2)
+    chi_a = 0.5 * (chi1 - chi2)
+    return (81 / 16 - eta / 4) * chi_s^2 + (81 / 16 - 20 * eta) * chi_a^2 +
+           (81 / 8) * mass_asymmetry(eta) * chi_s * chi_a
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+2PN coefficient of the TaylorF2 phase bracket,
+`ψ₄ = 15293365/508032 + 27145η/504 + 3085η²/72 − 10σ`, with the spin–spin
+coefficient `sigma` from [`spin_sigma`](@ref) (Poisson & Will 1995;
+Arun et al. 2009).
+"""
+@inline function phase_coefficient_2pn(eta, sigma)
+    return 15293365 / 508032 + 27145 * eta / 504 + 3085 * eta^2 / 72 - 10 * sigma
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency
+`F`, TaylorF2 in the total-mass velocity `v = (π M F)^{1/3}`:
+`(3/(128 η v⁵)) [1 + (3715/756 + 55η/9) v² + (4β − 16π) v³ + ψ₄ v⁴]`: the
+Newtonian term, the 1PN term, the 1.5PN tail and spin–orbit term with `beta`
+from [`spin_beta`](@ref), and the 2PN term with `psi4` from
+[`phase_coefficient_2pn`](@ref). Without `psi4` the phase stops at 1.5PN
+order. `F` [Hz], `chirp_mass` [s]; returns the phase [rad].
+"""
+@inline function pn_phase(F, chirp_mass, eta, beta, psi4 = zero(beta))
     v = (π * total_mass(chirp_mass, eta) * F)^(1 / 3)
     return (3 / (128 * eta * v^5)) *
-           (1 + (3715 / 756 + 55 * eta / 9) * v^2 + (4 * beta - 16 * π) * v^3)
+           (1 + (3715 / 756 + 55 * eta / 9) * v^2 + (4 * beta - 16 * π) * v^3 + psi4 * v^4)
 end
 
 """
@@ -436,16 +485,18 @@ Stationary-phase phase of harmonic `k` (`k` times the orbital phase) at
 frequency `f`, in the Fourier convention `h̃(f) = ∫ h(t) e^{-2πift} dt`
 (Baghi et al. 2026, Eq. 1), for which `h̃(f) ∝ e^{-iΨ_k(f)}` with
 `Ψ_k(f) = 2πf t_c − (k/2) φ_c + (k/2) ψ_PN(2f/k) − π/4`: `ψ_PN` is
-[`pn_phase`](@ref) of the (2,2) harmonic and `2f/k` the (2,2) frequency at
-which harmonic `k` radiates at `f`; `φ_c` is the (2,2) phase at coalescence.
-The arrival-time term is common to all harmonics, and
-`dΨ₂/df = 2π t(f)` with the Newtonian map `t(f) = t_c − 5𝓜/(256 v⁸)`.
+[`pn_phase`](@ref) of the (2,2) harmonic (to 1.5PN order without `psi4`) and
+`2f/k` the (2,2) frequency at which harmonic `k` radiates at `f`; `φ_c` is the
+(2,2) phase at coalescence. The arrival-time term is common to all harmonics,
+and at Newtonian order `dΨ₂/df = 2π t(f)` with `t(f) = t_c − 5𝓜/(256 v⁸)`.
+`f` [Hz], `chirp_mass` and `coalescence_time` [s], `coalescence_phase` [rad];
+returns the phase [rad].
 """
 @inline function harmonic_phase(f, k::Integer, chirp_mass, eta, coalescence_time,
-    coalescence_phase, beta)
+    coalescence_phase, beta, psi4 = zero(beta))
     half_k = k / 2
     return 2 * π * f * coalescence_time - half_k * coalescence_phase +
-           half_k * pn_phase(f / half_k, chirp_mass, eta, beta) - π / 4
+           half_k * pn_phase(f / half_k, chirp_mass, eta, beta, psi4) - π / 4
 end
 
 """
