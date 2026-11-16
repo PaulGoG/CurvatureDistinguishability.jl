@@ -99,7 +99,9 @@ and its console output in `logs/attempt_<k>.console.log`. The worker and the
 supervisor each hold a lock in the run directory (`run.pid`,
 `supervisor.pid`); a second process on the same directory stops with an
 error, and the lock of a process of this host that no longer exists is
-reclaimed.
+reclaimed. The lock of a process of another host (a job moved to another
+node) is never reclaimed; the error names the file to remove once that
+process has ended.
 
 ### Keys the shipped configurations leave at their defaults
 
@@ -165,8 +167,10 @@ are those the parser enforces.
   spin combination that the higher orders constrain is constrained weakly, and
   the fit in the parameters stalls on it. `configs/pn_orders/` holds overlays
   at every order: `quickstart_pn<order>.toml` (the quickstart sweeps and maps,
-  whitened fit) and `production_maps_pn<order>.toml` (four spin maps of the
-  production configuration at 1024 base directions, no sweeps).
+  whitened fit) and `production_maps_pn<order>.toml` (four maps on the
+  production grid at 1024 base directions, no sweeps: the two maps of the
+  production configuration that involve the spins, and the spin plane at the
+  low-mass and seed base points of its sweeps).
 - Domain of validity: the inspiral is windowed out at the innermost stable
   circular orbit, at ``2.2`` mHz for the ``\mathcal{M} = 4`` s base points,
   ``35`` mHz for ``\mathcal{M} = 0.25`` s and above the band for

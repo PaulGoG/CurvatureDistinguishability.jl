@@ -12,7 +12,8 @@ box-constrained inference (`Inference`), physical parameter bounds
 (`Bounds`), backend dispatch with GPU package extensions (`Backends`),
 validated configuration (`Config`), provenance utilities (`Provenance`),
 shared fit statistics (`Fitting`), publication plotting (`Plotting`), the
-pipeline driver (`Orchestrator`), work-item checkpoints (`Checkpoint`), worker
+sampling geometry of the maps (`ZoneSampling`), the pipeline driver
+(`Orchestrator`), work-item checkpoints (`Checkpoint`), worker
 liveness telemetry (`Heartbeat`), process supervision with a retry budget
 (`Supervision`, wired to the pipeline by `Campaign`) and figure regeneration
 from persisted run artifacts (`RunFigures`).

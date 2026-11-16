@@ -1,5 +1,5 @@
-# Spin maps of the production configuration at phase order 2.5, 1024 base
-# directions; the comparison across phase orders: docs/src/physics.md.
+# Maps involving the spins on the production grid at phase order 2.5, 1024
+# base directions; the comparison across phase orders: docs/src/physics.md, §2.
 base_config = "../production_cpu.toml"
 
 [pipeline]

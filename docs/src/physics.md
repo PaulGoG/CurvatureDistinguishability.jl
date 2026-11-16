@@ -89,16 +89,20 @@ self-spin terms, ``5 + 1/16``. The higher orders add:
 |:------|:------------|:--------|
 | 2.5 | non-spinning; next-to-leading-order spin–orbit; with ``\ln v`` | [Buonanno2009, Blanchet2024, Arun2009](@cite) |
 | 3 | non-spinning, with ``\ln v``; spin–orbit tail; next-to-leading-order spin–spin | [Buonanno2009, Blanchet2024, Bohe2013SpinOrbitFlux, Bohe2015SpinSpin](@cite) |
-| 3.5 | non-spinning; next-to-next-to-leading-order spin–orbit; spin–spin tail; leading cubic in spin | [Buonanno2009, Blanchet2024, Bohe2013SpinOrbitDynamics, Bohe2013SpinOrbitFlux, Cho2022, Marsat2015CubicSpin](@cite) |
-| 4 | non-spinning ``\ln v`` and ``\ln^2 v``; next-to-leading-order spin–orbit tail; next-to-next-to-leading-order spin–spin; leading quartic in spin | [Blanchet2023, Blanchet2024, Marsat2014SpinOrbitTail, Cho2022, Siemonsen2018](@cite) |
+| 3.5 | non-spinning; next-to-next-to-leading-order spin–orbit; spin–spin tail; leading cubic in spin | [Buonanno2009, Blanchet2024, Bohe2013SpinOrbitDynamics, Bohe2013SpinOrbitFlux, Nagar2019, Cho2022, Marsat2015CubicSpin](@cite) |
+| 4 | non-spinning ``\ln v`` and ``\ln^2 v``; next-to-leading-order spin–orbit tail; next-to-next-to-leading-order spin–spin; leading quartic in spin | [Blanchet2023, Blanchet2024, Marsat2014SpinOrbitTail, Nagar2019, Cho2022, Siemonsen2018](@cite) |
 | 4.5 | non-spinning only | [Blanchet2023, Blanchet2024](@cite) |
 
-Through 3.5PN the phase of aligned-spin black holes is complete. The 3.5PN
-spin–spin tail [Cho2022](@cite) is missing from the earlier frequency-domain
-forms, [Khan2016](@cite) among them. At 4PN no frequency-domain form with spins
-has been published: the spin terms follow from the stationary-phase reduction
-of the binding energy and flux of the cited papers, and the spin–spin flux at
-that order rests on a single computation [Cho2022](@cite). At 4.5PN only the
+Through 3.5PN the phase of aligned-spin black holes is complete for point
+particles; the absorption of energy and angular momentum by the horizons,
+which enters at 2.5PN for spinning black holes, is not included. The 3.5PN
+spin–spin tail [Nagar2019, Cho2022](@cite) is missing from several
+frequency-domain forms in use, [Khan2016](@cite) among them. At 4PN the
+spin–orbit tail has been given in frequency-domain form [Nagar2019](@cite),
+while the next-to-next-to-leading-order spin–spin and quartic-in-spin terms
+follow here from the stationary-phase reduction of the binding energy and
+flux of the cited papers; the spin–spin flux at that order rests on a single
+computation [Cho2022](@cite). At 4.5PN only the
 non-spinning term is known, so with spins that order omits terms of
 ``\mathcal{O}(\chi v^9)``. The coefficients are tested against exact rational
 evaluations of the literature forms at five points of ``(\eta, \chi_1, \chi_2)``,
@@ -154,6 +158,38 @@ order and the rank is 5 on the line ``\chi_1 = \chi_2``. The second spin
 combination stays the weakest direction of the tangent space at every order,
 which is why sweeps from order 2 on need the fit in whitened coordinates
 ([System Architecture](architecture.md)).
+
+### Convergence in post-Newtonian order
+
+The overlays of `configs/pn_orders/` repeat the quickstart configuration
+(sweeps and maps) and four spin maps of the production configuration at every
+order, with the fit in whitened coordinates. The quickstart source
+(``\mathcal{M} = 0.5`` s, ``\eta = 0.2222``, 1 to 16.5 mHz) reaches
+``v = 0.40`` at the upper band edge, just below the innermost-stable-orbit
+value ``6^{-1/2} = 0.41``. Its spin-plane zone at ``\chi_1 = \chi_2 = 0.8``
+(principal half-axes) and its chirp-mass–coalescence-time zone (half-length
+relative to order 1.5), with the log-log exponent of the two sweeps:
+
+| Order | Spin zone, long half-axis | Spin zone, short half-axis | Long-axis slope ``\mathrm{d}\chi_2/\mathrm{d}\chi_1`` | ``\mathcal{M}``–``t_c`` zone | Exponent, ``\mathcal{M}``–``t_c`` sweep | Exponent, spin sweep |
+|:--|--:|--:|--:|--:|--:|--:|
+| 1.5 | prior-limited | ``1.57\times10^{-3}`` | ``-2.29`` | 1 | ``3.992 \pm 0.004`` | ``3.990 \pm 0.003`` |
+| 2 | 0.154 | ``1.65\times10^{-2}`` | ``-3.60`` | 0.992 | ``3.992 \pm 0.004`` | ``3.984 \pm 0.004`` |
+| 2.5 | 0.111 | ``1.07\times10^{-3}`` | ``-2.52`` | 1.007 | ``3.991 \pm 0.005`` | ``3.985 \pm 0.005`` |
+| 3 | 0.192 | ``1.02\times10^{-3}`` | ``-2.47`` | 1.003 | ``3.991 \pm 0.005`` | ``3.985 \pm 0.005`` |
+| 3.5 | 0.050 | ``0.97\times10^{-3}`` | ``-2.48`` | 1.008 | ``3.991 \pm 0.005`` | ``3.985 \pm 0.005`` |
+| 4 | 0.101 | ``1.11\times10^{-3}`` | ``-2.46`` | 1.010 | ``3.989 \pm 0.006`` | ``3.985 \pm 0.005`` |
+| 4.5 | 0.101 | ``1.11\times10^{-3}`` | ``-2.46`` | 1.010 | ``3.987 \pm 0.007`` | ``3.986 \pm 0.005`` |
+
+The quartic law and the chirp-mass–coalescence-time zone do not depend on the
+order beyond 1 %. In the spin plane the zone closes from order 2 on, and from
+2.5PN its short half-axis, set by the spin–orbit term of that order, varies
+by 14 %, between ``0.97`` and ``1.11\times10^{-3}``. The long half-axis, along the
+combination that is flat at 1.5PN, does not converge: it alternates between
+0.05 and 0.19 from 2.5PN to 4PN. That orders 4 and 4.5 agree is no sign of
+convergence, since 4.5PN adds no spin term. For a source that reaches
+``v \approx 0.4`` in the band the extent of the zone along that combination is
+fixed by the truncation of the series, not by the signal; its closure, the
+rank 6 of the tangent space, holds at every order from 2.
 
 ## 3. Harmonic amplitudes (0.5PN)
 
@@ -408,9 +444,15 @@ the long-wavelength limit of the detector. Consequences:
   pipeline validates the noiseless-baseline geometry ([Roadmap](roadmap.md)).
 - Precession, eccentricity, horizon absorption, phase terms beyond 4.5PN
   (beyond 4PN for the spins) and harmonics beyond 0.5PN are not included;
-  the odd harmonics take the phase of the (2,2) harmonic at their frequency,
-  without their own phase corrections from 2.5PN on, and the
-  stationary-phase times ``t_k`` are Newtonian at every phase order.
+  the odd harmonics take ``k/2`` times the phase of the (2,2) harmonic at
+  their frequency, without the phases of their own post-Newtonian amplitude
+  corrections, and the stationary-phase times ``t_k`` are Newtonian at every
+  phase order.
+- The post-Newtonian series converges slowly near the innermost stable
+  orbit. For sources that reach ``v \approx 0.4`` in the band the extent of
+  the spin-plane zone along its weakest direction changes by factors of two to
+  four from one phase order to the next (§2, Convergence in post-Newtonian
+  order).
 
 The band and the mass scale are campaign choices
 ([Run Parameters](parameters.md)); the geometric law itself makes

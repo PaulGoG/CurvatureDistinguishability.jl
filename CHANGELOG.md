@@ -10,18 +10,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `[physics].phase_pn_order` selects the post-Newtonian order of the TaylorF2
   phase: 1.5 (the default), 2, 2.5, 3, 3.5, 4 or 4.5. The coefficients are
-  those of aligned-spin black holes, complete through 3.5PN including the
-  spin–spin tail term of Cho, Porto & Yang (2022) that the usual ready-to-use
-  forms omit; 4PN with its spin–orbit tail, next-to-next-to-leading spin–spin
-  and quartic-in-spin terms; 4.5PN with its non-spinning term only
+  those of aligned-spin black holes as point particles (no horizon
+  absorption), complete through 3.5PN including the spin–spin tail term (Nagar
+  et al. 2019; Cho, Porto & Yang 2022) that several ready-to-use forms omit;
+  4PN with its spin–orbit tail, next-to-next-to-leading spin–spin and
+  quartic-in-spin terms; 4.5PN with its non-spinning term only
   (`Physics.phase_coefficients`, `Physics.PhaseCoefficients`,
-  `Physics.PHASE_PN_ORDERS`, `Physics.spin_sigma`; new methods of `pn_phase`
-  and `harmonic_phase`). Orders 1.5 and 2 reproduce the earlier phase bit for
+  `Physics.PHASE_PN_ORDERS`, `Physics.spin_sigma`,
+  `Physics.phase_coefficient_2pn`; new methods of `pn_phase` and
+  `harmonic_phase`). Orders 1.5 and 2 reproduce the earlier phase bit for
   bit, and run identifiers of existing configurations do not change. From 2PN
   on, the spin combination that is flat at 1.5PN is constrained; from 2.5PN on
   for unequal masses also at zero spins (Waveform Physics, §2).
   `configs/pn_orders/` holds overlays of the quickstart configuration and of
-  four spin maps of the production configuration at every order.
+  four maps involving the spins on the production grid at every order; the
+  documentation compares the orders (Waveform Physics, §2).
 - `[pipeline].fit_coordinates = "whitened"` fits in the coordinates in which
   the Gauss–Newton Hessian is the identity, from a blocked QR factorization of
   the noise-whitened Jacobian (`Geometry.whitened_jacobian_factor`,
@@ -38,18 +41,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `metadata.toml`, with a warning when they change
   (`Provenance.record_attempt!`).
 - `Fitting.validity_radius`, `Fitting.angular_fraction`,
-  `Provenance.acquire_run_lock`, `Provenance.record_attempt!`,
-  `Orchestrator.run_log_logger`, `Backends.GPU_PACKAGES`.
+  `Inference.WHITENING_RTOL`, `Provenance.acquire_run_lock`,
+  `Provenance.record_attempt!`, `Orchestrator.run_log_logger`,
+  `Backends.GPU_PACKAGES`.
 - Test groups: `Pkg.test(test_args = ["physics"])` runs one group.
 
 ### Changed
 
-- The validity radius of the O(δ⁵) correction fit is the smallest separation
-  at which |c₁δ + c₂δ²| reaches the fraction, with c₁ counted only when it
-  exceeds twice its standard error (`Fitting.validity_radius`). It was
-  fraction/|c₁|, one to three decades too large when c₁ is insignificant; the
-  evaluation point of the residual spectra of the production configuration is
-  unchanged.
+- The sampling geometry of the maps is a module of its own, `ZoneSampling`,
+  moved out of `Orchestrator` unchanged.
 - The tangent basis is orthogonalized twice and the curvature vector projected
   twice; computed curvatures change at round-off level.
 - The prior-limited and degenerate fractions annotated on the confusion-zone
@@ -75,6 +75,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The validity radius of the O(δ⁵) correction fit is the smallest separation
+  at which |c₁δ + c₂δ²| reaches the fraction, with c₁ counted only when it
+  exceeds twice its standard error (`Fitting.validity_radius`). It was
+  fraction/|c₁|, one to three decades too large when c₁ is insignificant; the
+  evaluation point of the residual spectra of the production configuration is
+  unchanged.
 - The Metal extension declines instead of offering a backend that cannot hold
   `Float64` arrays: `gpu_backend = "auto"` on an Apple GPU now falls back to
   the CPU.

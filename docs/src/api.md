@@ -20,6 +20,7 @@ CurvatureDistinguishability.Backends
 CurvatureDistinguishability.Config
 CurvatureDistinguishability.Provenance
 CurvatureDistinguishability.Plotting
+CurvatureDistinguishability.ZoneSampling
 CurvatureDistinguishability.Orchestrator
 CurvatureDistinguishability.Checkpoint
 CurvatureDistinguishability.Heartbeat

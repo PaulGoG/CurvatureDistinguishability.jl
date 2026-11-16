@@ -1,5 +1,5 @@
 # Quickstart at phase order 3.0, fitted in whitened coordinates; the comparison
-# across phase orders: docs/src/physics.md.
+# across phase orders: docs/src/physics.md, §2.
 base_config = "../quickstart.toml"
 
 [physics]

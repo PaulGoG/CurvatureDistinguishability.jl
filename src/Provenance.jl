@@ -410,7 +410,8 @@ second process from the same directory and is released by `close` on the
 returned lock. A lock whose holder ran on this host and no longer exists (a
 worker killed by the supervisor) is reclaimed under the guard lock
 `<name>.reclaim`. An `ArgumentError` names the lock file when another live
-process holds it, or a process of another host. A reclaim interrupted by a kill
+process holds it, or a process of another host, whose lock is never reclaimed
+and is removed by hand once that process has ended. A reclaim interrupted by a kill
 leaves the guard behind, and the error then names both files, to be removed by
 hand once no process works on `dir`.
 """
@@ -436,10 +437,17 @@ function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
         )
         holder = lock_holder(path)
     end
+    fields = split(holder)
+    remote = length(fields) == 2 && fields[2] != gethostname()
     throw(
         ArgumentError(
             "$dir is in use by another process (pid and host: $holder, lock file " *
-            "$path); wait for it to finish or end it before continuing this run",
+            "$path); wait for it to finish or end it before continuing this run" *
+            (
+                remote ?
+                ". A process of another host cannot be checked from here: if it no " *
+                "longer runs (a job moved to another node), remove the lock file" : ""
+            ),
         ),
     )
 end

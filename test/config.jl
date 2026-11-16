@@ -319,7 +319,7 @@ end
         close(CD.Provenance.acquire_run_lock(dir))
         @test !isfile(path * ".reclaim")
         write(path, "2147483646 elsewhere-host")
-        @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
+        @test_throws "another host cannot be checked" CD.Provenance.acquire_run_lock(dir)
         rm(path)
         # a reclaim in progress elsewhere (its guard held) is not raced
         write(path, dead)
@@ -513,6 +513,20 @@ enabled = true
         @test run_id_from_config(joinpath(configs, overlay)) ==
               run_id_from_config(joinpath(configs, base))
     end
+    # phase-order overlays: one quickstart and one production-map overlay per
+    # order, each at the order its name gives
+    pn_dir = joinpath(configs, "pn_orders")
+    for order in CD.Physics.PHASE_PN_ORDERS
+        tag = replace(replace(string(order), r"\.0$" => ""), "." => "p")
+        quick = load_and_validate_config(joinpath(pn_dir, "quickstart_pn$tag.toml"))
+        @test quick.wp.phase_pn_order == order && quick.fit_coordinates === :whitened
+        @test length(quick.sweeps) == 2
+        maps = load_and_validate_config(joinpath(pn_dir, "production_maps_pn$tag.toml"))
+        @test maps.wp.phase_pn_order == order && !maps.run_1d_sweeps
+        @test length(maps.maps) == 4 && all(m -> m.n_angles == 1024, maps.maps)
+    end
+    @test length(filter(f -> endswith(f, ".toml"), readdir(pn_dir))) ==
+          2 * length(CD.Physics.PHASE_PN_ORDERS)
     # campaign configurations: every shipped file validates, the Hessian
     # chunk never enters the run identity, and each single-sweep overlay
     # reproduces exactly one case of the production base
