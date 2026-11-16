@@ -1,0 +1,7 @@
+# 2PN overlay of production_cpu.toml: the production campaign with the phase
+# at 2PN order. Phase orders: docs/src/physics.md.
+base_config = "production_cpu.toml"
+
+[physics]
+# post-Newtonian order of the phase, one of: 1.5 | 2.0
+phase_pn_order = 2.0

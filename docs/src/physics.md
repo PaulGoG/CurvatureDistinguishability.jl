@@ -2,14 +2,15 @@
 
 Equation-level description of the model implemented in `Physics.jl` and
 `Detector.jl`: a frequency-domain aligned-spin inspiral of a massive
-black-hole binary, complete to 1.5PN order in the phase and 0.5PN order in
-the amplitude, observed through the long-wavelength response of the LISA
-constellation on its analytic orbits. The Fourier-transform sign, the
+black-hole binary, complete to 1.5PN order in the phase (2PN on request)
+and to 0.5PN order in the amplitude, observed through the long-wavelength
+response of the LISA constellation on its analytic orbits. The
+Fourier-transform sign, the
 ecliptic sky frame, the polarization basis and the A, E, T combinations
 follow the LISA science ground segment conventions
 [Baghi2026SGSConventions](@cite); the masses are
 detector-frame and the time and phase parameters are the TaylorF2
-coalescence values ``t_c``, ``\varphi_c`` rather than the reference-frequency
+coalescence values ``t_c``, ``\phi_c`` rather than the reference-frequency
 parameters of that document. Arm length and single-link noise levels are those
 of the mission definition [LISADefinitionStudy2023](@cite). §8 states the domain
 of validity.
@@ -17,14 +18,16 @@ of validity.
 ## 1. Parameters
 
 The waveform depends on ``\vec{\theta} = (D_L, \mathcal{M}, t_c, \phi_c, \chi_1, \chi_2)``:
-the luminosity distance, the (detector-frame) chirp mass in geometrised
+the luminosity distance, the (detector-frame) chirp mass in geometrized
 seconds (``1\,\mathrm{s} \approx 2.03\times 10^{5}\,M_\odot``), the
 coalescence time, the coalescence phase and the two dimensionless aligned
 spins ``\chi_i \in [-1, 1]``, ``\chi_1`` on the heavier body. Internally
 every component is ``\mathcal{O}(1)``, the physical values being restored
 through the `[physics]` scales (`distance_scale`, `mass_scale`,
-`time_scale`; 1 Gpc ``= 1.0293\times 10^{17}`` light-seconds), so the
-Fisher matrix stays well conditioned. The amplitude of every harmonic is
+`time_scale`; 1 Gpc ``= 1.0293\times 10^{17}`` light-seconds). The Fisher
+matrix remains strongly anisotropic in these units, which is why the maps
+sample directions in Fisher-normalized planes
+([System Architecture](architecture.md)). The amplitude of every harmonic is
 the physical one, ``\propto \mathcal{M}^{5/6}/D_L`` at leading order, so
 the tangent space carries the physical ``\partial/\partial\mathcal{M}``
 coupling between amplitude and phasing.
@@ -37,7 +40,7 @@ as ``M = \mathcal{M}\eta^{-3/5}`` and the mass asymmetry as
 ``\beta``), inclination ``\iota`` and polarization angle ``\psi`` are
 likewise scenario constants.
 
-## 2. Intrinsic phasing (TaylorF2 to 1.5PN)
+## 2. Intrinsic phasing (TaylorF2 to 1.5PN or 2PN)
 
 In the stationary-phase approximation the harmonic ``k`` of the orbital
 phase radiates at ``f`` when the dominant ``(2,2)`` harmonic radiates at
@@ -46,23 +49,56 @@ post-Newtonian phase of the ``(2,2)`` harmonic is
 ```math
 \psi_{\mathrm{PN}}(F) = \frac{3}{128\,\eta\, v^{5}}
 \left[1 + \left(\frac{3715}{756} + \frac{55}{9}\eta\right) v^{2}
-+ \left(4\beta - 16\pi\right) v^{3}\right],
++ \left(4\beta - 16\pi\right) v^{3} + \psi_4\, v^{4}\right],
 ```
-the Newtonian, 1PN and 1.5PN (tail and spin–orbit) terms of TaylorF2, with
+the Newtonian, 1PN, 1.5PN (tail and spin–orbit) and 2PN terms of TaylorF2, with
 the Poisson–Will spin–orbit coefficient [Poisson1995](@cite)
 ```math
 \beta = \frac{1}{12}\left[(113 - 76\eta)\,\chi_s + 113\,\delta_m\,\chi_a\right],
 \qquad \chi_s = \tfrac{1}{2}(\chi_1 + \chi_2),\quad \chi_a = \tfrac{1}{2}(\chi_1 - \chi_2).
 ```
-The spins enter the 1.5PN phase only through the single scalar
-``\beta``, so at this order exactly one spin combination is a flat
+The order of the phase is `[physics].phase_pn_order`. At the default order
+1.5 the bracket stops at ``v^3`` (``\psi_4 = 0``). At order 2 it carries the
+2PN coefficient [Poisson1995, Arun2009](@cite)
+```math
+\psi_4 = \frac{15293365}{508032} + \frac{27145}{504}\eta + \frac{3085}{72}\eta^2 - 10\,\sigma,
+```
+```math
+\sigma = \left(\frac{81}{16} - \frac{\eta}{4}\right)\chi_s^2
++ \left(\frac{81}{16} - 20\eta\right)\chi_a^2 + \frac{81}{8}\,\delta_m\,\chi_s\chi_a ,
+```
+the spin–spin coefficient of two black holes with aligned spins
+(``\psi_4`` in this form is the coefficient ``\varphi_4`` of
+[Khan2016](@cite), Appendix B). In terms of the bodies,
+``\sigma = \tfrac{79}{8}\,\eta\,\chi_1\chi_2 + \tfrac{81}{16}\sum_i (m_i/M)^2\chi_i^2``:
+the spin1–spin2 coupling and, for each body, the quadrupole–monopole and
+self-spin terms, ``5 + 1/16``.
+
+At order 1.5 the spins enter the phase only through the single scalar
+``\beta``, so exactly one spin combination is a flat
 direction of the signal manifold at every mass ratio (tangent rank 5):
 at equal mass it is the antisymmetric combination ``\chi_a``, in general
 it is the null line ``(113 - 76\eta + 113\delta_m)\,\mathrm{d}\chi_1 +
 (113 - 76\eta - 113\delta_m)\,\mathrm{d}\chi_2 = 0``. At ``\eta = 2/9`` the
-slope is ``\mathrm{d}\chi_2/\mathrm{d}\chi_1 = -2.29``, the ``\chi_s`` and ``\chi_a``
-coefficients being ``8.01`` and ``3.14``. Lifting it requires the 2PN
-spin–spin term ([Roadmap](roadmap.md)).
+slope is ``\mathrm{d}\chi_2/\mathrm{d}\chi_1 = -2.29``, the ``\chi_s`` and
+``\chi_a`` coefficients being ``8.01`` and ``3.14``.
+
+At order 2 the spins enter through ``\beta`` and ``\sigma``, and the tangent
+space has rank 6 wherever the gradients of the two in the spin plane are not
+parallel. They are parallel on one line through the origin of that plane,
+```math
+\frac{\chi_2}{\chi_1} = \frac{q\,(807 - 713\,q)}{807\,q - 713}, \qquad q = \frac{m_1}{m_2} \ge 1,
+```
+on which the rank stays 5, as it does at zero spins, where ``\sigma`` is of
+second order. At equal mass the line is ``\chi_2 = \chi_1``: exchanging the
+two bodies leaves the signal unchanged, so the antisymmetric spin enters
+quadratically at every order. For unequal masses the line belongs to the
+truncation at 2PN (``\chi_2 = -1.37\,\chi_1`` at ``\eta = 2/9``); the 2.5PN
+spin–orbit term depends on a third spin combination and removes it. Close to
+the line the second spin combination is constrained only weakly: its
+independent part of the tangent space shrinks in proportion to the distance of
+the base point from the line, and the basis drops it below the Gram–Schmidt
+tolerance.
 
 The phase of harmonic ``k`` in the ``e^{-2\pi i f t}`` Fourier convention is
 ```math
@@ -104,8 +140,8 @@ evaluated at ``F = 2f/k``, multiplied by the ``\cos k\varphi`` and
 ``\sin k\varphi`` coefficients above. For ``k = 2`` this reproduces the
 standard ``\sqrt{5/24}\,\pi^{-2/3}\mathcal{M}^{5/6} f^{-7/6}(1 + c^2)/(2D_L)``;
 the ``k = 1, 3`` amplitudes are proportional to ``\delta_m`` and vanish at
-equal mass, where they are skipped. The (3,3) harmonic is therefore
-physical, not phenomenological: its strength is fixed by the mass ratio.
+equal mass, where they are skipped. The strength of the (3,3) harmonic is
+therefore fixed by the mass ratio.
 
 ## 4. Innermost stable orbit
 
@@ -143,7 +179,8 @@ z_n &= -\sqrt{3}\,eR\cos(\alpha - \beta_n) + \sqrt{3}\,e^2R\left[\cos^2(\alpha -
 \end{aligned}
 ```
 The constellation plane is inclined by 60° to the ecliptic and cartwheels
-once per year in the retrograde sense; the arms stay equal to ``\mathcal{O}(e^2) \approx 0.3\,\%``.
+once per year in the retrograde sense; the arms are equal to first order in
+``e``, and at second order their lengths vary by at most ``e/2 \approx 0.24\,\%``.
 A wavefront from the source direction ``\hat n = (\cos\beta\cos\lambda,
 \cos\beta\sin\lambda, \sin\beta)`` reaches the constellation centre
 ``\vec R_c = R(\cos\alpha, \sin\alpha, 0)`` ``\hat n\cdot\vec R_c``
@@ -165,20 +202,27 @@ The wave-frame basis follows the science ground segment conventions
 angle rotates them into ``\hat p = \hat u\cos\psi + \hat v\sin\psi``,
 ``\hat q = -\hat u\sin\psi + \hat v\cos\psi``; the polarization tensors are
 ``e^+ = \hat p\otimes\hat p - \hat q\otimes\hat q`` and
-``e^\times = \hat p\otimes\hat q + \hat q\otimes\hat p``. In the
-long-wavelength limit each spacecraft ``i`` synthesises a Michelson
-interferometer with detector tensor
+``e^\times = \hat p\otimes\hat q + \hat q\otimes\hat p``. The amplitudes of
+§3 are defined with polarization vectors along and across the line of nodes
+[Blanchet1996](@cite), a quarter turn from the wave-frame vectors of the
+conventions document, so ``\psi`` (`[physics].polarization`) corresponds to
+the polarization angle ``\psi + \pi/2`` of that document; the two
+descriptions differ by more than a phase shift only through the odd
+harmonics. In the long-wavelength limit each spacecraft ``i`` synthesizes a
+Michelson interferometer with detector tensor
 ``D_i = \tfrac{1}{2}(\hat a_i\otimes\hat a_i - \hat b_i\otimes\hat b_i)``
 from its two arm unit vectors, giving ``F^{+}_i = D_i : e^+`` and
 ``F^{\times}_i = D_i : e^\times`` (a 60° Michelson, hence the factor
 ``\sqrt{3}/2`` relative to a 90° detector is built in). The three
 Michelson responses ``X, Y, Z`` are combined into the channels
 ``A = (Z - X)/\sqrt{2}``, ``E = (X - 2Y + Z)/\sqrt{6}`` of
-[Prince2002](@cite) (their Eq. 18). For equal arms and equal, mutually
-uncorrelated link noises the noise-correlation matrix of ``X, Y, Z`` has
-equal diagonal entries ``S_X`` and equal off-diagonal entries ``S_{XY}``, and
-``A``, ``E`` and ``T = (X + Y + Z)/\sqrt{3}`` diagonalise it with
-``S_A = S_E = S_X - S_{XY}`` and ``S_T = S_X + 2S_{XY}`` (their Eq. 16). In
+[Baghi2026SGSConventions](@cite) (their Eq. 40), the combinations
+[Prince2002](@cite) introduced for the Sagnac observables. For equal arms and
+equal, mutually uncorrelated link noises the noise-correlation matrix of
+``X, Y, Z`` has equal diagonal entries ``S_X`` and equal off-diagonal entries
+``S_{XY}``, and ``A``, ``E`` and ``T = (X + Y + Z)/\sqrt{3}`` diagonalize it
+with ``S_A = S_E = S_X - S_{XY}`` and ``S_T = S_X + 2S_{XY}``, the eigenvalues
+[Prince2002](@cite) give for the Sagnac triple (their Eq. 16). In
 the long-wavelength limit every link and every test-mass displacement enters
 two of the three Michelson responses with opposite signs, so ``X + Y + Z``
 vanishes to leading order in ``f/f_\star`` for noise and signal alike:
@@ -242,8 +286,8 @@ frequency; a hard cut would not be differentiable. It removes the band below
 ``t_c = 0.63`` yr) and leaves the signal above about ``2F_0`` unchanged to
 ``10^{-10}``. Without the key the window is absent and ``T_{\mathrm{obs}}``
 only sets the frequency resolution and the confusion-noise level. The
-distinction matters because the frequency grid is the analysis band of the
-detector, not the span of the observation: the stationary-phase map
+frequency grid is the analysis band of the detector, not the span of the
+observation: the stationary-phase map
 ``t(f)`` assigns every grid frequency to an emission time, so a light
 binary that fills the band has radiated at the low grid frequencies years
 before ``t = 0``, and only the window restricts the signal to what a
@@ -257,9 +301,15 @@ Eq. 12,
 ```math
 P_n(f) = \frac{P_{\mathrm{OMS}}}{L^2} + 2\left(1 + \cos^2(f/f_\star)\right)\frac{P_{\mathrm{acc}}}{(2\pi f)^4 L^2},
 ```
-with ``P_{\mathrm{OMS}}`` (Eq. 10) the optical-metrology noise and
-``P_{\mathrm{acc}}`` (Eq. 11) the test-mass acceleration noise, plus the
-galactic confusion fit of Eq. 14,
+with the optical-metrology and test-mass acceleration noises
+```math
+P_{\mathrm{OMS}} = (1.5\times 10^{-11}\,\mathrm{m})^2\left[1 + \left(\frac{2\,\mathrm{mHz}}{f}\right)^{4}\right]\mathrm{Hz}^{-1}, \qquad
+P_{\mathrm{acc}} = (3\times 10^{-15}\,\mathrm{m\,s^{-2}})^2\left[1 + \left(\frac{0.4\,\mathrm{mHz}}{f}\right)^{2}\right]\left[1 + \left(\frac{f}{8\,\mathrm{mHz}}\right)^{4}\right]\mathrm{Hz}^{-1},
+```
+their Eqs. 10–11 as given in the arXiv version of the paper
+(arXiv:1803.01944); the journal version prints the two equations without the
+factors in ``(2\,\mathrm{mHz}/f)^4`` and ``(f/8\,\mathrm{mHz})^4``. To this is
+added the galactic confusion fit of Eq. 14,
 ```math
 S_c(f) = A\, f^{-7/3}\, e^{-f^{\alpha} + \beta f \sin(\kappa f)} \left[ 1 + \tanh\!\big(\gamma (f_k - f)\big) \right], \qquad A = 9\times 10^{-45},
 ```
@@ -287,7 +337,7 @@ Eq. 13 + Eq. 14), and the sky- and polarization-averaged ``A + E``
 signal-to-noise ratio of §6 equals the one computed from that curve. After
 the conversion the Galactic term still exceeds ``P_n`` by an order of
 magnitude at 1 mHz. The confusion fit is calibrated for observation times
-between 0.5 and 4 yr; shorter grids use the nearest column.
+between 0.5 and 4 yr; outside that range the nearest column is used.
 
 ## 8. Domain of validity
 
@@ -316,9 +366,9 @@ the long-wavelength limit of the detector. Consequences:
   Robson roll-off factor, not by the full arm-dependent transfer.
 - The noise is the analytic Robson model, not an LDC noise realization; the
   pipeline validates the noiseless-baseline geometry ([Roadmap](roadmap.md)).
-- Precession, eccentricity, higher PN orders in the phase (2PN spin–spin is
-  the first planned extension) and higher harmonics beyond 0.5PN are not
-  included.
+- Precession, eccentricity, phase terms beyond 2PN and harmonics beyond
+  0.5PN are not included; the stationary-phase times ``t_k`` are Newtonian
+  at either phase order.
 
 The band and the mass scale are campaign choices
 ([Run Parameters](parameters.md)); the geometric law itself makes

@@ -1,14 +1,14 @@
 # CurvatureDistinguishability.jl
 
-[![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml)
-[![Coverage](https://codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl/graph/badge.svg)](https://app.codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl)
-[![Docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/stable/)
-[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
-[![Julia](https://img.shields.io/badge/julia-%E2%89%A5%201.12-9558B2?logo=julia&logoColor=white)](https://julialang.org/)
-[![Release](https://img.shields.io/github/v/release/PaulGoG/CurvatureDistinguishability.jl)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/CurvatureDistinguishability.jl/stable/)
+[![CI](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/PaulGoG/CurvatureDistinguishability.jl)
+[![Aqua QA](https://juliatesting.github.io/Aqua.jl/dev/assets/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![JET](https://img.shields.io/badge/tested%20with-JET.jl-233f9a)](https://github.com/aviatesk/JET.jl)
+[![Format](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/Format.yml/badge.svg?branch=main)](https://github.com/PaulGoG/CurvatureDistinguishability.jl/actions/workflows/Format.yml?query=branch%3Amain)
+[![Julia](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FPaulGoG%2FCurvatureDistinguishability.jl%2Fmain%2FProject.toml&query=%24.compat.julia&label=julia&color=9558b2)](https://julialang.org/downloads/)
 
-Computational proof of the quartic distinguishability law for space-based
+Numerical verification of the quartic distinguishability law for space-based
 gravitational-wave interferometry. The squared noise-weighted distance
 between a two-source signal and the best-fit single-source template scales as
 
@@ -18,7 +18,8 @@ where δ is the parameter separation and K(u) the extrinsic curvature of the
 signal manifold. The discernibility boundary follows as
 δ_min(u) = (16 ρ²_thr / K(u))^{1/4}. The 2D "zone of confusion" maps are
 the exact intersection of that boundary with the hard physical parameter
-bounds (positivity of amplitude/mass/time, |χ| ≤ 1, phase deviations within ±π).
+bounds (non-negative distance, chirp mass and coalescence time, |χ| ≤ 1,
+phase deviations within ±π).
 
 ## At a glance
 
@@ -89,7 +90,7 @@ Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
 ```
 
 GPU support is optional. Install the vendor package matching the hardware
-(`CUDA`, `AMDGPU`, `Metal` or `oneAPI`) into the default (stacked)
+(`CUDA`, `AMDGPU` or `oneAPI`) into the default (stacked)
 environment. The pipeline loads it according to `[hardware].gpu_backend`,
 and the matching package extension activates. Without one the pipeline runs on
 the multi-threaded CPU backend (`gpu_backend = "none"` forces this).
@@ -135,7 +136,7 @@ julia docs/make.jl
 ```
 
 Everything tunable lives in the `configs/` scenario files: grid, physics,
-the full Robson-2019 noise model (confusion and instrumental parameters
+the full Robson et al. (2019) noise model (confusion and instrumental parameters
 alike), mapping resolution/refinement, `[parameter_bounds]`, optimizer and
 `[safety]` memory budgets. `[monitoring].enabled = true` additionally prints
 an in-terminal UnicodePlots diagnostic after each completed sweep and map.
@@ -166,13 +167,19 @@ listed in `metadata.toml`.
     O(δ⁵) correction coefficients c₁/c₂ with a 10%-validity radius, the
     optimizer floor level, δ* and amp_ratio. The coefficients are fitted on
     the points within `correction_fit_max_departure` of the law.
-  - `scaling_plot.{pdf,png}`: log–log panel plus a D²_num/D²_theo ratio
+  - `scaling_plot.{pdf,png}`: log–log panel plus a D²_opt/D²_th ratio
     panel with the correction-fit overlay.
   - `residual_plot.{pdf,png}`: d(SNR²)/df and d(D²)/df densities for
     channels A and E. The bottom panel integrates to D².
+  - `residual_spectrum_threshold.csv` and
+    `residual_plot_threshold.{pdf,png}`: the same at the threshold
+    separation δ_min, written when it differs from the primary evaluation
+    point.
+  - `sweep.log`: the stage log.
 
-  Sweeps support unequal amplitudes (`amp_ratio`, the A_harm law) and opt-in
-  multi-start seeding (`n_starts`, seeded by `[pipeline].rng_seed`).
+  Sweeps support unequal amplitudes (`amp_ratio`, with the harmonic-mean
+  prefactor of the law) and opt-in multi-start seeding (`n_starts`, seeded
+  by `[pipeline].rng_seed`).
 - 2D maps write to `maps/<name>/`:
   - `confusion_contour.csv`: angle, capped boundary,
     `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K and g.
@@ -180,6 +187,7 @@ listed in `metadata.toml`.
     color, active wall values annotated) are visually distinct from
     curvature-limited ones. The uncapped mathematical contour continues
     past each wall as a dashed curve.
+  - `mapping.log`: the stage log.
 
   Directions are sampled uniformly in the Fisher-normalized plane (each axis
   in its own σ), so strongly anisotropic planes are resolved uniformly. K is
@@ -191,15 +199,19 @@ listed in `metadata.toml`.
 | Component | Status |
 |---|---|
 | Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
+| 2PN phase with the spin–spin coupling (`[physics].phase_pn_order = 2.0`) | off by default; tested against literature values of the coefficient and the analytic tangent-rank prediction |
 | Robson (2019) noise model (per-channel Eq. 12 instrumental + Eq. 14 confusion through the Eq. 9 response, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
 | GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware: optimized distances agree to 3×10⁻⁴ or better above the optimizer floor, 2×10⁻⁴ away from the near-null spin direction; see Known limitations |
-| Plotting (CairoMakie, no-title/tick-policy compliant) | tested; figures regenerable via `scripts/replot.jl` |
+| Plotting (CairoMakie publication theme, family-wide tick policy) | tested; figures regenerable via `scripts/replot.jl` |
 | Multi-panel composites (TOML layout over persisted run tables) | tested; `scripts/compose_figures.jl` |
 
 ## Known limitations
 
+- Apple GPUs: Metal has no double-precision type and the device path is
+  double precision only, so the Metal extension declines and the run uses
+  the CPU (`require_gpu = true` stops it instead).
 - ROCm 7.1 on gfx1100/gfx1101 (Radeon PRO W7900, RX 7700 XT): a kernel
   dispatch intermittently never completes; the process stays alive at
   near-zero CPU load with no error. Unresolved upstream; run long GPU
@@ -248,6 +260,8 @@ CurvatureDistinguishability/
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
+│   ├── quickstart_2pn.toml # overlay: quickstart with the 2PN phase
+│   ├── production_2pn.toml # overlay: production campaign with the 2PN phase
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
 │   ├── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
 │   └── figures/
@@ -255,7 +269,7 @@ CurvatureDistinguishability/
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
-│   ├── Physics.jl          # Robson (2019) noise model; 1.5PN inspiral waveform core
+│   ├── Physics.jl          # Robson (2019) noise model; inspiral waveform core (1.5PN phase, 2PN on request)
 │   ├── Detector.jl         # LISA A/E response on the analytic orbits (fused scalar core)
 │   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
@@ -294,7 +308,8 @@ CurvatureDistinguishability/
 ├── bench/                  # BenchmarkTools scripts (own environment: activate.jl)
 ├── docs/                   # Documenter.jl sources (own environment: activate.jl, make.jl, src/)
 ├── .github/
-│   ├── workflows/CI.yml    # tests on Julia 1.12 and 1, formatter check, strict docs build and deployment
+│   ├── workflows/CI.yml    # tests on the declared Julia floor and the current stable, strict docs build and deployment
+│   ├── workflows/Format.yml # JuliaFormatter check
 │   ├── dependabot.yml      # weekly GitHub Actions and Julia dependency updates
 │   ├── ISSUE_TEMPLATE/     # bug report, feature request
 │   └── PULL_REQUEST_TEMPLATE.md

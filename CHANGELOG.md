@@ -6,6 +6,60 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `[physics].phase_pn_order` (`1.5`, the default, or `2.0`). At order 2 the
+  TaylorF2 phase carries the 2PN term with the spin–spin coupling of two
+  aligned-spin black holes (`Physics.spin_sigma`,
+  `Physics.phase_coefficient_2pn`, and an optional last argument of `pn_phase`
+  and `harmonic_phase`). The spin combination that is exactly flat at 1.5PN
+  order is then constrained, except on one line through the origin of the spin
+  plane (Waveform Physics, §2). The default order reproduces earlier results
+  bit for bit and leaves run identifiers unchanged.
+  `configs/quickstart_2pn.toml` and `configs/production_2pn.toml` are overlays
+  that set the order to 2.
+- `Fitting.angular_fraction`, `Orchestrator.run_log_logger` and
+  `Backends.GPU_PACKAGES`.
+
+### Changed
+
+- The prior-limited and degenerate fractions annotated on the confusion-zone
+  maps are fractions of the sampling angle, as the annotation and the
+  documentation state. They were fractions of the vertex count, which adaptive
+  refinement concentrates near the prior walls: on a coarse map the two differ
+  by an order of magnitude, on the production spin map by less than a tenth of
+  a percent. Persisted tables and log lines are unchanged.
+- `scripts/replot.jl` and `scripts/collect_plots.jl` exit with status 1 when a
+  case failed or a run directory does not exist.
+- Documentation: the conventions document is cited at its revision 20; the
+  instrumental noise terms are written out in the form implemented (Eqs. 10–11
+  of the arXiv version of Robson et al., with two frequency-dependent factors
+  that the journal version omits); the polarization angle is referred to the
+  line-of-nodes vectors of the amplitudes, a quarter turn from the wave-frame
+  vectors of the conventions document; the descriptions of the sweeps follow
+  the production results; the executable example sweeps separations above the
+  optimizer floor. Docstrings and comments are corrected where they had
+  drifted from the code, and public physics functions state their units.
+- Continuous integration: the formatter check runs as its own workflow with
+  the formatter major fixed, the test matrix reads the Julia floor from
+  `[compat]`, and the test environment admits JET 0.13.
+
+### Fixed
+
+- The Metal extension declines instead of offering a backend that cannot hold
+  `Float64` arrays: `gpu_backend = "auto"` on an Apple GPU now falls back to
+  the CPU.
+- `run_pipeline(...; run_dir)` refuses a directory that holds the snapshot of
+  another configuration.
+- `InterruptException` and `OutOfMemoryError` raised inside a work-item task
+  end the run, as documented, instead of being recorded as a stage failure.
+- A configuration value of the wrong type (a number where a string, a table or
+  an array of tables is expected) is a configuration error naming the key, and
+  a finite interval for the periodic `coalescence_phase` in
+  `[parameter_bounds]` is refused.
+- The `clean` mask passed to `scaling_figure` and `scaling_panel!` selects the
+  floor-band points; it was ignored in favour of a recomputed rule.
+
 ## [2.1.2] - 2026-11-09
 
 ### Changed

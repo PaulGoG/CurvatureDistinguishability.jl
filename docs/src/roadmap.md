@@ -2,44 +2,10 @@
 
 This page lists the extensions planned beyond the current model, in order of
 priority, each with the design sketch it would follow. None of them is
-implemented; the pipeline ships the 1.5PN waveform model with the
-noiseless-baseline validation. The last section documents the operational
-behaviour of the GPU backends.
+implemented. The last section documents the operational behaviour of the
+GPU backends.
 
-## 1. 2PN spin–spin phase term
-
-The 1.5PN spin–orbit phase depends on the spins only through
-``\beta = [(113 - 76\eta)\chi_s + 113\,\delta_m\chi_a]/12``, so the spin
-combination with ``\mathrm{d}\beta = 0`` (``\chi_a`` at equal mass, a
-tilted line otherwise) is an exact flat direction at every mass ratio
-(tangent rank 5), and the spin-plane confusion zones are prior-limited
-along it. The 2PN phase carries a spin1–spin2 coupling
-``\sigma \propto \chi_1\chi_2`` (plus ``\chi_i^2`` self-terms) which adds
-new spin structure and turns those boundary segments curvature-limited.
-
-Implementation:
-- Extend `pn_phase` (src/Physics.jl) with the 2PN term of the bracket,
-  ``(15293365/508032 + 27145\eta/504 + 3085\eta^2/72 - 10\sigma)\,v^4``, with
-  ``\sigma`` transcribed from a primary reference (Poisson & Will 1995;
-  Arun et al. 2009 for the aligned-spin self-terms) with the same care as
-  the Robson Table 1 transcription; add the transcription to the test suite.
-- Config-gate it: `[physics] spin_spin_2pn = false` (default off) threaded
-  through `WaveformParams`, so all existing fixtures and tests and the
-  present model stay bit-identical when disabled. The term is a toggle, not a
-  replacement: the 1.5PN model remains the default and stays selectable.
-- Consequences when enabled: K values change everywhere and spin maps gain
-  genuine structure. The A/B fixture tests must assert only the disabled
-  path.
-- Display: `Plotting.zone_figure` draws a same-unit zone whose
-  principal-axis aspect reaches `NEEDLE_ASPECT` in the frame of its null
-  direction (abscissa along it, ordinate transverse; introduced for the
-  1.5PN spin needles, whose transverse width is otherwise invisible).
-  Because the term is a toggle, the 1.5PN needles remain and the frame
-  stays; with the term enabled the spin zone closes, the criterion stops
-  firing and the parameter frame returns by itself. The first 2PN spin maps
-  should confirm this.
-
-## 1b. Inspiral–merger–ringdown realism (IMRPhenomD)
+## 1. Inspiral–merger–ringdown realism (IMRPhenomD)
 
 The LDC massive-binary catalogues (Sangria, Spritz, Yorsh) are
 generated with IMRPhenomD/HM; the inspiral-only model windows the signal
@@ -48,9 +14,10 @@ out at ISCO and discards the merger SNR, which dominates for
 phenomenological approximant is the natural next step for realism.
 
 Implementation:
-- Port the IMRPhenomD amplitude and phase (Husa et al. 2016; Khan et al.
-  2016) as a second scalar core selectable through `[physics].approximant`,
-  keeping the six-parameter state vector (``\eta`` fixed per scenario).
+- Port the IMRPhenomD amplitude and phase ([Husa2016](@cite);
+  [Khan2016](@cite)) as a second scalar core selectable through
+  `[physics].approximant`, keeping the six-parameter state vector
+  (``\eta`` fixed per scenario).
 - The GPU kernels take the coefficient set as kernel arguments; the
   IMRPhenomD coefficient struct exceeds the 2048-byte argument limit of the
   Intel iGPU compiler, so the coefficients must be recomputed per bin from
@@ -62,7 +29,7 @@ Implementation:
 ## 2. Noise-realization study (distribution of the distance statistic)
 
 The pipeline currently validates the noiseless-baseline geometry.
-The likelihood interpretation (``\Delta \ln L_{\max} = D^2/2``) invites the
+The likelihood interpretation (``\Delta \ln \mathcal{L}_{\max} = D^2/2``) invites the
 follow-up question: how is ``\hat D^2`` distributed under real noise, and how
 sharp is the confusion boundary operationally?
 
@@ -95,9 +62,10 @@ allocation.
 ### Launch serialization and device-buffer cache
 
 Kernel launches are serialized through a library-wide lock and
-`plan_resources` pins a GPU run to a single task, because the vendor runtimes are not safe under concurrent
-multi-task access. Device output buffers are cached per backend, element type
-and shape, because allocating them per evaluation destabilises long sessions;
+`plan_resources` pins a GPU run to a single task, because the vendor
+runtimes are not safe under concurrent multi-task access. Device output
+buffers are cached per backend, element type
+and shape, because allocating them per evaluation destabilizes long sessions;
 the cache reduces device allocations by ~10³. A run interrupted at any point
 continues from its completed stages and work-item checkpoints
 (`scripts/run_pipeline.jl --resume`).
@@ -111,8 +79,8 @@ is evaluated in chunks: the config key
 `calculate_numerical_distance`'s `h!`, so each kernel launch carries (1+c)²
 lanes and a Hessian costs ⌈6/c⌉² launches (ForwardDiff applies the chunk to
 the outer and the inner dual: c = 3 gives 16 lanes × 4 launches, c = 2 gives
-9 × 9, c = 1 gives 4 × 36). The mechanism on the Meteor Lake iGPU:
-the nested-dual parameter tuple enters the kernel as an argument of
+9 × 9, c = 1 gives 4 × 36). On the Meteor Lake iGPU the nested-dual
+parameter tuple enters the kernel as an argument of
 6 × 49 × 8 = 2352 bytes, exceeding the device's 2048-byte kernel-argument
 limit. IGC reports "Total size of kernel arguments exceeds limit" and fails
 the module build (`ZE_RESULT_ERROR_MODULE_BUILD_FAILURE`). Value (1-lane)
@@ -121,8 +89,9 @@ and gradient (7-lane) kernels fit comfortably; chunk 3 carries 16 lanes =
 (`ZE_DEVICE_MODULE_FLAG_FP64` is reported without emulation flags). On the
 production grid a 16-lane launch takes about 4.3 s on the Meteor Lake iGPU,
 against the 7.5 s i915 preempt timeout; 9 lanes (chunk 2) take about 0.9 s,
-which is why chunk 2 is the shipped GPU baseline. Agreement with the CPU
-reference is at machine epsilon (2×10⁻¹⁶) for every chunk. The chunked path
+which is why chunk 2 is the shipped GPU baseline. Per-evaluation losses and
+Hessians agree with the CPU reference to machine epsilon (2×10⁻¹⁶) for every
+chunk. The chunked path
 is exercised in the test suite.
 
 Long GPU campaigns should run under `scripts/run_supervised.jl`, which detects

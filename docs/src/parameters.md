@@ -3,8 +3,7 @@
 This page gives the physical rationale of the production configuration
 (`configs/production_cpu.toml`) and of the configuration layering. The
 production configuration comprises the global grid, seven one-dimensional
-separation sweeps and seven two-dimensional confusion maps. The page is the
-reference for reading the pipeline outputs.
+separation sweeps and seven two-dimensional confusion maps.
 
 ## 0. Configuration files
 
@@ -55,16 +54,17 @@ vary the Hessian chunk and, for the single-sweep overlays, narrow
 
 ### Supervised runs
 
-`scripts/run_supervised.jl` runs one or more configurations under a second
-Julia process that never loads a GPU package. The worker publishes a
-heartbeat (one tick per loss evaluation, so the interval between ticks is
-bounded by one kernel launch) and checkpoints every finished work item; the
-supervisor samples the heartbeat and the worker's CPU time from
-`/proc/<pid>/stat`. No progress for `idle_stall_s` with a CPU utilisation
-below `cpu_idle_cores` is a hang: the worker is terminated (`SIGTERM`, then
-`SIGKILL` after `term_grace_s`) and relaunched into the same run directory,
-where finished stages and work items are skipped. A worker that is slow but
-busy is left alone until `busy_stall_s`.
+`scripts/run_supervised.jl` runs one or more configurations, each in a
+worker process (`scripts/run_pipeline.jl`) watched by a supervisor that
+never loads a GPU package. The worker publishes a heartbeat (one tick per
+loss evaluation, so the interval between ticks is bounded by one kernel
+launch) and checkpoints every finished work item; the supervisor samples
+the heartbeat and the worker's CPU time from `/proc/<pid>/stat`. No
+progress for `idle_stall_s` with a CPU utilization below `cpu_idle_cores`
+is a hang: the worker is terminated (`SIGTERM`, then `SIGKILL` after
+`term_grace_s`) and relaunched into the same run directory, where finished
+stages and work items are skipped. A worker that is slow but busy is left
+alone until `busy_stall_s`.
 
 The retry budget has two parts. `max_retries` bounds the relaunches of a run.
 `max_stalled_retries` bounds consecutive attempts that finish no new work
@@ -72,8 +72,8 @@ item. A deterministic failure therefore ends after a few attempts: the stage
 is recorded as abandoned and the remaining stages run. Failures that arrive
 after some progress only draw on `max_retries`. For a failure process
 with an expected number μ of events per run, the smallest budget R with
-P(N > R) < ε follows from the Poisson tail; μ ≈ 1 needs R = 5 for ε ≈ 4×10⁻⁴,
-μ ≈ 10 needs R = 20 for ε ≈ 10⁻³.
+P(N > R) < ε follows from the Poisson tail; μ = 1 gives P(N > 5) ≈ 6×10⁻⁴
+and μ = 10 gives P(N > 20) ≈ 1.6×10⁻³.
 
 | Key | Default | Bounds |
 |---|---|---|
@@ -91,6 +91,24 @@ P(N > R) < ε follows from the Poisson tail; μ ≈ 1 needs R = 5 for ε ≈ 4×
 Every attempt is recorded in `supervision.toml` in the run directory (verdict,
 exit status or signal, CPU seconds, stall time, work items before and after),
 and its console output in `logs/attempt_<k>.console.log`.
+
+### Keys the shipped configurations leave at their defaults
+
+These keys take the defaults below in every shipped configuration; the bounds
+are those the parser enforces.
+
+| Key | Default | Bounds | Meaning |
+|---|---|---|---|
+| `[pipeline.sweep_settings].floor_detection_ratio` | 2.0 | > 1 | ratio of optimized to predicted ``D^2`` at or above which the contiguous run of smallest separations counts as optimizer floor |
+| `[pipeline.sweep_settings].secondary_minimum_gain` | 1.5 | > 1 | multi-start gain over the canonical start above which a sweep warns of secondary minima (`n_starts` > 1) |
+| `[pipeline.sweep_settings].multi_start_parallel_scale` | 0.35 | > 0 | standard deviation of the extra-start perturbation along the sweep direction, in units of ``\delta`` |
+| `[pipeline.sweep_settings].multi_start_transverse_scale` | ``10^{-3}`` | ≥ 0 | standard deviation of the isotropic extra-start perturbation, in scaled parameter units |
+| `[pipeline.sweep_settings].correction_validity_fraction` | 0.1 | > 0 | relative departure from the leading-order law that sets the validity radius of the ``\mathcal{O}(\delta^5)`` fit (``\delta_{\mathrm{valid}} = 0.1/\lvert c_1\rvert`` at the default) |
+| `[pipeline.sweep_settings].residual_spectrum_windows` | 600 | integer ≥ 8 | number of log-uniform decimation windows of the residual spectrum |
+| `[mapping].unbounded_cap_factor` | 5.0 | > 1 | radius of unbounded map directions, in multiples of the largest finite capped radius |
+| `[hardware].heap_size_hint_gb` | 0.0 | ≥ 0 GB | `--heap-size-hint` applied by the supervisor to its worker processes only (0 = none) |
+| `[hardware].gc_between_stages` | `true` | none | device-buffer flush and full host garbage collection after every sweep and map |
+| `[monitoring].progress_log_fraction` | 0.25 | [0, 1] | fraction of a stage's work items between `run.log` progress lines (0 disables them) |
 
 ## 1. Global simulation grid
 
@@ -131,6 +149,12 @@ and its console output in `logs/attempt_<k>.console.log`.
   ecliptic longitude 180° and latitude 30°, inclination 30°, polarization
   45°, constellation phases zero at ``t = 0``. Masses are detector-frame
   masses, as in the LDC catalogues.
+- Phase order: `[physics].phase_pn_order`, 1.5 (the default and the model
+  of the production campaign) or 2.0, which adds the 2PN phase term with the
+  spin–spin coupling ([Waveform Physics](physics.md), §2). The key belongs
+  to the run identity. `configs/quickstart_2pn.toml` and
+  `configs/production_2pn.toml` are overlays that set it to 2.0 and change
+  nothing else.
 - Domain of validity: the inspiral is windowed out at the innermost stable
   circular orbit, at ``2.2`` mHz for the ``\mathcal{M} = 4`` s base points,
   ``35`` mHz for ``\mathcal{M} = 0.25`` s and above the band for
@@ -185,7 +209,7 @@ Base point and direction as `massive_binary_mass_time`, amplitude ratio
 
 The second source carries half the amplitude (twice the luminosity
 distance at the same masses). The prediction acquires the harmonic-mean
-prefactor, ``D^2 = \tfrac{1}{16}K_{\rm num}\delta^4\,(2q/(1+q))^2``, and
+prefactor, ``D^2 = \tfrac{1}{16}K(u)\delta^4\,(2q/(1+q))^2``, and
 the optimizer is initialized at the weighted midpoint with effective
 amplitude ``(1+q)A``. With ``q=1/2``, using the equal-amplitude law instead
 would misplace the ratio panel by a factor ``9/4``.
@@ -194,30 +218,33 @@ would misplace the ratio panel by a factor ``9/4``.
 Base point `[5.0, 2.5, 10.0, 1.57, 0.7, -0.7]`,
 direction `[0.0, 0.0, 0.0, 1.0, 0.5, 0.5]`.
 
-Strongly anti-aligned spins maximize the 1.5PN spin–orbit phase twist; the
-direction sweeps phase and both spins (base spins chosen so the second
-source stays inside ``|\chi|\le 1`` at ``\delta_{\max}``).
+Spins of opposite sign (``\chi_s = 0``, ``\chi_a = 0.7``) leave only the
+mass-asymmetric part of the 1.5PN spin–orbit coefficient,
+``\beta = 113\,\delta_m\chi_a/12``; the direction sweeps phase and both
+spins (base spins chosen so the second source stays inside
+``|\chi|\le 1`` at ``\delta_{\max}``).
 
 ### `low_mass_time_shift`
 Base point `[3.0, 0.25, 25.0, 0.0, 0.9, 0.0]`,
 direction `[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]`.
 
-A ``1.3\times 10^{5}\,M_\odot`` system whose inspiral spans the whole band,
-displaced purely in coalescence time. The sweep isolates the constellation
-mechanics: a time shift places the detector at a different point of its
-orbit, with different antenna patterns and Doppler phase, at every
-contributing frequency.
+A ``1.3\times 10^{5}\,M_\odot`` system whose inspiral spans the band up to
+its 35 mHz ISCO, displaced purely in coalescence time. The sweep isolates
+the constellation mechanics: a time shift places the detector at a
+different point of its orbit, with different antenna patterns and Doppler
+phase, at every contributing frequency.
 
 ### `seed_binary_mass_spin_compensation`
 Base point `[2.0, 0.1, 20.0, 0.0, 0.7, 0.5]`,
 direction `[0.0, 0.6, 0.0, 0.0, -0.55, -0.55]`.
 
 A light-seed binary (``5\times 10^{4}\,M_\odot``, ISCO above the band)
-probed along the classic 1.5PN chirp-mass/spin–orbit compensation
-direction: raising ``\mathcal{M}`` while lowering both aligned spins keeps
-the phasing nearly stationary, so ``K(u)`` is suppressed by the partial
-degeneracy. The sweep empirically charts the validity boundary of the
-quartic law where curvature is weak.
+displaced in chirp mass and in both aligned spins at once: the chirp mass
+increases while the spins decrease. The chirp-mass and spin–orbit
+contributions to the phase have the same sign across the band and add; the
+first-order variation is absorbed by the template as along every other
+direction. The normalized curvature is the largest of the seven sweeps and
+``\delta_{\mathrm{min}}`` the smallest.
 
 ### `near_degenerate_flat_spin`
 Base point `[5.0, 4.0, 20.0, 0.0, 0.3, -0.3]`,
@@ -227,8 +254,8 @@ The direction is dominantly the exactly flat spin combination of the 1.5PN
 phase, ``\mathrm{d}\beta = 0`` (``\mathrm{d}\chi_2/\mathrm{d}\chi_1 = -2.29``
 at ``\eta = 2/9``; it reduces to ``\chi_a`` at equal mass), with a 15%
 chirp-mass admixture so the direction is measurable and the second source
-stays physical at ``\delta_{\max}``. It is the sharpest stress test of the
-law near a null direction.
+stays physical at ``\delta_{\max}``. Among the shipped sweeps it tests the
+law closest to a null direction.
 
 ## 3. Two-dimensional zone-of-confusion maps
 
@@ -244,21 +271,22 @@ is exactly even), refines adaptively near boundary spikes, and caps every
 direction at the physical prior box. The CSV carries `Prior_Limited` flags,
 and the quoted prior-limited fraction is a fraction of sampling angle.
 Wherever consecutive directions straddle a capping transition, the solver
-additionally bisects for the exact crossover direction
+also bisects for the crossover direction
 ``r_{\mathrm{math}}(\varphi) = r_{\mathrm{box}}(\varphi)`` and inserts it as
 a boundary vertex (`[mapping].corner_bisect_iters`, default 25; 0
-disables). Zone corners at prior walls are therefore exact rather than
-chamfered by a polygon chord. The neighbor-ratio refinement alone cannot
-resolve them, because the capped radius saturates at ``r_{\mathrm{box}}``
-on the wall side. `replot.jl --rho` reuses the stored directions, so corner
-vertices are exact only for the original threshold; rerun the map stage for
-publication-grade corners at a very different ``\rho``.
+disables). Zone corners at prior walls therefore lie on the walls instead of
+being chamfered by a polygon chord. The neighbor-ratio refinement alone
+cannot resolve them, because the capped radius saturates at
+``r_{\mathrm{box}}`` on the wall side. `replot.jl --rho` reuses the stored
+directions, so corner vertices lie on the walls only for the original
+threshold; rerun the map stage for publication-grade corners at a very
+different ``\rho``.
 
 1. Mass against time (`mass_vs_time_degeneracy`, axes 2 and 3): the
    classic chirp-rate / arrival-time degeneracy; base
    ``\theta_0 = [5.0, 4.0, 20.0, 0.0, 0.8, 0.8]``.
-2. Spin 1 against spin 2 (`spin1_vs_spin2_coupling`, axes 5 and 6): the
-   phase sees the spins only through ``\beta``, so the line
+2. Spin 1 against spin 2 (`spin1_vs_spin2_coupling`, axes 5 and 6): at
+   1.5PN order the phase sees the spins only through ``\beta``, so the line
    ``\mathrm{d}\beta = 0`` is exactly flat. The mathematical zone diverges
    along it, and the published zone is limited there by the spin prior
    ``[-1, 1]`` (a narrow wedge, since the loud source confines every
@@ -266,16 +294,16 @@ publication-grade corners at a very different ``\rho``.
 3. Mass against spin 1 (`mass_vs_spin1_twist`, axes 2 and 5): mass/spin
    phasing trade-off; the zone stays inside the ``\chi_1 \le 1`` bound.
 4. Time against phase (`time_vs_phase_doppler`, axes 3 and 4): absolute
-   time translation against orbital phase. The pure-phase direction is
-   quasi-degenerate (``\partial^2_\varphi h \parallel`` tangent space),
+   time translation against coalescence phase. The pure-phase direction is
+   quasi-degenerate (``\partial^2_{\phi_c} h \parallel`` tangent space),
    producing a near-singular boundary spike that the adaptive refinement
    resolves.
 5. Mass against phase, low-mass system (`mass_vs_phase_low_mass`, axes 2
-   and 4): the chirp-rate/phase degeneracy at the band-filling base
+   and 4): the chirp-rate/phase degeneracy at the low-mass base
    ``\theta_0 = [3.0, 0.25, 25.0, 0.0, 0.9, 0.0]``.
 6. Time against spin 1, high-spin system (`time_vs_spin1_high_spin`, axes 3
-   and 5): the spin–orbit phase twist trades against arrival time at the
-   strongly anti-aligned base
+   and 5): the spin–orbit phase term trades against arrival time at the
+   opposite-spin base
    ``\theta_0 = [5.0, 2.5, 10.0, 1.57, 0.7, -0.7]``.
 7. Phase against spin 1, seed binary (`phase_vs_spin1_seed`, axes 4 and 5):
    a weakly chirping light-seed source; the zone stays inside the phase cap

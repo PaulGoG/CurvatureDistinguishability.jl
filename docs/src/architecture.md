@@ -6,13 +6,13 @@ code disagree, the code is right and the page needs correcting.
 
 ## 1. Objective and theoretical foundation
 
-The pipeline computationally proves that the squared distance ``D^2`` between
+The pipeline verifies numerically that the squared distance ``D^2`` between
 a two-source GW signal and the best-fitting single-source model scales
-quartically with the parameter separation ``\delta``. A linear Fisher
-analysis suggests quadratic scaling, but the single-source manifold flexes to
-absorb the ``\mathcal{O}(\delta)`` and ``\mathcal{O}(\delta^2)``
-differences. The unabsorbable residual lives in the normal space and is
-governed by the extrinsic curvature ``K(u)``:
+quartically with the parameter separation ``\delta``. The squared distance
+between the two signals themselves is quadratic in ``\delta``, but a
+single-source fit absorbs the first-order difference and the tangential part
+of the second-order one. The unabsorbable residual lives in the normal space
+and is governed by the extrinsic curvature ``K(u)``:
 
 ```math
 D^2 \approx \frac{1}{16} K(u) \delta^4 .
@@ -34,9 +34,11 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   galactic-confusion fit, a two-channel sensitivity-level fit brought to the
   channel level by the Eq. 9 response, with Table-1 coefficients selected by
   observation time (all overridable in `[noise]`). The waveform comprises
-  TaylorF2 phasing to 1.5PN (`pn_phase`, `harmonic_phase`, `spin_beta`), the
-  0.5PN harmonic amplitudes (`harmonic_amplitudes`), the stationary-phase
-  time and the innermost-stable-orbit window. `WaveformParams` carries the
+  TaylorF2 phasing to 1.5PN or, with `[physics].phase_pn_order = 2.0`, to
+  2PN with the spin–spin coupling (`pn_phase`, `harmonic_phase`,
+  `spin_beta`, `spin_sigma`), the 0.5PN harmonic amplitudes
+  (`harmonic_amplitudes`), the stationary-phase time and the
+  innermost-stable-orbit window. `WaveformParams` carries the
   scenario constants (scales, mass ratio, sky, inclination, polarization,
   constellation phases) and the precomputed response geometry.
 - **`Detector.jl`**: the long-wavelength LISA response on the analytic
@@ -48,11 +50,11 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   broadcast model `channel_strain`, the CPU inference loop and the GPU
   kernel. The identically zero null channel T is opt-in
   (`[physics].include_t_channel`) and exists only for diagnostic
-  comparisons; it adds dead compute.
+  comparisons.
 - **`Residuals.jl`**: residual-spectrum diagnostics of the sweeps, namely the
   decimated `d(SNR²)/df` densities of the two-source data, the best-fit
   single source and the unabsorbed residual (channels A and E, log-uniform
-  windows with rms and min/max envelope) and the per-channel residual `D²`
+  windows with mean and min/max envelope) and the per-channel residual `D²`
   integrals. Host-side signal processing behind a typed signature; the
   driver only persists its table.
 - **`Bounds.jl`**: hard physical parameter bounds (`[parameter_bounds]`),
@@ -62,11 +64,13 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
 - **`Geometry.jl`**: the differential-geometry engine. One ForwardDiff
   Jacobian of the flattened response followed by modified Gram–Schmidt gives
   the noise-weighted orthonormal tangent basis. Exactly degenerate directions
-  are dropped: the 1.5PN spins enter through one scalar ``\beta``, so the
-  basis has rank 5 at every mass ratio. Directional value/first/second
-  derivatives come from a single fused nested-dual evaluation. Geometry
-  always runs on CPU arrays: `ForwardDiff.jacobian` is incompatible with
-  device arrays, and the map stage costs minutes, not days.
+  are dropped: at 1.5PN order the spins enter through one scalar ``\beta``,
+  so the basis has rank 5 at every mass ratio; at 2PN order it has rank 6
+  except on one line of the spin plane ([Waveform Physics](physics.md), §2).
+  Directional value/first/second derivatives come from a single fused
+  nested-dual evaluation. Geometry always runs on CPU arrays:
+  `ForwardDiff.jacobian` is incompatible with device arrays, and the map
+  stage costs minutes, not days.
 - **`Fitting.jl`**: the fit statistics shared by the sweep stage and the
   display-time regeneration, namely the quartic-law log-log slope with its
   standard error, the `O(δ⁵)` ratio-correction fit, optimizer-floor
@@ -84,22 +88,22 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   (`ext/CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
   `isdefined(Main, …)` reflection. Loading e.g. `CUDA` in the session
   registers the probe; `get_best_backend()` returns the first functional
-  device or the multi-threaded `CPU()` fallback. `scripts/run_pipeline.jl`
-  loads the GPU package requested by `[hardware].gpu_backend` only if it is
-  actually installed, with loud diagnostics.
+  device or the multi-threaded `CPU()` fallback. The Metal probe declines:
+  Apple GPUs have no double-precision type and the device path is double
+  precision only. `scripts/run_pipeline.jl` loads the GPU package requested
+  by `[hardware].gpu_backend` only if it is installed, and warns otherwise.
 - **`Provenance.jl`**: the effective configuration, an overlay deep-merged
   onto its `base_config` (sub-tables recurse, scalars and `[[sweeps]]`/
   `[[maps]]` lists replace, one level only). Run IDs are the SHA-256 of the
   canonical serialization of the identity table, which holds every section
   except the execution sections `[hardware]`, `[safety]`, `[monitoring]` and
-  `[supervision]`,
-  so the same physical case with the same numerical method has one
-  identifier on every machine. Reruns land in suffixed sibling directories;
-  comments, formatting, execution settings, the base/overlay split and the
-  wall clock never affect identity. The module also writes config snapshots
-  into the run directory (the merged table for overlays), `metadata.toml`
-  (git state via DrWatson, Julia version, backend, threads, timings) and
-  `safesave`-semantics backups for all output formats.
+  `[supervision]`, so the same physical case with the same numerical method
+  has one identifier on every machine. Reruns land in suffixed sibling
+  directories; comments, formatting, execution settings, the base/overlay
+  split and the wall clock never affect identity. The module also writes
+  config snapshots into the run directory (the merged table for overlays),
+  `metadata.toml` (git state via DrWatson, Julia version, backend, threads,
+  timings) and `safesave`-semantics backups for all output formats.
 - **`Plotting.jl`**: CairoMakie figures under one publication theme
   (Computer Modern, boxed axes, no titles, no minor ticks) and one
   family-wide tick policy: integer power-of-10 log ticks restricted to the
@@ -141,8 +145,8 @@ quoted in the scaling figures is fitted over the perturbative window of the
 ``O(\delta^5)`` correction fit (`slope_window` in `sweep_meta.toml`), with the
 slope over all clean points (`slope`) persisted alongside; display-time
 regeneration recomputes the window exponent for runs that predate the key.
-Guardrails warn when the sweep direction has an amplitude component
-(violating the equal-amplitude assumption of the law) or when the second
+A sweep direction with an amplitude component is rejected (the amplitude of
+the second source is set by `amp_ratio`); the sweep warns when the second
 source exits the physical bounds before ``\delta_{\mathrm{max}}``.
 
 ### Two-dimensional confusion maps (`[[maps]]`)
@@ -152,25 +156,26 @@ rescaling cancels exactly, so no division by ``g(u,u)`` occurs. Directions
 are sampled uniformly in the Fisher-normalized plane, in which each axis is
 measured in its own ``\sigma = g_{ii}^{-1/2}`` at the base point
 (`unit_direction`), and mapped to parameter units. The normalization matters
-because a plane whose axes differ by five orders of magnitude in ``\sigma``
-(a coalescence time against a phase for a loud source) is a needle in
-parameter units that a uniform angular grid would resolve only along its
-axes. The persisted `Angle` is that sampling angle, `Dir_Cos`/`Dir_Sin` the
-direction in parameter units, and the prior-limited fraction is measured in
-the sampling angle. ``K`` is evaluated on ``[0, \pi)`` only and mirrored (it
-is exactly even in ``u``), halving the cost and enforcing the theorem-level
-symmetry. Near-singular spikes (quasi-degenerate directions) are handled by
-polar prior-capping:
+because a plane whose axes differ by four to five orders of magnitude in
+``\sigma`` (a coalescence time against a phase for a loud source) is a
+needle in parameter units that a uniform angular grid would resolve only
+along its axes. The persisted `Angle` is that sampling angle,
+`Dir_Cos`/`Dir_Sin` the direction in parameter units, and the prior-limited
+fraction is measured in the sampling angle. ``K`` is evaluated on
+``[0, \pi)`` only and mirrored (it is exactly even in ``u``), halving the
+cost and enforcing the symmetry. Near-singular spikes (quasi-degenerate
+directions) are handled by polar prior-capping:
 ``r_{\mathrm{plot}} = \min(r_{\mathrm{math}}, r_{\mathrm{box}})`` against the
 deviation-space physical box, with `R_Math`, `R_Box`, `Prior_Limited` and
 `Degenerate` all persisted. Adaptive angular refinement is added where the
 capped radius jumps more than `[mapping].neighbor_ratio_tol` between
-neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
+neighbors. Every vertex of the polygon lies on the boundary of the zone ∩
+prior-box intersection.
 
 ## 4. Notes for future development
 
 1. Keep the scalar core (`channel_strain_bin` over the `Physics` kernels)
-   the single source of physics truth: the loop, broadcast and kernel paths
+   the only implementation of the physics: the loop, broadcast and kernel paths
    all call them, and the test suite asserts their equivalence.
 2. New physical parameters go: configuration TOML → `Config.jl` validation →
    `WaveformParams` field → scalar core. Never a bare kwarg default
@@ -190,7 +195,7 @@ neighbors. The polygon is therefore the exact zone ∩ prior-box intersection.
    pins a GPU run to a single task, because vendor runtimes are not safe
    under concurrent multi-task access and the device serializes kernels
    anyway. Device output buffers are cached and reused, because allocating
-   them per evaluation destabilises long sessions.
+   them per evaluation destabilizes long sessions.
 4. Changing `[noise]`, the optimizer, or the mapping algorithm invalidates
    comparisons with earlier runs. The config snapshot plus `metadata.toml`
-   in every run directory is the provenance chain; rely on it.
+   in every run directory is the provenance chain.
