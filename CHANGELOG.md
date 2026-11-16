@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-17
+
 ### Added
 
 - `[physics].phase_pn_order` selects the post-Newtonian order of the TaylorF2
@@ -308,7 +310,8 @@ First public release.
 - Publication figures (CairoMakie) and their regeneration from persisted
   tables (`scripts/replot.jl`, `scripts/collect_plots.jl`).
 
-[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.2...v2.2.0
 [2.1.2]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/PaulGoG/CurvatureDistinguishability.jl/compare/v2.0.4...v2.1.0
