@@ -89,7 +89,8 @@ $(TYPEDSIGNATURES)
 Build bounds from a `[parameter_bounds]` TOML table mapping parameter names
 (`luminosity_distance`, `chirp_mass`, `coalescence_time`, `coalescence_phase`,
 `spin1`, `spin2`) to `[lower, upper]` pairs (`inf`/`-inf` allowed). Missing
-keys keep the defaults; the phase axis stays periodic regardless.
+keys keep the defaults. The phase axis is periodic: a finite interval for
+`coalescence_phase` is an `ArgumentError`.
 """
 function bounds_from_config(cfg::AbstractDict)
     b = default_bounds()
@@ -106,6 +107,12 @@ function bounds_from_config(cfg::AbstractDict)
             upper[i] = Float64(pair[2])
             lower[i] < upper[i] ||
                 throw(ArgumentError("[parameter_bounds].$key: lower must be < upper"))
+            (b.periodic[i] && (isfinite(lower[i]) || isfinite(upper[i]))) && throw(
+                ArgumentError(
+                    "[parameter_bounds].$key is periodic and takes no finite bounds; " *
+                    "remove the key or set it to [-inf, inf]",
+                ),
+            )
         end
     end
     return ParameterBounds(Tuple(lower), Tuple(upper), b.periodic, b.period,

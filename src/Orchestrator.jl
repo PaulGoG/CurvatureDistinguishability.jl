@@ -29,16 +29,19 @@ using ..Inference
 using ..Bounds
 using ..Config
 using ..Provenance
-using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!
-using ..Checkpoint: CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!
+using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!, HEARTBEAT_FILE
+using ..Checkpoint:
+    CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!, CHECKPOINT_FILE
 using ..Plotting
 using ..Plotting: display_scale, map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
-    MIN_FIT_POINTS, above_floor_mask, loglog_slope, optimizer_floor,
+    MIN_FIT_POINTS, above_floor_mask, angular_fraction, loglog_slope, optimizer_floor,
     perturbative_mask, ratio_correction_fit
 
 export run_pipeline
-public ResourceBudgetError, PipelineStageError, DegenerateDirectionError, DEFAULT_CONFIG
+public ResourceBudgetError,
+    PipelineStageError, DegenerateDirectionError, DEFAULT_CONFIG,
+    run_log_logger
 
 """
 Configuration the pipeline scripts run without an explicit `--config`: the
@@ -151,6 +154,12 @@ function parallel_foreach(f, n::Int, ntasks::Int)
     end
     return nothing
 end
+
+# InterruptException and OutOfMemoryError end the run, also when a work-item
+# task raised them and `@sync` delivered them wrapped
+is_fatal(err) = err isa Union{InterruptException,OutOfMemoryError}
+is_fatal(err::TaskFailedException) = is_fatal(err.task.result)
+is_fatal(err::CompositeException) = any(is_fatal, err.exceptions)
 
 """
 $(TYPEDSIGNATURES)
@@ -406,7 +415,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
             "$(ctx.sweep_tasks) concurrent, optimizer = $(cfg.optimizer)" *
             (cfg.n_starts > 1 ? ", $(cfg.n_starts) starts" : "") * ")",
         )
-        checkpoint = open_checkpoint(joinpath(out_dir, "checkpoint.csv"),
+        checkpoint = open_checkpoint(joinpath(out_dir, CHECKPOINT_FILE),
             sweep_signature(sweep, deltas, u_norm, cfg))
         isempty(checkpoint.rows) || logline(log_io,
             "        continuing: $(length(checkpoint.rows))/$n separations in the checkpoint",
@@ -494,6 +503,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
         multi_start_gain[i] = row.multi_start_gain
     end
     finished = copy(checkpoint.rows)
+    ch1 = channel_strain(theta0, ctx.freqs, wp)
     parallel_foreach(n, ctx.sweep_tasks) do i
         if haskey(finished, i)
             store!(finished[i])
@@ -504,7 +514,6 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
         t_item = time()
         d = deltas[i]
         p2 = second_source(theta0, u_norm, d, amp_ratio)
-        ch1 = channel_strain(theta0, ctx.freqs, wp)
         ch2 = channel_strain(p2, ctx.freqs, wp)
         data = map((a, b) -> a .+ b, ch1, ch2)
         if !(ctx.backend isa KernelAbstractions.CPU)
@@ -963,8 +972,11 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             println(stdout, map_diagnostic_panel(polar.angle, r_cap, prior_frac))
         end
 
-        persist_map_results(out_dir, map_spec, box, polar, prior_frac, degen_frac,
-            display_scale(wp))
+        # the figure quotes fractions of the sampling angle, not of the vertex count
+        prior_angle_frac = angular_fraction(polar.angle, polar.prior_limited)
+        degen_angle_frac = angular_fraction(polar.angle, polar.degenerate)
+        persist_map_results(out_dir, map_spec, box, polar, prior_angle_frac,
+            degen_angle_frac, display_scale(wp))
 
         elapsed = format_time(time() - t0)
         logline(log_io, "  [done] map '$name' completed in $elapsed")
@@ -1334,6 +1346,28 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Logger of a run-log file: one line per record, `[yyyy-mm-dd HH:MM:SS] LEVEL
+message`, followed by the exception of the record and its backtrace when it
+carries one; records below `Info` are dropped.
+"""
+function run_log_logger(io::IO)
+    formatter = FormatLogger(io) do stream, record
+        println(stream, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
+            uppercase(string(record.level)), " ", record.message)
+        # the exception of a failed stage and its backtrace belong in the file
+        for (key, value) in record.kwargs
+            key === :exception || continue
+            err, trace = value isa Tuple ? value : (value, nothing)
+            trace === nothing ? showerror(stream, err) : showerror(stream, err, trace)
+            println(stream)
+        end
+    end
+    return MinLevelLogger(formatter, Logging.Info)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Run the pipeline: validate the TOML configuration (hard errors on unusable
 input), allocate hardware within the `[safety]` memory budget, snapshot the
 configuration and provenance metadata into a configuration-hashed run
@@ -1357,6 +1391,8 @@ Keywords:
   - `run_dir = nothing`: use exactly this run directory (created when absent);
     implies `resume`. An `ArgumentError` is thrown when the directory was
     produced by another package version (`Provenance.check_package_version`).
+    An `ArgumentError` is also thrown when the directory holds the snapshot of
+    a different configuration.
   - `heartbeat_period_s = 0`: when positive, publish `heartbeat.toml` in the
     run directory at this period for a supervising process.
 """
@@ -1379,6 +1415,14 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     if run_dir !== nothing
         out_base = String(run_dir)
         check_package_version(out_base)
+        snapshot = joinpath(out_base, "config.toml")
+        (isfile(snapshot) && effective_config(snapshot) != effective_config(config_path)) &&
+            throw(
+                ArgumentError(
+                    "$out_base holds the run of another configuration: its config.toml " *
+                    "differs from $config_path",
+                ),
+            )
         mkpath(out_base)
     elseif resume
         out_base, state = resolve_run_dir(base_dir, config_path)
@@ -1393,21 +1437,10 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     isfile(joinpath(out_base, "Manifest.toml")) || snapshot_manifest(out_base)
 
     log_stream = open(joinpath(out_base, "run.log"), "a")
-    file_logger = FormatLogger(log_stream) do io, args
-        println(io, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
-            uppercase(string(args.level)), " ", args.message)
-        # the exception of a failed stage and its backtrace belong in the file
-        for (key, value) in args.kwargs
-            key === :exception || continue
-            err, trace = value isa Tuple ? value : (value, nothing)
-            trace === nothing ? showerror(io, err) : showerror(io, err, trace)
-            println(io)
-        end
-    end
-    tee = TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info))
+    tee = TeeLogger(global_logger(), run_log_logger(log_stream))
     beat =
         heartbeat_period_s > 0 ?
-        start_heartbeat(joinpath(out_base, "heartbeat.toml"), heartbeat_period_s) : nothing
+        start_heartbeat(joinpath(out_base, HEARTBEAT_FILE), heartbeat_period_s) : nothing
     failures = try
         with_logger(tee) do
             _run_pipeline(cfg, project_root, out_base, config_path)
@@ -1502,7 +1535,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
                 run_sweep(s, i, length(cfg.sweeps), ctx)
                 mark_stage_complete!(out_base, key)
             catch err
-                err isa Union{InterruptException,OutOfMemoryError} && rethrow()
+                is_fatal(err) && rethrow()
                 push!(failures, s.name)
                 @error "Sweep '$(s.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())
@@ -1530,7 +1563,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
                 run_map(m, i, length(cfg.maps), ctx)
                 mark_stage_complete!(out_base, key)
             catch err
-                err isa Union{InterruptException,OutOfMemoryError} && rethrow()
+                is_fatal(err) && rethrow()
                 push!(failures, m.name)
                 @error "Map '$(m.name)' failed; continuing with remaining stages." exception =
                     (err, catch_backtrace())

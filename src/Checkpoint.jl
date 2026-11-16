@@ -10,6 +10,9 @@ using DocStringExtensions: TYPEDSIGNATURES
 
 export CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!, count_items
 
+# checkpoint file of a sweep case directory
+const CHECKPOINT_FILE = "checkpoint.csv"
+
 const FORMAT_LINE = "# sweep checkpoint v1"
 const COLUMNS =
     "index,D2,best_fit,converged,iterations,g_norm,at_bound," *

@@ -72,14 +72,12 @@ println()
 
 println("\n[7] Full bounded optimization: IPNewton vs Fminbox(LBFGS)")
 for opt in (:ipnewton, :lbfgs_box)
+    # warm-up: the first call compiles the optimizer path
+    calculate_numerical_distance(data, p0, freqs, Sn_vals, df; optimizer = opt, wp = wp)
     t0 = time()
-    d2, _, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
+    d2, best_fit, res = calculate_numerical_distance(data, p0, freqs, Sn_vals, df;
         optimizer = opt, wp = wp)
-    diag = optimization_diagnostics(
-        res,
-        ones(CurvatureDistinguishability.Physics.N_PARAMS),
-        default_bounds(),
-    )
+    diag = optimization_diagnostics(res, best_fit, default_bounds())
     println(
         "  $(rpad(opt, 10)): D² = $(d2)  iters = $(diag.iterations)  " *
         "wall = $(round(time() - t0, digits = 2)) s",

@@ -42,6 +42,7 @@ end
 
 function replot(run_dir, rho, refit)
     replotted = 0
+    failed = 0
     cases = run_cases(run_dir)
     for name in cases.sweeps
         dir = joinpath(run_dir, "sweeps", name)
@@ -57,6 +58,7 @@ function replot(run_dir, rho, refit)
             println("replotted sweep: $name$(figs.suffix)")
         catch err
             @warn "Failed to replot sweep '$name'" exception = (err, catch_backtrace())
+            failed += 1
         end
     end
     for name in cases.maps
@@ -74,11 +76,16 @@ function replot(run_dir, rho, refit)
             println("replotted map: $name$(rendered.suffix)")
         catch err
             @warn "Failed to replot map '$name'" exception = (err, catch_backtrace())
+            failed += 1
         end
     end
-    return replotted
+    return replotted, failed
 end
 
 run_dir, rho, refit = parse_arguments(ARGS)
-replotted = replot(run_dir, rho, refit)
+replotted, failed = replot(run_dir, rho, refit)
 println("Replot complete: $replotted item(s) regenerated in $run_dir")
+if failed > 0
+    println(stderr, "$failed case(s) failed")
+    exit(1)
+end

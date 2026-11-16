@@ -1,17 +1,20 @@
 module CurvatureDistinguishabilityMetalExt
 
-using Metal
+using Metal: Metal
 using CurvatureDistinguishability.Backends
 
-function __init__()
-    Backends.register_backend!(:metal, () -> Metal.functional() ? MetalBackend() : nothing)
+# Metal has no double-precision type and the device path is Float64 only, so
+# the probe declines: `auto` falls back to the CPU, and a run that names or
+# requires the Metal backend stops before any output.
+function metal_probe()
+    @warn "Metal has no Float64 type and the device path of " *
+          "CurvatureDistinguishability is double precision: the Metal backend " *
+          "is not used." maxlog = 1
+    return nothing
 end
 
-Backends.to_backend(data::AbstractArray, ::MetalBackend) = MtlArray(data)
-Backends.backend_name(::MetalBackend) =
-    Metal.functional() ? "Apple Metal GPU ($(String(Metal.device().name)))" :
-    "Apple Metal GPU"
-Backends.device_fingerprint(::MetalBackend) =
-    Metal.functional() ? sprint(io -> Metal.versioninfo(io)) : ""
+function __init__()
+    Backends.register_backend!(:metal, metal_probe)
+end
 
 end

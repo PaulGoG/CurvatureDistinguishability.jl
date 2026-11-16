@@ -24,7 +24,12 @@ is_run_dir(path) = isdir(path) && isfile(joinpath(path, "config.toml"))
 
 function resolve_run(arg)
     is_run_dir(abspath(arg)) && return abspath(arg)
-    startswith(basename(arg), "run_") && return joinpath(DATA_ROOT, arg)
+    if startswith(basename(arg), "run_")
+        dir = joinpath(DATA_ROOT, arg)
+        isfile(joinpath(dir, "config.toml")) ||
+            throw(ArgumentError("$dir is not a run directory: it has no config.toml"))
+        return dir
+    end
     return nothing
 end
 
@@ -57,6 +62,7 @@ end
 
 function collect_figures(runs, dest)
     n = 0
+    failed = 0
     for run_dir in runs
         label = basename(run_dir)
         cases = run_cases(run_dir)
@@ -81,6 +87,7 @@ function collect_figures(runs, dest)
             catch err
                 @warn "Failed to render sweep '$label/$case'" exception =
                     (err, catch_backtrace())
+                failed += 1
             end
         end
         for case in cases.maps
@@ -93,13 +100,24 @@ function collect_figures(runs, dest)
             catch err
                 @warn "Failed to render map '$label/$case'" exception =
                     (err, catch_backtrace())
+                failed += 1
             end
         end
     end
-    return n
+    return n, failed
 end
 
-runs, dest = parse_arguments(ARGS)
+runs, dest = try
+    parse_arguments(ARGS)
+catch err
+    err isa ArgumentError || rethrow()
+    println(stderr, err.msg)
+    exit(1)
+end
 mkpath(dest)
-n = collect_figures(runs, dest)
+n, failed = collect_figures(runs, dest)
 println("Collected $n PNG figures into $dest")
+if failed > 0
+    println(stderr, "$failed case(s) failed")
+    exit(1)
+end

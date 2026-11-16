@@ -494,9 +494,7 @@ function scaling_panel!(gp, deltas::AbstractVector, d2_num::AbstractVector,
     # points inside the optimizer-floor band are struck through by a
     # thin X stretching over the symbol (no legend entry): the floor, not
     # the physics, sets them
-    floored =
-        isfinite(floor_level) ? (pos .& (d2_num .<= floor_level)) :
-        falses(length(d2_num))
+    floored = pos .& .!clean
     any(floored) && scatter!(ax1, deltas[floored], d2_num[floored];
         marker = '×', color = :grey15, markersize = 42)
     ylims!(ax1, ylo, yhi)
@@ -664,6 +662,10 @@ frame with shading. Display only; the persisted tables keep the full range.
 """
 const ENVELOPE_DEPTH = 1e-3
 
+# Depth of the residual-figure frames: each panel reaches at most this factor
+# (eight decades) below the maximum of its plotted density.
+const FRAME_DEPTH = 1e-8
+
 """
 $(TYPEDSIGNATURES)
 
@@ -773,7 +775,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
     # 10⁰/10¹ instead of 1/10)
     sig_pos = filter(>(0), vcat(spec.sig_mean_A, spec.sig_mean_E))
     sig_top = maximum(sig_pos)
-    ylo1 = max(minimum(sig_pos), sig_top * 1e-8) / 3
+    ylo1 = max(minimum(sig_pos), sig_top * FRAME_DEPTH) / 3
     yhi1 = sig_top * 3
     ax1 = Axis(layout[1, 1]; xscale = log10, yscale = log10,
         ylabel = L"\mathrm{d}\rho^2/\mathrm{d}f\ \ [\mathrm{Hz}^{-1}]",
@@ -817,7 +819,7 @@ function residual_panel!(gp, spec::AbstractDataFrame, meta::ResidualFigureMeta;
                 spec.res_max_A, spec.res_max_E),
         ),
     )
-    ylo2 = max(band_lo / 2, minimum(res_pos) / 40, res_top * 1e-8)
+    ylo2 = max(band_lo / 2, minimum(res_pos) / 40, res_top * FRAME_DEPTH)
     yhi2 = max(maximum(spec.res_max_A), maximum(spec.res_max_E),
         maximum(res_pos)) * 4
     noise_level = 1.0 / meta.df

@@ -19,7 +19,7 @@ using ..Plotting
 using ..Plotting: display_scale
 using ..Fitting:
     MIN_FIT_POINTS, loglog_slope, ratio_correction_fit,
-    above_floor_mask, perturbative_mask
+    above_floor_mask, angular_fraction, perturbative_mask
 
 export run_cases, sweep_figures, zone_map_figure, composite_figures,
     sweep_panel_data, zone_panel_data, residual_panel_data
@@ -293,7 +293,7 @@ Returns the NamedTuple `(x, y, prior_limited, px, py, box, prior_frac,
 degenerate_frac, x_math, y_math, scale)`, accepted panel by panel by
 `Plotting.composite_zone_figure`: the capped boundary polygon with its
 prior-limited flags, the parameter indices of the plane, the deviation-space
-prior box, the prior-limited and degenerate direction fractions, and the
+prior box, the prior-limited and degenerate fractions of the sampling angle, and the
 uncapped mathematical contour, all in the rescaled coordinates, and the
 display-unit factors of the run's waveform scales
 (`Plotting.display_scale`).
@@ -304,8 +304,8 @@ function zone_panel_data(run_dir::AbstractString, case::AbstractString)
     prior = collect(Bool, contour.Prior_Limited)
     return (x = contour.X_Bound, y = contour.Y_Bound, prior_limited = prior,
         px = stored.px, py = stored.py, box = stored.box,
-        prior_frac = count(prior) / max(1, length(prior)),
-        degenerate_frac = count(stored.degen) / max(1, length(stored.degen)),
+        prior_frac = angular_fraction(contour.Angle, prior),
+        degenerate_frac = angular_fraction(contour.Angle, stored.degen),
         x_math = contour.R_Math .* contour.Dir_Cos,
         y_math = contour.R_Math .* contour.Dir_Sin,
         scale = display_scale(stored.cfg.wp))
@@ -357,8 +357,8 @@ function zone_map_figure(run_dir::AbstractString, case::AbstractString;
         K_Raw = contour_stored.K_Raw, G_uu = contour_stored.G_uu)
     figure = zone_figure(X, Y, prior;
         px = stored.px, py = stored.py, box = stored.box,
-        prior_frac = count(prior) / max(1, length(prior)),
-        degenerate_frac = count(degen) / max(1, length(degen)),
+        prior_frac = angular_fraction(contour_stored.Angle, prior),
+        degenerate_frac = angular_fraction(contour_stored.Angle, degen),
         x_math = x_math, y_math = y_math, scale = display_scale(stored.cfg.wp))
     return (figure = figure, contour = contour, suffix = suffix)
 end

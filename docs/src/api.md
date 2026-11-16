@@ -1,9 +1,6 @@
 # API Reference
 
-Public symbols of `CurvatureDistinguishability.jl`, by module: physics,
-detector response, residual diagnostics, bounds, geometry, inference,
-backends, configuration, provenance, plotting, orchestration and run
-supervision.
+Public symbols of `CurvatureDistinguishability.jl`, by module.
 
 ```@docs
 CurvatureDistinguishability
@@ -133,6 +130,8 @@ CurvatureDistinguishability.Backends.register_backend!
 CurvatureDistinguishability.Backends.reclaim_device_memory!
 CurvatureDistinguishability.Backends.cpu_model
 CurvatureDistinguishability.Backends.device_fingerprint
+CurvatureDistinguishability.Backends.GPU_BACKEND_NAMES
+CurvatureDistinguishability.Backends.GPU_PACKAGES
 ```
 
 ## Configuration
@@ -210,6 +209,7 @@ CurvatureDistinguishability.Fitting.ratio_correction_fit
 CurvatureDistinguishability.Fitting.optimizer_floor
 CurvatureDistinguishability.Fitting.above_floor_mask
 CurvatureDistinguishability.Fitting.perturbative_mask
+CurvatureDistinguishability.Fitting.angular_fraction
 CurvatureDistinguishability.Fitting.MIN_FIT_POINTS
 ```
 
@@ -222,6 +222,7 @@ CurvatureDistinguishability.Orchestrator.ResourceBudgetError
 CurvatureDistinguishability.Orchestrator.PipelineStageError
 CurvatureDistinguishability.Orchestrator.DegenerateDirectionError
 CurvatureDistinguishability.Orchestrator.DEFAULT_CONFIG
+CurvatureDistinguishability.Orchestrator.run_log_logger
 ```
 
 ## Work-item checkpoints

@@ -14,6 +14,19 @@ const THETA0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
 const FIX_SN =
     analytic_noise_psd.(FIX_FREQS; noise = NoiseParams(confusion_enabled = false))
 
+# largest relative change of the numeric columns shared by a committed table and
+# its regenerated values; rows with a zero committed value are skipped
+function max_relative_change(old::DataFrame, new::DataFrame)
+    worst = 0.0
+    for name in intersect(names(old), names(new))
+        for (a, b) in zip(old[!, name], new[!, name])
+            (a isa Real && b isa Real && a != 0) || continue
+            worst = max(worst, abs(b / a - 1))
+        end
+    end
+    return worst
+end
+
 # psd.csv: header-less (f, Sn), instrumental noise only
 CSV.write(
     joinpath(FIXDIR, "psd.csv"),
@@ -39,16 +52,25 @@ d2_num = map(deltas) do d
             optimizer = :ipnewton, wp = FIX_WP),
     )
 end
-CSV.write(joinpath(FIXDIR, "sweep.csv"),
-    DataFrame(Delta = deltas, D2_Numerical = d2_num,
-        D2_Theoretical = (1 / 16) .* K_norm .* deltas .^ 4,
-        K_u_Norm = fill(K_norm, length(deltas))))
+# the optimized distances must follow the curvature prediction before they
+# become reference values
+d2_theo = (1 / 16) .* K_norm .* deltas .^ 4
+worst = maximum(abs.(d2_num ./ d2_theo .- 1))
+worst < 2e-3 || error(
+    "sweep fixture not written: optimized and predicted D² differ by up to $worst")
+sweep = DataFrame(Delta = deltas, D2_Numerical = d2_num, D2_Theoretical = d2_theo,
+    K_u_Norm = fill(K_norm, length(deltas)))
+sweep_path = joinpath(FIXDIR, "sweep.csv")
+isfile(sweep_path) && println("sweep.csv: max relative change ",
+    max_relative_change(CSV.read(sweep_path, DataFrame), sweep))
+CSV.write(sweep_path, sweep)
 
 # map_<px>_<py>.csv: per-angle curvature and unit-threshold boundary
 basis = compute_tangent_basis(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
 for (px, py) in ((2, 3), (5, 6), (2, 4))
     path = joinpath(FIXDIR, "map_$(px)_$(py).csv")
-    angles = CSV.read(path, DataFrame).Angle
+    committed = CSV.read(path, DataFrame)
+    angles = committed.Angle
     rows = map(angles) do phi
         dir = zeros(6)
         dir[px] = cos(phi)
@@ -58,6 +80,9 @@ for (px, py) in ((2, 3), (5, 6), (2, 4))
         r = boundary_radius(K, 1.0)
         (Angle = phi, K_raw = K, G_uu = g, X_Bound = r * cos(phi), Y_Bound = r * sin(phi))
     end
-    CSV.write(path, DataFrame(rows))
+    regenerated = DataFrame(rows)
+    println("map_$(px)_$(py).csv: max relative change ",
+        max_relative_change(committed, regenerated))
+    CSV.write(path, regenerated)
 end
 println("reference fixtures regenerated in $FIXDIR")

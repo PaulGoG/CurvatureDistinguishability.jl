@@ -10,6 +10,7 @@ using ..Physics: N_PARAMS
 using ..Detector: n_channels
 using ..Bounds
 using ..Bounds: PARAM_KEYS
+using ..Backends: GPU_BACKEND_NAMES
 using ..Provenance: effective_config
 using ..Supervision: SupervisionSettings
 
@@ -191,6 +192,38 @@ get_number(t, key, default, context) = begin
 end
 
 """
+Fetch `key` from table `t` (or `default`) as a `String`, erroring with the
+offending `[context]` path on a non-string value.
+"""
+get_string(t, key, default, context) = begin
+    v = get(t, key, default)
+    v isa AbstractString ||
+        config_error("[$context].$key must be a string, got $(repr(v))")
+    String(v)
+end
+
+"""
+Section `name` of `config` as a table (empty when absent), erroring when the
+key holds anything else.
+"""
+get_table(config::AbstractDict, name::AbstractString) = begin
+    v = get(config, name, Dict{String,Any}())
+    v isa AbstractDict || config_error("[$name] must be a table, got $(repr(v))")
+    v
+end
+
+"""
+Array of tables `name` of `config` (empty when absent), erroring when the key
+holds anything else.
+"""
+get_tables(config::AbstractDict, name::AbstractString) = begin
+    v = get(config, name, Any[])
+    (v isa AbstractVector && all(x -> x isa AbstractDict, v)) ||
+        config_error("[[$name]] must be an array of tables")
+    Vector{Dict{String,Any}}(v)
+end
+
+"""
 Fetch `key` from table `t` (or `default`) as an `Int`, erroring with the
 offending `[context]` path on a non-integer value.
 """
@@ -290,12 +323,12 @@ end
 `[pipeline]` stage switches, optimizer choice and RNG seed.
 """
 function parse_pipeline(config::AbstractDict)
-    pipeline = get(config, "pipeline", Dict{String,Any}())
+    pipeline = get_table(config, "pipeline")
     reject_unknown_keys(pipeline, "pipeline")
     run_1d_sweeps = get_boolean(pipeline, "run_1d_sweeps", true, "pipeline")
     run_2d_mapping = get_boolean(pipeline, "run_2d_mapping", true, "pipeline")
-    opt_str = get(pipeline, "optimizer", "ipnewton")
-    optimizer = Symbol(lowercase(String(opt_str)))
+    opt_str = get_string(pipeline, "optimizer", "ipnewton", "pipeline")
+    optimizer = Symbol(lowercase(opt_str))
     optimizer in (:ipnewton, :lbfgs_box) ||
         config_error(
             "[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'",
@@ -309,8 +342,10 @@ end
 optimizer tolerances, multi-start and analysis tunables.
 """
 function parse_sweep_settings(config::AbstractDict)
-    pipeline = get(config, "pipeline", Dict{String,Any}())
+    pipeline = get_table(config, "pipeline")
     sweep_settings = get(pipeline, "sweep_settings", Dict{String,Any}())
+    sweep_settings isa AbstractDict || config_error(
+        "[pipeline.sweep_settings] must be a table, got $(repr(sweep_settings))")
     reject_unknown_keys(sweep_settings, "pipeline.sweep_settings")
     n_deltas = get_integer(sweep_settings, "n_deltas", 20, "pipeline.sweep_settings")
     n_deltas >= 2 ||
@@ -403,7 +438,7 @@ end
 checked for a usable minimum.
 """
 function parse_grid(config::AbstractDict)
-    grid = get(config, "grid", Dict{String,Any}())
+    grid = get_table(config, "grid")
     reject_unknown_keys(grid, "grid")
     T_obs = get_number(grid, "T_obs", SECONDS_PER_YEAR, "grid")
     T_obs > 0 || config_error("[grid].T_obs must be > 0, got $T_obs")
@@ -430,7 +465,7 @@ becomes the duration of the finite-observation window of the response
 `phase_pn_order` selects the post-Newtonian order of the phase, `1.5` or `2`.
 """
 function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
-    phys = get(config, "physics", Dict{String,Any}())
+    phys = get_table(config, "physics")
     reject_unknown_keys(phys, "physics")
     wp_default = WaveformParams()
     number(key, default) = get_number(phys, key, default, "physics")
@@ -484,7 +519,7 @@ end
 Robson Table-1 selection for `T_obs` and is overridable individually.
 """
 function parse_noise(config::AbstractDict, T_obs::Real)
-    noise_cfg = get(config, "noise", Dict{String,Any}())
+    noise_cfg = get_table(config, "noise")
     reject_unknown_keys(noise_cfg, "noise")
     base_noise = robson_confusion_params(T_obs)
     noise_numeric = (:confusion_amp, :confusion_alpha, :confusion_beta,
@@ -511,7 +546,7 @@ end
 and corner-bisection controls, and the unbounded-direction polygon cap.
 """
 function parse_mapping(config::AbstractDict)
-    mapping = get(config, "mapping", Dict{String,Any}())
+    mapping = get_table(config, "mapping")
     reject_unknown_keys(mapping, "mapping")
     map_n_angles = get_integer(mapping, "n_angles", 2000, "mapping")
     map_n_angles >= 8 || config_error("[mapping].n_angles must be >= 8, got $map_n_angles")
@@ -547,13 +582,15 @@ chunking and inter-stage memory maintenance. `heap_size_hint_gb` is stored in th
 settings and applied to the worker process by the launchers.
 """
 function parse_hardware(config::AbstractDict)
-    hardware = get(config, "hardware", Dict{String,Any}())
+    hardware = get_table(config, "hardware")
     reject_unknown_keys(hardware, "hardware")
-    gpu_str = get(hardware, "gpu_backend", "auto")
-    gpu_backend = Symbol(lowercase(String(gpu_str)))
-    gpu_backend in (:auto, :none, :cuda, :amdgpu, :metal, :oneapi) ||
+    gpu_str = get_string(hardware, "gpu_backend", "auto", "hardware")
+    gpu_backend = Symbol(lowercase(gpu_str))
+    backend_choices = (:auto, :none, GPU_BACKEND_NAMES...)
+    gpu_backend in backend_choices ||
         config_error(
-            "[hardware].gpu_backend must be auto | none | cuda | amdgpu | metal | oneapi, got '$gpu_str'",
+            "[hardware].gpu_backend must be $(join(backend_choices, " | ")), " *
+            "got '$gpu_str'",
         )
     max_threads = get_integer(hardware, "max_threads", Threads.nthreads(), "hardware")
     max_threads >= 1 ||
@@ -584,7 +621,7 @@ end
 `[safety]`: host and device memory budgets.
 """
 function parse_safety(config::AbstractDict)
-    safety = get(config, "safety", Dict{String,Any}())
+    safety = get_table(config, "safety")
     reject_unknown_keys(safety, "safety")
     default_ram = DEFAULT_RAM_FRACTION * Sys.total_memory() / 2^30
     max_ram_gb = get_number(safety, "max_ram_gb", default_ram, "safety")
@@ -607,7 +644,7 @@ end
 `[parameter_bounds]` into a [`ParameterBounds`](@ref).
 """
 function parse_bounds(config::AbstractDict)
-    table = get(config, "parameter_bounds", Dict{String,Any}())
+    table = get_table(config, "parameter_bounds")
     bounds = try
         bounds_from_config(table)
     catch err
@@ -625,12 +662,12 @@ per-item thresholds and even angular counts.
 function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
     sweep_rho_thresh::Real, map_n_angles::Integer,
     run_1d_sweeps::Bool, run_2d_mapping::Bool)
-    sweep_tables = Vector{Dict{String,Any}}(get(config, "sweeps", []))
-    map_tables = Vector{Dict{String,Any}}(get(config, "maps", []))
+    sweep_tables = get_tables(config, "sweeps")
+    map_tables = get_tables(config, "maps")
     seen = Set{String}()
     sweeps = map(sweep_tables) do s
         reject_unknown_keys(s, "sweeps[]")
-        name = String(get(s, "name", ""))
+        name = get_string(s, "name", "", "sweeps[]")
         fs_safe(name) ||
             config_error(
                 "[[sweeps]] entry has missing or non-filesystem-safe name: $(repr(name))",
@@ -664,7 +701,7 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
     end
     maps = map(map_tables) do m
         reject_unknown_keys(m, "maps[]")
-        name = String(get(m, "name", ""))
+        name = get_string(m, "name", "", "maps[]")
         fs_safe(name) ||
             config_error(
                 "[[maps]] entry has missing or non-filesystem-safe name: $(repr(name))",
@@ -703,7 +740,7 @@ end
 `[monitoring]`: in-terminal diagnostics switch and run-log progress cadence.
 """
 function parse_monitoring(config::AbstractDict)
-    monitoring_cfg = get(config, "monitoring", Dict{String,Any}())
+    monitoring_cfg = get_table(config, "monitoring")
     reject_unknown_keys(monitoring_cfg, "monitoring")
     monitoring_enabled = get_boolean(monitoring_cfg, "enabled", false, "monitoring")
     progress_log_fraction =
@@ -721,23 +758,21 @@ end
 ([`SupervisionSettings`](@ref)); every key is optional.
 """
 function parse_supervision(config::AbstractDict)
-    table = get(config, "supervision", Dict{String,Any}())
+    table = get_table(config, "supervision")
     reject_unknown_keys(table, "supervision")
-    max_retries = get_integer(table, "max_retries", 5, "supervision")
-    max_stalled_retries = get_integer(table, "max_stalled_retries", 2, "supervision")
-    poll_interval_s = get_number(table, "poll_interval_s", 15.0, "supervision")
-    startup_grace_s = get_number(table, "startup_grace_s", 1800.0, "supervision")
-    idle_stall_s = get_number(table, "idle_stall_s", 300.0, "supervision")
-    busy_stall_s = get_number(table, "busy_stall_s", 7200.0, "supervision")
-    cpu_idle_cores = get_number(table, "cpu_idle_cores", 0.05, "supervision")
-    term_grace_s = get_number(table, "term_grace_s", 60.0, "supervision")
-    kill_wait_s = get_number(table, "kill_wait_s", 120.0, "supervision")
-    backoff_s = get_number(table, "backoff_s", 30.0, "supervision")
-    # the bounds live in the constructor, which names the offending key
+    integer_keys = ("max_retries", "max_stalled_retries")
+    given = Pair{Symbol,Real}[]
+    for key in KNOWN_KEYS["supervision"]
+        haskey(table, key) || continue
+        push!(given,
+            Symbol(key) => (
+                key in integer_keys ? get_integer(table, key, 0, "supervision") :
+                get_number(table, key, 0.0, "supervision")
+            ))
+    end
+    # the defaults and bounds live in the constructor, which names the offending key
     supervision = try
-        SupervisionSettings(; max_retries, max_stalled_retries, poll_interval_s,
-            startup_grace_s, idle_stall_s, busy_stall_s, cpu_idle_cores, term_grace_s,
-            kill_wait_s, backoff_s)
+        SupervisionSettings(; given...)
     catch err
         err isa ArgumentError || rethrow()
         config_error(err.msg)

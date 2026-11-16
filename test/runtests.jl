@@ -43,11 +43,12 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         @test ExplicitImports.check_no_stale_explicit_imports(
             CurvatureDistinguishability,
         ) === nothing
-        # the top-module check does not recurse: stale aliases in submodules
-        # were invisible to CI until checked one by one
+        # the top-module check does not recurse into submodules; each is
+        # checked on its own
         for submodule in (CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
             CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
-            CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures)
+            CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures,
+            CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
             @test ExplicitImports.check_no_stale_explicit_imports(submodule) ===
                   nothing
         end
@@ -70,8 +71,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         # backends, the method exists for every backend and no artifact
         # remains. A change in either count must be triaged.
         # JET tracks compiler internals and routinely breaks on pre-release
-        # Julia (observed: internal UndefRefError on the CI `pre` leg), so
-        # the analysis gates stable releases only
+        # Julia, so the analysis gates stable releases only
         if isempty(VERSION.prerelease)
             jet_modules = (CD, CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
                 CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
@@ -85,7 +85,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
     end
 
     @testset "Noise PSD (Robson 2019)" begin
-        # instrumental part must reproduce the reference values bitwise-tight
+        # instrumental part must reproduce the reference values to 1e-14 relative
         psd_fix = CSV.read(joinpath(FIXDIR, "psd.csv"), DataFrame; header = false)
         @test all(isapprox.(FIX_SN, psd_fix[:, 2]; rtol = 1e-14))
 
@@ -278,7 +278,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
             @test abs(normal[3]) / sqrt(sum(normal .^ 2)) ≈ 0.5 atol = 1e-2
         end
         # sky- and polarization-averaged response power of A and E is the
-        # long-wavelength 3/10 of a 60° Michelson (Robson et al. 2019, Eq. 13)
+        # long-wavelength 3/10 of a 60° Michelson (Robson et al. 2019, Eq. 9)
         # and the two channels are uncorrelated
         acc = zeros(3)
         n_dir = 0
@@ -511,7 +511,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         spec, integrals = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0,
             FIX_FREQS, FIX_SN, FIX_DF, FIX_WP; n_windows = 16)
         @test spec isa DataFrame
-        # f plus rms/min/max of signal, best fit and residual for A and E
+        # f plus mean/min/max of signal, best fit and residual for A and E
         @test names(spec)[1] == "f" && ncol(spec) == 19
         @test issorted(spec.f) && nrow(spec) <= 16
         @test FIX_FREQS[1] <= spec.f[1] && spec.f[end] <= FIX_FREQS[end]
@@ -547,8 +547,7 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         r = [1.0, Inf, 2.0, Inf]
         @test cap_unbounded_radii!(r, 5.0) == (2, 10.0)
         @test r == [1.0, 10.0, 2.0, 10.0]
-        @test cap_unbounded_radii!(r, 5.0) == (0, NaN) ||
-              isnan(cap_unbounded_radii!(r, 5.0)[2])
+        @test isequal(cap_unbounded_radii!(r, 5.0), (0, NaN))
     end
 
     @testset "Bounds and polar capping" begin
@@ -584,6 +583,13 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
         cfgb = bounds_from_config(Dict("spin1" => [-0.5, 0.5]))
         @test cfgb.lower[5] == -0.5 && cfgb.upper[5] == 0.5
         @test_throws ArgumentError bounds_from_config(Dict("spin1" => [1.0, -1.0]))
+        # the phase is periodic: a finite interval for it is refused, the
+        # unbounded pair is the only value the key accepts
+        @test_throws "coalescence_phase" bounds_from_config(
+            Dict("coalescence_phase" => [-1.0, 1.0]))
+        @test_throws ArgumentError bounds_from_config(
+            Dict("coalescence_phase" => [-Inf, 1.0]))
+        @test bounds_from_config(Dict("coalescence_phase"=>[-Inf, Inf])).periodic[4]
     end
 
     @testset "Finite-observation window" begin
@@ -773,6 +779,9 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN, FIX_DF;
                     optimizer = :ipnewton, wp = FIX_WP)
             @test d_new ≈ row.D2_Numerical rtol = 1e-2
+            # cross-method check of the law: the optimized distance against
+            # the curvature prediction K δ⁴/16 of the geometry stage
+            @test d_new ≈ (K_u / g_uu^2) * d^4 / 16 rtol = 2e-3
             @test all(abs.(bf[5:6]) .<= 1.0 + 1e-9) # physical bounds respected
             push!(d2_ipn, d_new)
         end
@@ -866,6 +875,40 @@ const FIX_SN = analytic_noise_psd.(FIX_FREQS; noise = FIX_NOISE_OFF)
                 @test_throws "[physics].phase_pn_order" load_and_validate_config(
                     write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))
             end
+            # a value of the wrong type is a configuration error naming the
+            # key, not a MethodError: strings, sections and arrays of tables
+            for (bad, key) in (
+                ("[pipeline]\noptimizer = 3\n", "optimizer"),
+                ("[hardware]\ngpu_backend = 1\n", "gpu_backend"),
+                ("[[sweeps]]\nname = 7\ntheta_0 = [1,1,1,0,0,0]\nu_dir = [0,1,0,0,0,0]\n",
+                    "name"),
+                ("[sweeps]\nname = \"s\"\n", "sweeps"),
+                ("[[noise]]\nconfusion_enabled = true\n", "noise"),
+            )
+                @test_throws ArgumentError load_and_validate_config(write_cfg(dir, bad))
+                @test_throws key load_and_validate_config(write_cfg(dir, bad))
+            end
+            # [supervision]: absent keys take the defaults of the settings
+            # constructor, present ones override them one by one
+            sup_default = load_and_validate_config(write_cfg(dir, "")).supervision
+            @test sup_default == CD.Supervision.SupervisionSettings()
+            sup = load_and_validate_config(
+                write_cfg(dir, "[supervision]\nmax_retries = 7\nbackoff_s = 2.5\n"),
+            ).supervision
+            @test sup.max_retries == 7 && sup.backoff_s == 2.5
+            @test sup.poll_interval_s == sup_default.poll_interval_s
+            @test_throws "[supervision].max_retries" load_and_validate_config(
+                write_cfg(dir, "[supervision]\nmax_retries = -1\n"))
+            @test_throws ArgumentError load_and_validate_config(
+                write_cfg(dir, "[supervision]\nmax_retries = 1.5\n"))
+            # an explicit run directory that holds the snapshot of another
+            # configuration is refused before anything is computed
+            other = joinpath(dir, "other_run")
+            mkpath(other)
+            cp(write_cfg(dir, "[physics]\neta = 0.2\n"), joinpath(other, "config.toml"))
+            @test_throws "another configuration" run_pipeline(
+                write_cfg(dir, "[physics]\neta = 0.21\n"), dir, "out"; run_dir = other)
+            @test !isdir(joinpath(dir, "out"))
             @test_throws ArgumentError load_and_validate_config(
                 write_cfg(dir, "[physics]\necliptic_latitude = 2.0\n"))
             @test_throws ArgumentError load_and_validate_config(
@@ -1298,9 +1341,64 @@ enabled = true
         @test s_win ≈ 4.0241212293066635 rtol = 1e-9
         @test e_win ≈ 0.004121123271661602 rtol = 1e-6
         @test s_win < s_all
+
+        # slope, c₁ and their standard errors against the normal equations of
+        # ordinary least squares, β = X \ y and cov = s² (XᵀX)⁻¹ with
+        # s² = SSR/(n − 2), on data that no model of the package generated
+        xs = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+        ys = [3.1, 44.0, 790.0, 1.21e4, 2.1e5, 3.0e6]
+        X = hcat(ones(6), log10.(xs))
+        b = X \ log10.(ys)
+        s2 = sum(abs2, log10.(ys) .- X * b) / 4
+        slope_ols, slope_se = CD.Fitting.loglog_slope(xs, ys)
+        @test slope_ols ≈ b[2] rtol = 1e-12
+        @test slope_se ≈ sqrt(s2 * inv(X' * X)[2, 2]) rtol = 1e-10
+        dd = [0.5, 1.0, 2.0, 3.0, 5.0, 8.0]
+        rr = [1.012, 1.018, 1.047, 1.055, 1.11, 1.13]
+        Xc = hcat(dd, dd .^ 2)
+        bc = Xc \ (rr .- 1)
+        s2c = sum(abs2, (rr .- 1) .- Xc * bc) / 4
+        c1_fit, c1_se, c2_fit = CD.Fitting.ratio_correction_fit(dd, rr)
+        @test c1_fit ≈ bc[1] rtol = 1e-10
+        @test c2_fit ≈ bc[2] rtol = 1e-10
+        @test c1_se ≈ sqrt(s2c * inv(Xc' * Xc)[1, 1]) rtol = 1e-8
+
+        # angular fraction of flagged directions: half-gap weights on the
+        # cyclic grid. Three flagged directions clustered at π between coarse
+        # neighbours at π/2 and 3π/2 subtend (π/4 + 0.01 + π/4) of 2π, while
+        # they are half of the six directions
+        ang = [0.0, π / 2, π - 0.01, π, π + 0.01, 3π / 2]
+        flagged = [false, false, true, true, true, false]
+        @test CD.Fitting.angular_fraction(ang, flagged) ≈ (π / 2 + 0.01) / (2π) rtol = 1e-12
+        perm = [4, 1, 6, 3, 2, 5] # the order of the grid is immaterial
+        @test CD.Fitting.angular_fraction(ang[perm], flagged[perm]) ≈
+              (π / 2 + 0.01) / (2π) rtol = 1e-12
+        uniform = collect(range(0, 2π; length = 9))[1:8]
+        @test CD.Fitting.angular_fraction(uniform, isodd.(1:8)) ≈ 0.5 rtol = 1e-12
+        @test CD.Fitting.angular_fraction(uniform, trues(8)) ≈ 1.0 rtol = 1e-12
+        @test CD.Fitting.angular_fraction(uniform, falses(8)) == 0.0
+        @test CD.Fitting.angular_fraction(Float64[], Bool[]) == 0.0
+        @test_throws DimensionMismatch CD.Fitting.angular_fraction([0.0, 1.0], [true])
     end
 
     @testset "Orchestrator: resource planning, seeding, mirroring" begin
+        # an out-of-memory or interrupt raised inside a work-item task reaches
+        # the stage guard wrapped by the task and by @sync; it stays fatal
+        is_fatal = CD.Orchestrator.is_fatal
+        @test is_fatal(OutOfMemoryError()) && is_fatal(InterruptException())
+        @test !is_fatal(ErrorException("stage failure"))
+        wrapped = try
+            CD.Orchestrator.parallel_foreach(_ -> throw(OutOfMemoryError()), 2, 2)
+        catch err
+            err
+        end
+        @test wrapped isa CompositeException && is_fatal(wrapped)
+        ordinary = try
+            CD.Orchestrator.parallel_foreach(_ -> error("stage failure"), 2, 2)
+        catch err
+            err
+        end
+        @test ordinary isa CompositeException && !is_fatal(ordinary)
         mktempdir() do dir
             path = joinpath(dir, "c.toml")
             grid = "[grid]\nT_obs = 1.0e5\nf_min = 1.0e-3\nf_max = 2.0e-3\n"
@@ -1446,8 +1544,7 @@ enabled = true
         steps = diff(vals_π)
         @test all(isapprox.(steps, steps[1]; rtol = 1e-12)) # single denominator
 
-        # coverage: a ±0.78π range must be ticked out to ±3π/4, not stop at
-        # ±π/2 (regression: sparse π ticks left the axis ends bare)
+        # coverage: a ±0.78π range must be ticked out to ±3π/4, not stop at ±π/2
         vc, _ = CD.Plotting.pi_ticks(-0.78π, 0.78π)
         @test length(vc) >= 5
         @test maximum(vc) ≈ 3π / 4 atol = 1e-12
@@ -1457,8 +1554,7 @@ enabled = true
         @test CD.Plotting.axis_exponent(2.0) == 0
 
         # residual-band ticks: from the true band [1e-4, 0.05] every whole-power
-        # decade is present, including the low endpoint (regression: ticking
-        # off the decimated spec.f range dropped the 1e-4 tick, leaving 2).
+        # decade is present, including the low endpoint
         vb, _ = CD.Plotting.decade_ticks(1e-4, 0.05)
         @test round.(Int, log10.(vb)) == [-4, -3, -2]
 
@@ -1478,7 +1574,7 @@ enabled = true
         @test CD.Plotting.sci_latex(0.00173) == "1.73\\times 10^{-3}"
         @test CD.Plotting.sci_latex(23.4) == "23.4"
 
-        # offset ticks (confusion-map axes): one factored power of 10 with
+        # offset ticks: one factored power of 10 with
         # integer mantissas preferring multiples of 5, limits snapped outward
         # so the frame ends exactly on the outermost labelled ticks
         ot = CD.Plotting.offset_ticks(-1.32e-3, 1.32e-3)
@@ -1492,6 +1588,29 @@ enabled = true
         ot2 = CD.Plotting.offset_ticks(-1.15e-4, 1.8e-4) # asymmetric range
         @test ot2 !== nothing
         @test ot2[4] <= -1.15e-4 && ot2[5] >= 1.8e-4
+
+        # symmetric ticks of the zone-map axes: 5 or 7 ticks, zero among
+        # them, inside ±h, integer or half-integer mantissas of 10ᵏ
+        for h in (1.32e-3, 0.21, 0.66, 8.6, 330.0)
+            st = CD.Plotting.symmetric_ticks(h)
+            @test st !== nothing
+            svals, k10 = st
+            @test length(svals) in (5, 7)
+            @test 0.0 in svals && svals ≈ -reverse(svals)
+            @test maximum(svals) <= h
+            mant = svals ./ 10.0^k10
+            @test all(m -> isapprox(2m, round(2m); atol = 1e-9), mant)
+        end
+        @test CD.Plotting.symmetric_ticks(0.0) === nothing
+        @test CD.Plotting.symmetric_ticks(Inf) === nothing
+
+        # binomial smoothing: a constant is invariant, an interior impulse
+        # keeps its sum, and zero passes copy
+        @test CD.Plotting.binomial_smooth(fill(2.5, 9), 3) ≈ fill(2.5, 9) rtol = 1e-14
+        impulse = zeros(15)
+        impulse[8] = 1.0
+        @test sum(CD.Plotting.binomial_smooth(impulse, 2)) ≈ 1.0 rtol = 1e-14
+        @test CD.Plotting.binomial_smooth(impulse, 0) == impulse
 
         # per-tick common-exponent scientific notation (fallback when no
         # clean integer-mantissa grid exists): 5e-5 renders as 0.5×10⁻⁴,
@@ -1589,7 +1708,7 @@ enabled = true
     @testset "Plotting: residual panel range" begin
         # a spectrum tapering off at the high-frequency end: the top frame
         # follows the signal means (at most eight decades deep), the bottom
-        # frame reaches at most twelve decades below the residual maximum
+        # frame reaches at most eight decades below the residual maximum
         f = 10 .^ range(-4, -1.3; length = 300)
         cut = 0.5 .* (1 .- tanh.((f .- 0.02) ./ 0.002))
         sig = 1e10 .* (f ./ 1e-3) .^ (-7 / 3) .* cut .+ 1e-40
@@ -1607,7 +1726,8 @@ enabled = true
         @test lims_top[2][1] ≈ max(minimum(sig), maximum(sig) * 1e-8) / 3 rtol = 1e-6
         @test lims_top[2][2] ≈ maximum(sig) * 3 rtol = 1e-6
         lims_bot = p.bottom.limits[]
-        @test lims_bot[2][1] >= maximum(spec.res_max_A) * 1e-12 * (1 - 1e-9)
+        @test CD.Plotting.FRAME_DEPTH == 1e-8
+        @test lims_bot[2][1] ≈ maximum(spec.res_max_A) * CD.Plotting.FRAME_DEPTH rtol = 1e-6
         fig_r = residual_figure(spec, meta)
         @test fig_r isa CD.Plotting.Figure
     end
@@ -1963,7 +2083,7 @@ case = "mini_sweep"
                 @test isfile(joinpath(browse_dir, png))
             end
 
-            # rerun with the same config must NOT overwrite: suffixed run dir
+            # rerun with the same config must not overwrite: suffixed run dir
             out2 = run_pipeline(cfg_path, dir, "outputs")
             @test out2 != out_base && isdir(out2)
 

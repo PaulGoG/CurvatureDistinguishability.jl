@@ -11,7 +11,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using Statistics: mean
 
 public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask,
-    perturbative_mask, MIN_FIT_POINTS
+    angular_fraction, perturbative_mask, MIN_FIT_POINTS
 
 """
 Minimum number of clean points for the log-log slope and the
@@ -120,5 +120,36 @@ genuine optima.
 """
 above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
     isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
+
+"""
+$(TYPEDSIGNATURES)
+
+Fraction of the full circle subtended by the directions flagged in `mask`.
+Each direction of the cyclic grid `angle` [rad] (any order, spanning one
+turn) carries half the gap to either neighbour, so the result is an angular
+measure whatever the local sampling density; a plain count over-weights
+refined regions. Returns `0.0` for an empty grid and the flag itself for a
+single direction.
+"""
+function angular_fraction(angle::AbstractVector{<:Real}, mask::AbstractVector{Bool})
+    length(angle) == length(mask) || throw(
+        DimensionMismatch(
+            "angular_fraction: angle and mask must have equal lengths, got " *
+            "$(length(angle)) and $(length(mask))",
+        ),
+    )
+    n = length(angle)
+    n == 0 && return 0.0
+    n == 1 && return mask[1] ? 1.0 : 0.0
+    order = sortperm(angle)
+    flagged = 0.0
+    for k in 1:n
+        mask[order[k]] || continue
+        prev = angle[order[mod1(k - 1, n)]] - (k == 1 ? 2π : 0.0)
+        next = angle[order[mod1(k + 1, n)]] + (k == n ? 2π : 0.0)
+        flagged += (next - prev) / 2
+    end
+    return flagged / (2π)
+end
 
 end # module

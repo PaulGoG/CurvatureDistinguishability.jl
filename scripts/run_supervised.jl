@@ -16,7 +16,7 @@ include(joinpath(PROJECT_ROOT, "activate.jl"))
 using CurvatureDistinguishability
 using Dates
 using Logging
-using LoggingExtras: FormatLogger, MinLevelLogger, TeeLogger
+using LoggingExtras: TeeLogger
 
 const WORKER_SCRIPT = joinpath(@__DIR__, "run_pipeline.jl")
 const USAGE =
@@ -58,19 +58,9 @@ function main(argv)
         joinpath(log_dir, "supervisor_$(Dates.format(now(), "yyyymmdd_HHMMSS")).log")
     statuses = Pair{String,Symbol}[]
     open(log_path, "a") do io
-        file_logger = FormatLogger(io) do stream, record
-            println(stream, "[", Dates.format(now(), "yyyy-mm-dd HH:MM:SS"), "] ",
-                uppercase(string(record.level)), " ", record.message)
-            for (key, value) in record.kwargs
-                key === :exception || continue
-                err, trace = value isa Tuple ? value : (value, nothing)
-                trace === nothing ? showerror(stream, err) : showerror(stream, err, trace)
-                println(stream)
-            end
-            flush(stream)
-        end
         with_logger(
-            TeeLogger(global_logger(), MinLevelLogger(file_logger, Logging.Info)),
+            TeeLogger(global_logger(),
+                CurvatureDistinguishability.Orchestrator.run_log_logger(io)),
         ) do
             for config in args.configs
                 @info "Supervising $config"

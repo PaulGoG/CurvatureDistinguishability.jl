@@ -2,6 +2,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 include(joinpath(PROJECT_ROOT, "activate.jl"))
 
 using CurvatureDistinguishability
+using Logging: Logging
 
 const USAGE = """
 CurvatureDistinguishability pipeline
@@ -32,7 +33,7 @@ error (nothing was computed); 3 one or more stages failed (the others ran;
 see failed_stages in metadata.toml); 1 any other error.
 """
 
-const EXIT_CONFIG_ERROR = 2
+const EXIT_CONFIG_ERROR = CurvatureDistinguishability.Supervision.EXIT_CONFIG_ERROR
 const EXIT_STAGE_FAILURE = 3
 
 function parse_commandline(argv)
@@ -72,9 +73,10 @@ end
 
 args = parse_commandline(ARGS)
 config_path = joinpath(PROJECT_ROOT, args["config"])
-# validated before any GPU package loads, so an unusable file costs seconds
-try
-    load_and_validate_config(config_path)
+# validated before any GPU package loads, so an unusable file costs seconds;
+# warnings are silenced here because the pipeline validates again and reports them
+cfg = try
+    Logging.with_logger(() -> load_and_validate_config(config_path), Logging.NullLogger())
 catch err
     exit_on_config_error(err)
     rethrow()
@@ -83,28 +85,19 @@ end
 # Load a GPU package only when the configuration asks for one and it is
 # installed in this environment; a requested package that is not installed
 # is reported. The package extension activates whichever of the two is loaded
-# last, so the GPU package may follow the package itself; the [hardware] table
-# is read from the effective configuration (an overlay merged onto its base).
-const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU",
-    "metal" => "Metal", "oneapi" => "oneAPI")
-let hw = get(effective_config(config_path), "hardware", Dict{String,Any}())
-    requested = lowercase(String(get(hw, "gpu_backend", "auto")))
-    wanted =
-        requested == "auto" ? collect(keys(GPU_PACKAGES)) :
-        haskey(GPU_PACKAGES, requested) ? [requested] : String[]
-    if requested != "none"
-        for key in wanted
-            pkgname = GPU_PACKAGES[key]
-            if Base.find_package(pkgname) === nothing
-                requested == key &&
-                    @warn "Requested GPU backend '$key' but package $pkgname is not installed " *
-                          "in the default (stacked) environment. Install it with: julia -e " *
-                          "'using Pkg; Pkg.add(\"$pkgname\")'"
-                continue
-            end
-            @info "Loading GPU package $pkgname (activates the $pkgname extension)…"
-            Base.require(Main, Symbol(pkgname))
+# last, so the GPU package may follow the package itself.
+let requested = String(cfg.gpu_backend)
+    for (key, pkgname) in pairs(CurvatureDistinguishability.Backends.GPU_PACKAGES)
+        (requested == "auto" || String(key) == requested) || continue
+        if Base.find_package(pkgname) === nothing
+            String(key) == requested &&
+                @warn "Requested GPU backend '$key' but package $pkgname is not " *
+                      "installed in the default (stacked) environment. Install it " *
+                      "with: julia -e 'using Pkg; Pkg.add(\"$pkgname\")'"
+            continue
         end
+        @info "Loading GPU package $pkgname (activates the $pkgname extension)…"
+        Base.require(Main, Symbol(pkgname))
     end
 end
 

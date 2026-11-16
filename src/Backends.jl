@@ -8,7 +8,9 @@ using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, CPU
 
 export get_best_backend, to_backend, backend_name
-public register_backend!, reclaim_device_memory!, cpu_model, device_fingerprint
+public register_backend!,
+    reclaim_device_memory!, cpu_model, device_fingerprint,
+    GPU_BACKEND_NAMES, GPU_PACKAGES
 
 """
 Registry of GPU backend probes, populated by the package extensions
@@ -35,6 +37,12 @@ GPU backends a configuration may name. A backend becomes available when its
 package extension loads and registers a probe.
 """
 const GPU_BACKEND_NAMES = (:cuda, :amdgpu, :metal, :oneapi)
+
+"""
+Package that provides each GPU backend of [`GPU_BACKEND_NAMES`](@ref), in
+the same order.
+"""
+const GPU_PACKAGES = (cuda = "CUDA", amdgpu = "AMDGPU", metal = "Metal", oneapi = "oneAPI")
 
 """
 $(TYPEDSIGNATURES)

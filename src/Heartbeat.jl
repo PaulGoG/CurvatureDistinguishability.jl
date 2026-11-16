@@ -12,6 +12,9 @@ using TOML: TOML
 
 export tick!, note_item!, start_heartbeat, stop_heartbeat!, read_heartbeat
 
+# heartbeat file of a run directory
+const HEARTBEAT_FILE = "heartbeat.toml"
+
 const TICKS = Threads.Atomic{Int}(0)
 const ITEMS = Threads.Atomic{Int}(0)
 

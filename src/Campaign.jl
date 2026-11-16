@@ -9,9 +9,11 @@ module Campaign
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Config: PipelineSettings, load_and_validate_config
 using ..Provenance: resolve_run_dir, unique_run_dir, run_id_from_config,
-    completed_stages, abandoned_stages, read_run_metadata, stage_key, backup_existing!
+    completed_stages, abandoned_stages, read_run_metadata, stage_key, backup_existing!,
+    SUPERVISION_LEDGER
 using ..Supervision: Supervision, SupervisionResult, WorkerSpec, supervise
-using ..Checkpoint: count_items
+using ..Checkpoint: count_items, CHECKPOINT_FILE
+using ..Heartbeat: HEARTBEAT_FILE
 
 export supervise_pipeline, requested_stages
 
@@ -31,7 +33,7 @@ end
 # files of a run directory whose growth shows that the worker is advancing
 function progress_files(run_dir::AbstractString)
     files = [joinpath(run_dir, "run.log")]
-    for (kind, names) in (("sweeps", ("sweep.log", "checkpoint.csv")),
+    for (kind, names) in (("sweeps", ("sweep.log", CHECKPOINT_FILE)),
         ("maps", ("mapping.log",)))
         root = joinpath(run_dir, kind)
         isdir(root) || continue
@@ -49,7 +51,7 @@ function finished_items(run_dir::AbstractString)
     root = joinpath(run_dir, "sweeps")
     isdir(root) || return items
     return items + sum(
-        count_items(joinpath(root, stage, "checkpoint.csv"))
+        count_items(joinpath(root, stage, CHECKPOINT_FILE))
         for stage in readdir(root); init = 0)
 end
 
@@ -100,7 +102,7 @@ function supervise_pipeline(config_path::AbstractString, project_root::AbstractS
         return run_dir, SupervisionResult(:complete, Supervision.AttemptRecord[], String[])
 
     stages = requested_stages(cfg)
-    ledger = joinpath(run_dir, "supervision.toml")
+    ledger = joinpath(run_dir, SUPERVISION_LEDGER)
     # a new supervisor session starts a new ledger; stages abandoned by an
     # earlier session are tried again
     isfile(ledger) && backup_existing!(ledger)
@@ -117,7 +119,7 @@ function supervise_pipeline(config_path::AbstractString, project_root::AbstractS
     spec = WorkerSpec(; command,
         console_log = attempt ->
             joinpath(run_dir, "logs", "attempt_$(attempt).console.log"),
-        heartbeat_path = joinpath(run_dir, "heartbeat.toml"),
+        heartbeat_path = joinpath(run_dir, HEARTBEAT_FILE),
         progress_paths = () -> progress_files(run_dir),
         items_done = () -> finished_items(run_dir),
         status = () -> run_status(run_dir, stages), abandon_stalled!)
