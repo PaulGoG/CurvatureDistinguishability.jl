@@ -128,6 +128,10 @@ end
     @test CD.Fitting.validity_radius(0.5, 0.01, 1e-17, 0.1) ≈ 0.2 rtol = 1e-12
     @test CD.Fitting.validity_radius(0.5, 0.01, -1e-17, 0.1) ≈ 0.2 rtol = 1e-12
     @test CD.Fitting.validity_radius(1.0, 0.01, 1e-15, 0.1) ≈ 0.1 rtol = 1e-12
+    # and with a negative c₁, where the sign of the discriminant root matters
+    @test CD.Fitting.validity_radius(-0.5, 0.01, 1e-17, 0.1) ≈ 0.2 rtol = 1e-12
+    @test CD.Fitting.validity_radius(-0.5, 0.01, -1e-17, 0.1) ≈ 0.2 rtol = 1e-12
+    @test CD.Fitting.validity_radius(-1.0, 0.01, -1e-15, 0.1) ≈ 0.1 rtol = 1e-12
 end
 
 @testset "Plotting utilities" begin

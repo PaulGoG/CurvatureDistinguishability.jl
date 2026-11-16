@@ -979,6 +979,17 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 "first order.",
             )
         end
+        if px in SPIN_INDICES && py in SPIN_INDICES &&
+           prior_frac > SPIN_PRIOR_NOTE_FRACTION && cfg.wp.phase_pn_order >= 2.5
+            logline(
+                log_io,
+                "  [note] above 2PN order the spin gradients are independent except " *
+                "at equal mass with equal spins, where χ_a is flat to first order; " *
+                "elsewhere a spin zone limited by the prior means that the spin " *
+                "combination fixed only by the higher-order terms is constrained " *
+                "too weakly for the zone to close inside [-1, 1].",
+            )
+        end
 
         if cfg.monitoring_enabled && progress_enabled()
             println(stdout, map_diagnostic_panel(polar.angle, r_cap, prior_frac))

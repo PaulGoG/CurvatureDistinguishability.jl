@@ -407,9 +407,12 @@ $(TYPEDSIGNATURES)
 
 Take the lock `name` in the run directory `dir`: a pid file that excludes a
 second process from the same directory and is released by `close` on the
-returned lock. A lock whose holder ran on this host and no longer exists (a worker killed
-by the supervisor) is reclaimed; an `ArgumentError` names the directory when
-another live process holds it, or a process of another host.
+returned lock. A lock whose holder ran on this host and no longer exists (a
+worker killed by the supervisor) is reclaimed under the guard lock
+`<name>.reclaim`. An `ArgumentError` names the lock file when another live
+process holds it, or a process of another host. A reclaim interrupted by a kill
+leaves the guard behind, and the error then names both files, to be removed by
+hand once no process works on `dir`.
 """
 function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
     path = joinpath(dir, name)
@@ -420,28 +423,42 @@ function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
     # that was killed (SIGKILL by the supervisor): reclaim it here when the holder
     # ran on this host and no longer exists
     if stale_lock(holder)
-        # the reclaim runs under a second lock, so that two processes finding
-        # the same stale file cannot both remove it: the one that gets the
-        # guard removes the file only if it still holds the stale record, the
-        # other is refused
-        guard = try_pidlock(path * ".reclaim")
-        if guard !== nothing
-            try
-                lock_holder(path) == holder && rm(path; force = true)
-                lock = try_pidlock(path)
-                lock === nothing || return lock
-            finally
-                close(guard)
-            end
-        end
+        lock = reclaim_stale_lock(path, holder)
+        lock === nothing || return lock
+        guard = path * ".reclaim"
+        guard_holder = lock_holder(guard)
+        stale_lock(guard_holder) && throw(
+            ArgumentError(
+                "the lock $path names a process that no longer exists ($holder), " *
+                "and its reclaim was interrupted: the guard $guard names another " *
+                "($guard_holder). Remove both files once no process works on $dir.",
+            ),
+        )
         holder = lock_holder(path)
     end
     throw(
         ArgumentError(
-            "$dir is in use by another process (pid and host: $holder); " *
-            "wait for it to finish or end it before continuing this run",
+            "$dir is in use by another process (pid and host: $holder, lock file " *
+            "$path); wait for it to finish or end it before continuing this run",
         ),
     )
+end
+
+# Remove the lock file `path` of a holder that no longer exists, whose record
+# read `holder`, and take the lock. The removal runs under a second lock, so
+# that two processes finding the same stale file cannot both remove it: the
+# one that gets the guard removes the file only if it still holds the stale
+# record. Returns `nothing` when the guard is held elsewhere or the lock was
+# taken in between.
+function reclaim_stale_lock(path::String, holder::AbstractString)
+    guard = try_pidlock(path * ".reclaim")
+    guard === nothing && return nothing
+    try
+        lock_holder(path) == holder && rm(path; force = true)
+        return try_pidlock(path)
+    finally
+        close(guard)
+    end
 end
 
 # the pid lock at `path`, or `nothing` when another holder has it
@@ -454,8 +471,16 @@ function try_pidlock(path::AbstractString)
     end
 end
 
-lock_holder(path::AbstractString) =
-    isfile(path) ? String(strip(read(path, String))) : "unknown"
+# the record "<pid> <host>" of the lock file at `path`; "unknown" when the file
+# does not exist, also when its holder removes it while it is read
+function lock_holder(path::AbstractString)
+    try
+        return String(strip(read(path, String)))
+    catch err
+        err isa SystemError || rethrow()
+        return "unknown"
+    end
+end
 
 # true when a pid-lock record "<pid> <host>" names a process of this host that no
 # longer exists; a record of another host is never stale here (no way to check)

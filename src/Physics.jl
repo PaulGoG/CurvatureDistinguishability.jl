@@ -590,9 +590,11 @@ doi:10.1007/s41114-024-00050-z), the next-to-leading-order spin–orbit tail (Ma
 al. 2014, doi:10.1088/0264-9381/31/2/025023), the next-to-next-to-leading-order
 spin–spin terms (Cho, Porto & Yang 2022, doi:10.1103/PhysRevD.106.L101501) and the
 leading quartic-in-spin terms for black holes (Siemonsen, Steinhoff & Vines 2018,
-doi:10.1103/PhysRevD.97.124046). The spin–spin flux at this order rests on a single
-computation (Cho, Porto & Yang 2022). The constant 4PN coefficient is a shift of the
-coalescence time and is not carried.
+doi:10.1103/PhysRevD.97.124046). These papers give the binding energy and the flux;
+the spin terms of `p8L` follow from them by the stationary-phase reduction, as
+they are not printed in frequency-domain form there. The spin–spin flux at this
+order rests on a single computation (Cho, Porto & Yang 2022). The constant 4PN
+coefficient is a shift of the coalescence time and is not carried.
 """
 @inline function phase_coefficients_4pn(eta, delta, chi_s, chi_a)
     p8L = (
@@ -675,6 +677,10 @@ cubic-in-spin terms (`phase_coefficient_35pn`). Order 4 adds the `ln v` and
 next-to-next-to-leading-order spin–spin terms and the leading quartic-in-spin terms,
 the constant being a time shift set to zero (`phase_coefficients_4pn`).
 Order 4.5 adds the non-spinning terms only (`phase_coefficients_45pn`).
+`order` is not checked here, so that the function stays free of exceptions inside
+GPU kernels: a value outside [`PHASE_PN_ORDERS`](@ref) acts as the highest order
+not above it, or as 1.5 when it is below 1.5 or NaN. Validated orders enter through [`WaveformParams`](@ref) and the
+configuration.
 Sources: doi:10.1007/s41114-024-00050-z, doi:10.1103/PhysRevD.80.084043,
 doi:10.1088/0264-9381/30/13/135009, doi:10.1088/0264-9381/30/7/075017,
 doi:10.1088/0264-9381/32/19/195010, doi:10.1088/0264-9381/32/8/085008,
@@ -741,7 +747,7 @@ TaylorF2 in the total-mass velocity `v = (π M F)^{1/3}`, with the bracket of
 [`PhaseCoefficients`](@ref) and the coefficients `c` from
 [`phase_coefficients`](@ref). `order` selects which terms enter: the coefficients
 above it are zero anyway, and the branches skip their arithmetic and the logarithm.
-`F` [Hz], `chirp_mass` [s]; returns the phase [rad].
+As in [`phase_coefficients`](@ref), `order` is not checked. `F` [Hz], `chirp_mass` [s]; returns the phase [rad].
 """
 @inline function pn_phase(F, chirp_mass, eta, c::PhaseCoefficients, order::Real)
     v = (π * total_mass(chirp_mass, eta) * F)^(1 / 3)

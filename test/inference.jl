@@ -40,6 +40,10 @@
             FIX_DF, wp45, CPU())
     @test dl45(p) ≈ loop45(p) rtol = 1e-12
     @test ForwardDiff.gradient(dl45, p) ≈ ForwardDiff.gradient(loop45, p) rtol = 1e-10
+    # nested duals at 4.5PN with χ_s χ_a ≠ 0, where the mixed spin terms enter
+    p_mixed = [2.0, 1.505, 2.01, 0.005, 0.7, -0.2]
+    @test ForwardDiff.hessian(dl45, p_mixed) ≈ ForwardDiff.hessian(loop45, p_mixed) rtol =
+        1e-10
     # lanes path: nested (Hessian) duals through the same kernel layout
     @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
     # chunked Hessians through the lanes layout equal the full 49-lane one on
@@ -187,11 +191,25 @@
             @test d_w ≈ (K2 / g2^2) * d^4 / 16 rtol = 2e-3
             @test CD.Inference.Optim.converged(res_w)
             # the chunked Hessian of the GPU backends gives the same fit in z
-            d_c, _, _ = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
-                FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = wp2,
-                hessian_chunk = 2)
+            d_c, _, res_c = calculate_numerical_distance(dstream, guess, FIX_FREQS,
+                FIX_SN, FIX_DF; optimizer = :ipnewton, coordinates = :whitened,
+                wp = wp2, hessian_chunk = 2)
             @test d_c ≈ d_w rtol = 1e-8
+            @test CD.Inference.Optim.converged(res_c)
         end
+        # and the same Hessian in z, away from the origin of z
+        stream = map((a, b) -> a .+ b, channel_strain(θb, FIX_FREQS, wp2),
+            channel_strain(θb .+ 0.3 .* un2, FIX_FREQS, wp2))
+        loss = loss_function(stream, FIX_FREQS, FIX_SN, FIX_DF, wp2, CPU())
+        T = CD.Inference.whitening_transform(
+            CD.Geometry.whitened_jacobian_factor(θb, FIX_FREQS, FIX_SN, FIX_DF, wp2))
+        loss_z = z -> loss(θb .+ T * z)
+        z = [0.3, -0.2, 0.1, 0.05, -0.1, 0.2]
+        H_full, H_chunk = zeros(6, 6), zeros(6, 6)
+        CD.Inference.derivative_closures(loss_z, zeros(6), 0)[2](H_full, z)
+        CD.Inference.derivative_closures(loss_z, zeros(6), 2)[2](H_chunk, z)
+        @test maximum(abs, H_full) > 1.0
+        @test H_chunk ≈ H_full rtol = 1e-12
     end
     @test_throws ArgumentError calculate_numerical_distance(data, THETA0, FIX_FREQS, FIX_SN,
         FIX_DF; optimizer = :lbfgs_box, coordinates = :whitened, wp = FIX_WP)

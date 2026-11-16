@@ -379,6 +379,22 @@ end
             -3451.814730053968, 661.7626606198035, 1231.070858379564,
             -2048.916808741229),
     )
+    # Two points with χ_s χ_a ≠ 0 (χ₁ = 0.7, χ₂ = −0.2), at which every mixed
+    # spin term and the δ-weighted χ_a terms contribute, η = 2/9 (δ = 1/3) and
+    # η = 4/25 (δ = 3/5); exact rational evaluations of the same literature forms,
+    # rounded from 60 digits.
+    mixed = Dict(
+        (2 / 9, 0.7, -0.2) => (6.2720458553791887, -36.606223198177433,
+            36.009982267083788, 42.861861812355109, 128.58558543706533,
+            -124.68631514269648, -326.09523809523810, -1441.8703435546501,
+            -3672.7424490246482, 620.69555723523977, 1863.2970014201487,
+            -2048.9168087412290),
+        (4 / 25, 0.7, -0.2) => (5.8917989417989418, -31.692149124103358,
+            26.072502157344419, 0.45428318668630907, 1.3628495600589272,
+            423.13011030733959, -326.09523809523810, -2737.7633469852079,
+            -6362.4182011668335, 528.70524565381708, 3286.3328462714924,
+            -2048.9168087412290),
+    )
     names = (:p2, :p3, :p4, :p5, :p5L, :p6, :p6L, :p7, :p8L, :p8L2, :p9, :p9L)
     for ((eta, chi1, chi2), ref) in reference
         c = phase_coefficients(chi1, chi2, eta, 4.5)
@@ -386,13 +402,29 @@ end
             @test getfield(c, name) ≈ value rtol = 1e-12
         end
     end
-    # every order switches on the terms of its own column and nothing else
+    # every order switches on the terms of its own column, with the values of
+    # the full set, and nothing else
     order_of = (p2 = 1.5, p3 = 1.5, p4 = 2.0, p5 = 2.5, p5L = 2.5, p6 = 3.0, p6L = 3.0,
         p7 = 3.5, p8L = 4.0, p8L2 = 4.0, p9 = 4.5, p9L = 4.5)
-    for order in CD.Physics.PHASE_PN_ORDERS
-        c = phase_coefficients(0.8, 0.8, 2 / 9, order)
-        for name in names
-            @test iszero(getfield(c, name)) == (order_of[name] > order)
+    for ((eta, chi1, chi2), ref) in mixed, order in CD.Physics.PHASE_PN_ORDERS
+        c = phase_coefficients(chi1, chi2, eta, order)
+        for (name, value) in zip(names, ref)
+            if order_of[name] > order
+                @test iszero(getfield(c, name))
+            else
+                @test getfield(c, name) ≈ value rtol = 1e-12
+            end
+        end
+    end
+    # an order outside the set is not checked here and acts as the order below
+    @test phase_coefficients(0.5, 0.3, 0.2, 2.25) == phase_coefficients(0.5, 0.3, 0.2, 2.0)
+    # harmonic k evaluates the (2,2) phase at 2f/k, at every order
+    let f = 3e-3, Mc = 1.5, eta = 0.16, tc = 200.0, φc = 0.3
+        for order in CD.Physics.PHASE_PN_ORDERS, k in (1, 2, 3)
+            c = phase_coefficients(0.7, -0.2, eta, order)
+            @test harmonic_phase(f, k, Mc, eta, tc, φc, c, order) ≈
+                  (k / 2) * pn_phase(2f / k, Mc, eta, c, order) + 2π * f * tc -
+                  (k / 2) * φc - π / 4 rtol = 1e-14
         end
     end
     @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 5.0)

@@ -58,12 +58,14 @@
             write_cfg(dir, "[physics]\neta = 0.3\n"))
         @test load_and_validate_config(write_cfg(dir, "[physics]\neta = 0.2\n")).wp.eta ==
               0.2
-        # post-Newtonian order of the phase: 1.5 (default) or 2, as a number
+        # post-Newtonian order of the phase: 1.5 (default) to 4.5 in half
+        # orders, as a number, integer or float
         @test load_and_validate_config(write_cfg(dir, "")).wp.phase_pn_order == 1.5
-        for order in ("2", "2.0")
+        for (order, value) in (("2", 2.0), ("2.0", 2.0), ("2.5", 2.5), ("3", 3.0),
+            ("3.5", 3.5), ("4", 4.0), ("4.5", 4.5))
             @test load_and_validate_config(
                 write_cfg(dir, "[physics]\nphase_pn_order = $order\n"),
-            ).wp.phase_pn_order == 2.0
+            ).wp.phase_pn_order == value
         end
         for bad in ("2.25", "1", "5.0", "\"2PN\"")
             @test_throws "[physics].phase_pn_order" load_and_validate_config(
@@ -311,17 +313,34 @@ end
         close(CD.Provenance.acquire_run_lock(dir))
         # the lock file of a holder that no longer runs on this host (a worker
         # killed by the supervisor) is reclaimed; one of another host is not
-        write(joinpath(dir, "run.pid"), "2147483646 $(gethostname())")
+        path = joinpath(dir, "run.pid")
+        dead = "2147483646 $(gethostname())"
+        write(path, dead)
         close(CD.Provenance.acquire_run_lock(dir))
-        write(joinpath(dir, "run.pid"), "2147483646 elsewhere-host")
+        @test !isfile(path * ".reclaim")
+        write(path, "2147483646 elsewhere-host")
         @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
-        rm(joinpath(dir, "run.pid"))
+        rm(path)
         # a reclaim in progress elsewhere (its guard held) is not raced
-        write(joinpath(dir, "run.pid"), "2147483646 $(gethostname())")
+        write(path, dead)
         guard = CD.Provenance.acquire_run_lock(dir; name = "run.pid.reclaim")
         @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
         close(guard)
+        @test !isfile(path * ".reclaim")
         close(CD.Provenance.acquire_run_lock(dir))
+        # a process that read the stale record late, after another reclaimed the
+        # file, leaves the live lock alone
+        live = CD.Provenance.acquire_run_lock(dir)
+        @test CD.Provenance.reclaim_stale_lock(path, dead) === nothing
+        @test CD.Provenance.lock_holder(path) == "$(getpid()) $(gethostname())"
+        close(live)
+        # a guard left by a reclaimer that was killed is named in the error
+        write(path, dead)
+        write(path * ".reclaim", dead)
+        @test_throws "run.pid.reclaim" CD.Provenance.acquire_run_lock(dir)
+        rm(path * ".reclaim")
+        close(CD.Provenance.acquire_run_lock(dir))
+        @test CD.Provenance.lock_holder(path) == "unknown"
         # supervisor and worker locks are independent
         s = CD.Provenance.acquire_run_lock(dir; name = "supervisor.pid")
         w = CD.Provenance.acquire_run_lock(dir)
