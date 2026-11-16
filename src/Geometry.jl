@@ -7,13 +7,15 @@ module Geometry
 
 using DocStringExtensions: TYPEDSIGNATURES
 using ForwardDiff: ForwardDiff
+using LinearAlgebra: qr
 using ..Physics
 using ..Detector
 
 export inner_product, multi_channel_inner_product, compute_tangent_basis,
     compute_extrinsic_curvature_from_basis, compute_extrinsic_curvature,
     boundary_radius, cap_unbounded_radii!, cap_at_prior
-public flat_response, GS_NORM_TOL, K_UNDERFLOW, WALL_RTOL, value_and_directional_derivs
+public flat_response, GS_NORM_TOL, K_UNDERFLOW, WALL_RTOL, value_and_directional_derivs,
+    whitened_jacobian_factor
 
 """
 Gram–Schmidt drop tolerance, relative to the candidate's norm before
@@ -210,6 +212,46 @@ function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
     end
 
     return basis
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Upper-triangular factor `R` of the noise-whitened Jacobian of the detector
+response at `theta`: the rows of the Jacobian of [`flat_response`](@ref) are
+weighted by `√(4 df / S_n)`, so that `RᵀR` is the Fisher matrix
+`Γᵢⱼ = ⟨∂ᵢh, ∂ⱼh⟩` of [`multi_channel_inner_product`](@ref). The QR
+factorization runs over blocks of `chunk` frequency bins and stacks the
+partial factors, so the full Jacobian is never stored and the factor keeps the
+relative accuracy of the Jacobian, which the Fisher matrix (the normal
+equations) loses for weakly constrained directions. `freqs` and `df` [Hz],
+`Sn_vals` [Hz⁻¹]; host arrays.
+"""
+function whitened_jacobian_factor(theta::AbstractVector, freqs::AbstractVector,
+    Sn_vals::AbstractVector, df::Real, wp::WaveformParams{T,NCH};
+    chunk::Integer = 4096) where {T,NCH}
+    length(freqs) == length(Sn_vals) || throw(
+        DimensionMismatch(
+            "whitened_jacobian_factor: freqs and Sn_vals must have equal lengths, got " *
+            "$(length(freqs)) and $(length(Sn_vals))"),
+    )
+    length(freqs) >= 2 || throw(
+        ArgumentError(
+            "whitened_jacobian_factor: need at least 2 frequency bins, got $(length(freqs))",
+        ),
+    )
+    chunk >= 1 ||
+        throw(ArgumentError("whitened_jacobian_factor: chunk must be >= 1, got $chunk"))
+    n_params = length(theta)
+    R = zeros(Float64, 0, n_params)
+    for block in Iterators.partition(eachindex(freqs), chunk)
+        f = view(freqs, block)
+        w = sqrt.(4 * df ./ view(Sn_vals, block))
+        J = ForwardDiff.jacobian(p -> flat_response(p, f, wp), theta)
+        J .*= repeat(w, 2 * NCH)
+        R = Matrix(qr(vcat(R, J)).R)
+    end
+    return R
 end
 
 # Explicit tag types for the fused nested-dual directional derivatives.

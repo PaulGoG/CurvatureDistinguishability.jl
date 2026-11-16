@@ -33,6 +33,49 @@
         1e-12
 end
 
+@testset "Whitened Jacobian factor" begin
+    # RᵀR is the Fisher matrix built from inner products of the Jacobian
+    # columns; the blocked factorization does not depend on the block size
+    J = ForwardDiff.jacobian(p -> CD.Geometry.flat_response(p, FIX_FREQS, FIX_WP), THETA0)
+    cols = [
+        CD.Geometry.unflatten_channels(view(J, :, i), length(FIX_FREQS), Val(2))
+        for i in 1:6
+    ]
+    fisher = [
+        multi_channel_inner_product(cols[i], cols[j], FIX_SN, FIX_DF)
+        for i in 1:6, j in 1:6
+    ]
+    for chunk in (37, 4096)
+        R = CD.Geometry.whitened_jacobian_factor(THETA0, FIX_FREQS, FIX_SN, FIX_DF,
+            FIX_WP; chunk)
+        @test size(R) == (6, 6)
+        @test istriu(R)
+        @test maximum(abs.(R' * R .- fisher)) <= 1e-10 * maximum(abs, fisher)
+    end
+    @test_throws ArgumentError CD.Geometry.whitened_jacobian_factor(THETA0,
+        FIX_FREQS[1:1], FIX_SN[1:1], FIX_DF, FIX_WP)
+    # the transform makes the Gauss–Newton Hessian the identity on every
+    # constrained direction and keeps a flat direction in parameter units:
+    # at 1.5PN order one spin combination is flat, at 2PN order off the
+    # residual line none is
+    wp2 = waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 2))...)
+    θ_off = [1.0, 1.5, 2.0, 0.0, 0.5, -0.387]
+    R2 = CD.Geometry.whitened_jacobian_factor(θ_off, FIX_FREQS, FIX_SN, FIX_DF, wp2)
+    T2 = CD.Inference.whitening_transform(R2)
+    # (R T)ᵀ(R T) = I: formed from R T, not from the Fisher matrix RᵀR, whose
+    # condition number would swamp the check
+    RT2 = R2 * T2
+    @test RT2' * RT2 ≈ Matrix(1.0I, 6, 6) atol = 1e-10
+    R15 = CD.Geometry.whitened_jacobian_factor(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
+    T15 = CD.Inference.whitening_transform(R15)
+    RT15 = R15 * T15
+    G15 = RT15' * RT15
+    σ = svdvals(R15)
+    @test σ[end] < CD.Inference.WHITENING_RTOL * σ[1] # the flat spin combination
+    @test count(i -> isapprox(G15[i, i], 1.0; atol = 1e-6), 1:6) == 5
+    @test count(j -> isapprox(norm(T15[:, j]), 1.0; rtol = 1e-12), 1:6) >= 1
+end
+
 @testset "Geometry A/B against reference fixtures" begin
     # 1D sweep geometry
     sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)

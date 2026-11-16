@@ -537,6 +537,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
                 optimizer = cfg.optimizer,
                 bounds = cfg.bounds,
                 hessian_chunk = cfg.hessian_chunk,
+                coordinates = cfg.fit_coordinates,
                 wp = wp)
         dist, best, res = solve(guess)
         dist_canonical = dist
@@ -578,7 +579,8 @@ function sweep_signature(sweep::SweepSpec, deltas::AbstractVector,
     u_norm::AbstractVector, cfg::PipelineSettings;
     version::AbstractString = package_version())
     parts = (sweep.name, sweep.theta_0, sweep.amp_ratio, collect(deltas), collect(u_norm),
-        cfg.optimizer, cfg.n_starts, cfg.rng_seed, cfg.g_tol, cfg.f_reltol,
+        cfg.optimizer, cfg.fit_coordinates, cfg.n_starts, cfg.rng_seed, cfg.g_tol,
+        cfg.f_reltol,
         cfg.max_iterations, cfg.multi_start_parallel_scale,
         cfg.multi_start_transverse_scale, cfg.hessian_chunk, cfg.T_obs, cfg.f_min,
         cfg.f_max, version)
@@ -1525,7 +1527,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
           "$map_tasks map tasks; estimated peak RAM $(round(est_gb, digits = 2)) GB " *
           "(budget $(cfg.max_ram_gb) GB)"
     @info "Noise: per-channel Robson Eq.12 + confusion $(cfg.noise.confusion_enabled ? "Eq.14 × Eq.9 response" : "disabled")"
-    @info "Optimizer: $(cfg.optimizer) with physical bounds"
+    @info "Optimizer: $(cfg.optimizer) in $(cfg.fit_coordinates) coordinates " *
+          "with physical bounds"
 
     attempt > 1 && @info "Continuing the run: attempt $attempt."
     failures = String[]

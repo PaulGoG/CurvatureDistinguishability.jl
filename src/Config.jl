@@ -65,6 +65,7 @@ Base.@kwdef struct PipelineSettings
     run_1d_sweeps::Bool
     run_2d_mapping::Bool
     optimizer::Symbol
+    fit_coordinates::Symbol
     rng_seed::Int
     # sweep settings
     n_deltas::Int
@@ -133,8 +134,8 @@ const KNOWN_KEYS = Dict(
     "supervision" => ["max_retries", "max_stalled_retries", "poll_interval_s",
         "startup_grace_s", "idle_stall_s", "busy_stall_s", "cpu_idle_cores",
         "term_grace_s", "kill_wait_s", "backoff_s"],
-    "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "rng_seed",
-        "sweep_settings"],
+    "pipeline" => ["run_1d_sweeps", "run_2d_mapping", "optimizer", "fit_coordinates",
+        "rng_seed", "sweep_settings"],
     "pipeline.sweep_settings" =>
         ["n_deltas", "min_log_delta", "max_log_delta",
             "rho_thresh", "g_uu_degenerate", "n_starts",
@@ -335,8 +336,18 @@ function parse_pipeline(config::AbstractDict)
         config_error(
             "[pipeline].optimizer must be one of ipnewton | lbfgs_box, got '$opt_str'",
         )
+    fit_str = get_string(pipeline, "fit_coordinates", "parameters", "pipeline")
+    fit_coordinates = Symbol(lowercase(fit_str))
+    fit_coordinates in (:parameters, :whitened) ||
+        config_error(
+            "[pipeline].fit_coordinates must be one of parameters | whitened, " *
+            "got '$fit_str'",
+        )
+    (fit_coordinates === :whitened && optimizer !== :ipnewton) && config_error(
+        "[pipeline].fit_coordinates = \"whitened\" requires optimizer = \"ipnewton\"",
+    )
     rng_seed = get_integer(pipeline, "rng_seed", 42, "pipeline")
-    return (; run_1d_sweeps, run_2d_mapping, optimizer, rng_seed)
+    return (; run_1d_sweeps, run_2d_mapping, optimizer, fit_coordinates, rng_seed)
 end
 
 """

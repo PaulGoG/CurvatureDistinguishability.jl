@@ -7,6 +7,7 @@ using CSV
 using DataFrames
 using ForwardDiff
 using KernelAbstractions
+using LinearAlgebra: I, istriu, norm, svdvals
 using Random: Xoshiro
 using TOML
 

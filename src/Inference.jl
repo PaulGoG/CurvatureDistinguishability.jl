@@ -8,6 +8,7 @@ module Inference
 using DocStringExtensions: TYPEDSIGNATURES
 using ForwardDiff: ForwardDiff
 using KernelAbstractions: KernelAbstractions, @Const, @index, @kernel
+using LinearAlgebra: Diagonal, svd
 using Optim: Optim, Fminbox, IPNewton, LBFGS, OnceDifferentiable,
     TwiceDifferentiable, TwiceDifferentiableConstraints, optimize
 using ..Physics
@@ -15,10 +16,11 @@ using ..Physics: N_PARAMS
 using ..Detector
 using ..Backends
 using ..Bounds
+using ..Geometry: whitened_jacobian_factor
 using ..Heartbeat: tick!
 
 export calculate_numerical_distance, optimization_diagnostics, loss_function
-public clear_device_buffers!, column_sums_via!
+public clear_device_buffers!, column_sums_via!, whitening_transform, WHITENING_RTOL
 
 # --- loss -------------------------------------------------------------------
 
@@ -347,6 +349,70 @@ end
 # --- optimization -----------------------------------------------------------
 
 """
+Relative singular-value threshold of [`whitening_transform`](@ref): directions
+whose singular value of the whitened Jacobian falls below this fraction of the
+largest are flat to working precision and are kept in parameter units.
+"""
+const WHITENING_RTOL = 1e-10
+
+"""
+$(TYPEDSIGNATURES)
+
+Linear map `T` of the fit in whitened coordinates, `θ = θ₀ + T z`, from the
+triangular factor `R` of the whitened Jacobian
+([`whitened_jacobian_factor`](@ref)): with the singular value decomposition
+`R = U Σ Vᵀ`, `T = V S` where `Sᵢᵢ = 1/σᵢ` for `σᵢ ≥ rtol σ₁` and `Sᵢᵢ = 1`
+otherwise. In `z` the Gauss–Newton Hessian of the loss is the identity along
+every constrained direction, and a flat direction keeps its parameter scale.
+"""
+function whitening_transform(R::AbstractMatrix; rtol::Real = WHITENING_RTOL)
+    F = svd(R)
+    s = [σ >= rtol * F.S[1] ? 1 / σ : 1.0 for σ in F.S]
+    return F.V * Diagonal(s)
+end
+
+"""
+ForwardDiff gradient and Hessian closures `(g!, h!)` of `f`, with the configs
+built once for the shape of `x_proto`; `hessian_chunk = c > 0` sets the chunk
+of both dual levels.
+"""
+function derivative_closures(f, x_proto::AbstractVector, hessian_chunk::Int)
+    grad_cfg = ForwardDiff.GradientConfig(f, x_proto)
+    g!(G, x) = ForwardDiff.gradient!(G, f, x, grad_cfg)
+    hess_cfg =
+        hessian_chunk > 0 ?
+        ForwardDiff.HessianConfig(f, x_proto,
+            ForwardDiff.Chunk(min(hessian_chunk, length(x_proto)))) :
+        ForwardDiff.HessianConfig(f, x_proto)
+    h!(H, x) = ForwardDiff.hessian!(H, f, x, hess_cfg)
+    return g!, h!
+end
+
+"""
+IPNewton fit of `loss` in the whitened coordinates `z` of `θ = x0 + T z`
+(see [`calculate_numerical_distance`](@ref)), with the box of `bounds` on `θ`
+imposed as linear constraints. Returns `(D², best_fit, optim_result)` with
+`best_fit` in parameter coordinates.
+"""
+function whitened_ipnewton(loss, x0::AbstractVector, freqs, Sn_vals, df::Real,
+    wp::WaveformParams, bounds::ParameterBounds, opts, hessian_chunk::Int)
+    freqs_host = freqs isa Array ? freqs : Array(freqs)
+    Sn_host = Sn_vals isa Array ? Sn_vals : Array(Sn_vals)
+    T = whitening_transform(whitened_jacobian_factor(x0, freqs_host, Sn_host, df, wp))
+    loss_z = z -> loss(x0 .+ T * z)
+    z0 = zeros(length(x0))
+    gz!, hz! = derivative_closures(loss_z, z0, hessian_chunk)
+    obj = TwiceDifferentiable(loss_z, gz!, hz!, z0)
+    c!(c, z) = (c .= x0 .+ T * z; c)
+    jac!(J, z) = (J .= T; J)
+    con_hessian!(H, z, λ) = H # the constraints are linear
+    cons = TwiceDifferentiableConstraints(c!, jac!, con_hessian!, Float64[], Float64[],
+        collect(bounds.lower), collect(bounds.upper))
+    res = optimize(obj, cons, z0, IPNewton(), opts)
+    return Optim.minimum(res), x0 .+ T * Optim.minimizer(res), res
+end
+
+"""
 $(TYPEDSIGNATURES)
 
 Minimum squared distance `D²` between the composite `data_stream` and the
@@ -359,8 +425,9 @@ physical `bounds`:
 
 The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
 keyword (default `WaveformParams()`). Returns
-`(D², best_fit, optim_result)`. Throws `DimensionMismatch`/`ArgumentError` on
-inconsistent arguments. `freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
+`(D², best_fit, optim_result)`, with `best_fit` always in parameter
+coordinates. Throws `DimensionMismatch`/`ArgumentError` on inconsistent
+arguments. `freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
 
 Keywords:
 
@@ -373,6 +440,13 @@ Keywords:
 - `bounds`: physical parameter box.
 - `hessian_chunk`: ForwardDiff chunk of both dual levels: 0 = full, `c > 0`
   gives `(1+c)²` lanes per launch and `⌈6/c⌉²` launches per Hessian.
+- `coordinates`: `:parameters` | `:whitened`. With `:whitened` IPNewton runs
+  in the coordinates `z` of `θ = θ₀ + T z`, `θ₀` the clamped start and `T`
+  the [`whitening_transform`](@ref) of the [`whitened_jacobian_factor`](@ref)
+  at `θ₀`, with the box on `θ` imposed as linear constraints; requires
+  `optimizer = :ipnewton`. The whitening Jacobian is evaluated on host
+  copies of `freqs` and `Sn_vals`. `optim_result` then refers to `z`, so its
+  gradient norm is the norm of the gradient with respect to `z`.
 - `wp`: waveform and response constants.
 """
 function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractVector,
@@ -382,6 +456,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     optimizer::Symbol = :ipnewton,
     bounds::Union{Nothing,ParameterBounds} = default_bounds(),
     hessian_chunk::Int = 0,
+    coordinates::Symbol = :parameters,
     wp::WaveformParams = WaveformParams())
     length(theta_guess) == N_PARAMS || throw(
         DimensionMismatch(
@@ -406,6 +481,14 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
             "got $g_tol and $f_reltol",
         ),
     )
+    coordinates in (:parameters, :whitened) || throw(
+        ArgumentError(
+            "calculate_numerical_distance: coordinates must be :parameters or " *
+            ":whitened, got :$coordinates",
+        ),
+    )
+    (coordinates === :whitened && optimizer !== :ipnewton) &&
+        throw(ArgumentError("coordinates = :whitened requires optimizer = :ipnewton"))
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
     # ForwardDiff configs are constructed once per solve (they depend only on
@@ -416,14 +499,7 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     # launches per Hessian, for backends whose compiler or per-launch time
     # limit rejects the full nested-dual kernel.
     x_proto = collect(Float64, theta_guess)
-    grad_cfg = ForwardDiff.GradientConfig(loss, x_proto)
-    g!(G, x) = ForwardDiff.gradient!(G, loss, x, grad_cfg)
-    hess_cfg =
-        hessian_chunk > 0 ?
-        ForwardDiff.HessianConfig(loss, x_proto,
-            ForwardDiff.Chunk(min(hessian_chunk, length(x_proto)))) :
-        ForwardDiff.HessianConfig(loss, x_proto)
-    h!(H, x) = ForwardDiff.hessian!(H, loss, x, hess_cfg)
+    g!, h! = derivative_closures(loss, x_proto, hessian_chunk)
 
     # two convergence triggers: the projected-gradient norm, and the relative
     # change of D² between Newton steps; the gradient floor of a
@@ -435,6 +511,8 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
     opt_res = if optimizer === :ipnewton
         bounds === nothing && throw(ArgumentError("optimizer = :ipnewton requires bounds"))
         x0 = clamp_interior(theta_guess, bounds)
+        coordinates === :whitened && return whitened_ipnewton(loss, x0, freqs, Sn_vals,
+            df, wp, bounds, opts, hessian_chunk)
         obj = TwiceDifferentiable(loss, g!, h!, x0)
         cons =
             TwiceDifferentiableConstraints(collect(bounds.lower), collect(bounds.upper))

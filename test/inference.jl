@@ -146,6 +146,40 @@
         @test all(abs.(bf[5:6]) .<= 1.0 + 1e-9) # physical bounds respected
         push!(d2_ipn, d_new)
     end
+    # the fit in whitened coordinates reaches the same optimum as the fit in the
+    # parameters where the latter is well conditioned (1.5PN, equal mass), and the
+    # curvature prediction where the latter stalls (2PN, η = 2/9)
+    for row in eachrow(sweep_fix)[(end-3):end]
+        d = row.Delta
+        p2 = THETA0 .+ d .* u_norm
+        dstream = map((a, b) -> a .+ b, c1, channel_strain(p2, FIX_FREQS, FIX_WP))
+        guess = THETA0 .+ (0.5 * d) .* u_norm
+        guess[1] /= 2.0
+        d_w, bf_w, _ = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
+            FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = FIX_WP)
+        @test d_w ≈ (K_u / g_uu^2) * d^4 / 16 rtol = 2e-3
+        @test all(abs.(bf_w[5:6]) .<= 1.0 + 1e-9)
+    end
+    let wp2 = waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 2))...)
+        θb = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
+        u2 = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
+        K2, g2 = compute_extrinsic_curvature(θb, u2, FIX_FREQS, FIX_SN, FIX_DF, wp2)
+        un2 = u2 ./ sqrt(g2)
+        # well inside δ_min, where the O(δ⁵) departure stays below the tolerance
+        for d in (0.1 * (16 / (K2 / g2^2))^(1 / 4), 0.3 * (16 / (K2 / g2^2))^(1 / 4))
+            dstream = map((a, b) -> a .+ b, channel_strain(θb, FIX_FREQS, wp2),
+                channel_strain(θb .+ d .* un2, FIX_FREQS, wp2))
+            guess = θb .+ (0.5 * d) .* un2
+            guess[1] /= 2.0
+            d_w, _, res_w = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
+                FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = wp2)
+            @test d_w ≈ (K2 / g2^2) * d^4 / 16 rtol = 2e-3
+        end
+    end
+    @test_throws ArgumentError calculate_numerical_distance(data, THETA0, FIX_FREQS, FIX_SN,
+        FIX_DF; optimizer = :lbfgs_box, coordinates = :whitened, wp = FIX_WP)
+    @test_throws ArgumentError calculate_numerical_distance(data, THETA0, FIX_FREQS, FIX_SN,
+        FIX_DF; coordinates = :fisher, wp = FIX_WP)
     # δ⁴ scaling of the fresh results on the clean range
     deltas4 = sweep_fix.Delta[(end-3):end]
     slope =

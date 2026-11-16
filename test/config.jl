@@ -69,6 +69,15 @@
             @test_throws "[physics].phase_pn_order" load_and_validate_config(
                 write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))
         end
+        @test load_and_validate_config(write_cfg(dir, "")).fit_coordinates === :parameters
+        @test load_and_validate_config(
+            write_cfg(dir, "[pipeline]\nfit_coordinates = \"whitened\"\n"),
+        ).fit_coordinates === :whitened
+        @test_throws "[pipeline].fit_coordinates" load_and_validate_config(
+            write_cfg(dir, "[pipeline]\nfit_coordinates = \"fisher\"\n"))
+        @test_throws "requires optimizer" load_and_validate_config(
+            write_cfg(dir,
+                "[pipeline]\nfit_coordinates = \"whitened\"\noptimizer = \"lbfgs_box\"\n"))
         # a value of the wrong type is a configuration error naming the
         # key, not a MethodError: strings, sections and arrays of tables
         for (bad, key) in (
