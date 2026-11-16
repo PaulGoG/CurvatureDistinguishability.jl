@@ -66,6 +66,19 @@ end
     # condition number would swamp the check
     RT2 = R2 * T2
     @test RT2' * RT2 ≈ Matrix(1.0I, 6, 6) atol = 1e-10
+    # the decisive check is against the whitened Jacobian itself, with R from
+    # a blocked factorization: (J_w T)ᵀ(J_w T) = I to ~ε·cond(J_w). A factor
+    # from the Fisher matrix (normal equations) carries errors ~ε·cond(J_w)²
+    # on the weak direction (cond(J_w) ~ 1e6 here), which this tolerance rejects
+    J2 = ForwardDiff.jacobian(p -> CD.Geometry.flat_response(p, FIX_FREQS, wp2), θ_off)
+    Jw2 = J2 .* repeat(sqrt.(4 * FIX_DF ./ FIX_SN), 4)
+    T2b = CD.Inference.whitening_transform(
+        CD.Geometry.whitened_jacobian_factor(θ_off, FIX_FREQS, FIX_SN, FIX_DF, wp2;
+            chunk = 37))
+    @test (Jw2 * T2b)' * (Jw2 * T2b) ≈ Matrix(1.0I, 6, 6) atol = 1e-8
+    σ_off = svdvals(Jw2)
+    @test σ_off[1] / σ_off[end] > 1e4 # the test is meaningful only for a weak direction
+    @test_throws ArgumentError CD.Inference.whitening_transform(zeros(6, 6))
     R15 = CD.Geometry.whitened_jacobian_factor(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
     T15 = CD.Inference.whitening_transform(R15)
     RT15 = R15 * T15

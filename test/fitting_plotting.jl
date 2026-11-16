@@ -123,6 +123,11 @@ end
     @test CD.Fitting.validity_radius(0.1, 0.001, -0.1, 0.5) ≈ (1 + sqrt(21)) / 2 rtol =
         1e-14
     @test_throws ArgumentError CD.Fitting.validity_radius(0.1, 0.01, 0.1, 0.0)
+    # a c₂ at round-off level beside a significant c₁: the root tends to
+    # fraction/|c₁| (the textbook quadratic formula loses it to cancellation)
+    @test CD.Fitting.validity_radius(0.5, 0.01, 1e-17, 0.1) ≈ 0.2 rtol = 1e-12
+    @test CD.Fitting.validity_radius(0.5, 0.01, -1e-17, 0.1) ≈ 0.2 rtol = 1e-12
+    @test CD.Fitting.validity_radius(1.0, 0.01, 1e-15, 0.1) ≈ 0.1 rtol = 1e-12
 end
 
 @testset "Plotting utilities" begin

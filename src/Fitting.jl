@@ -86,11 +86,14 @@ function validity_radius(c1::Real, c1_err::Real, c2::Real, fraction::Real)
     b = isfinite(c2) ? Float64(c2) : 0.0
     a == 0 && b == 0 && return Inf
     b == 0 && return fraction / abs(a)
+    # roots of b δ² + a δ + c = 0 with c = ∓fraction, in the form that avoids
+    # cancellation when |b| fraction ≪ a² (a small c₂ beside a significant c₁)
     best = Inf
-    for s in (1.0, -1.0)
-        disc = a^2 + 4 * b * s * fraction
+    for c in (-fraction, fraction)
+        disc = a^2 - 4 * b * c
         disc < 0 && continue
-        for r in ((-a + sqrt(disc)) / (2b), (-a - sqrt(disc)) / (2b))
+        q = -(a + copysign(sqrt(disc), a)) / 2
+        for r in (q / b, q == 0 ? NaN : c / q)
             r > 0 && (best = min(best, r))
         end
     end

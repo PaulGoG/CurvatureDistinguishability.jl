@@ -316,6 +316,12 @@ end
         write(joinpath(dir, "run.pid"), "2147483646 elsewhere-host")
         @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
         rm(joinpath(dir, "run.pid"))
+        # a reclaim in progress elsewhere (its guard held) is not raced
+        write(joinpath(dir, "run.pid"), "2147483646 $(gethostname())")
+        guard = CD.Provenance.acquire_run_lock(dir; name = "run.pid.reclaim")
+        @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
+        close(guard)
+        close(CD.Provenance.acquire_run_lock(dir))
         # supervisor and worker locks are independent
         s = CD.Provenance.acquire_run_lock(dir; name = "supervisor.pid")
         w = CD.Provenance.acquire_run_lock(dir)

@@ -165,9 +165,10 @@
         dstream = map((a, b) -> a .+ b, c1, channel_strain(p2, FIX_FREQS, FIX_WP))
         guess = THETA0 .+ (0.5 * d) .* u_norm
         guess[1] /= 2.0
-        d_w, bf_w, _ = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
-            FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = FIX_WP)
+        d_w, bf_w, res_w = calculate_numerical_distance(dstream, guess, FIX_FREQS,
+            FIX_SN, FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = FIX_WP)
         @test d_w ≈ (K_u / g_uu^2) * d^4 / 16 rtol = 2e-3
+        @test CD.Inference.Optim.converged(res_w)
         @test all(abs.(bf_w[5:6]) .<= 1.0 + 1e-9)
     end
     let wp2 = waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 2))...)
@@ -184,6 +185,12 @@
             d_w, _, res_w = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
                 FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = wp2)
             @test d_w ≈ (K2 / g2^2) * d^4 / 16 rtol = 2e-3
+            @test CD.Inference.Optim.converged(res_w)
+            # the chunked Hessian of the GPU backends gives the same fit in z
+            d_c, _, _ = calculate_numerical_distance(dstream, guess, FIX_FREQS, FIX_SN,
+                FIX_DF; optimizer = :ipnewton, coordinates = :whitened, wp = wp2,
+                hessian_chunk = 2)
+            @test d_c ≈ d_w rtol = 1e-8
         end
     end
     @test_throws ArgumentError calculate_numerical_distance(data, THETA0, FIX_FREQS, FIX_SN,

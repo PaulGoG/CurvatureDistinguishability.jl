@@ -420,9 +420,20 @@ function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
     # that was killed (SIGKILL by the supervisor): reclaim it here when the holder
     # ran on this host and no longer exists
     if stale_lock(holder)
-        rm(path; force = true)
-        lock = try_pidlock(path)
-        lock === nothing || return lock
+        # the reclaim runs under a second lock, so that two processes finding
+        # the same stale file cannot both remove it: the one that gets the
+        # guard removes the file only if it still holds the stale record, the
+        # other is refused
+        guard = try_pidlock(path * ".reclaim")
+        if guard !== nothing
+            try
+                lock_holder(path) == holder && rm(path; force = true)
+                lock = try_pidlock(path)
+                lock === nothing || return lock
+            finally
+                close(guard)
+            end
+        end
         holder = lock_holder(path)
     end
     throw(

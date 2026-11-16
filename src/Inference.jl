@@ -367,6 +367,12 @@ every constrained direction, and a flat direction keeps its parameter scale.
 """
 function whitening_transform(R::AbstractMatrix; rtol::Real = WHITENING_RTOL)
     F = svd(R)
+    F.S[1] > 0 || throw(
+        ArgumentError(
+            "whitening_transform: the whitened Jacobian vanishes, so no direction " *
+            "can be whitened (is the signal zero on the frequency grid?)",
+        ),
+    )
     s = [σ >= rtol * F.S[1] ? 1 / σ : 1.0 for σ in F.S]
     return F.V * Diagonal(s)
 end
