@@ -87,7 +87,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   Gauss–Newton Hessian the identity on every constrained direction; the box on
   `θ` becomes six linear constraints. This keeps the fit converging when a
   direction is constrained only weakly, as the spins are at phase orders above
-  1.5. The loss has two equivalent implementations, tested against each
+  1.5. `T` is computed once, at the start, so the whitened fit relies on a
+  start near the optimum, as the sweeps provide; from a distant start it can
+  end higher than the fit in the parameters. The loss has two equivalent implementations, tested against each
   other: an allocation-free scalar CPU loop (avoids GC lock contention under
   20+ threads) and a single KernelAbstractions kernel.
 - **`Backends.jl`**: a backend probe registry populated by package

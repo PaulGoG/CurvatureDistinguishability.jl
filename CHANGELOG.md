@@ -45,7 +45,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Fitting.validity_radius`, `Fitting.angular_fraction`,
   `Inference.WHITENING_RTOL`, `Provenance.acquire_run_lock`,
   `Provenance.record_attempt!`, `Orchestrator.run_log_logger`,
-  `Backends.GPU_PACKAGES`.
+  `Backends.GPU_PACKAGES`, `Backends.GPU_BACKEND_NAMES`,
+  `DegenerateDirectionError`.
 - Test groups: `Pkg.test(test_args = ["physics"])` runs one group.
 
 ### Changed

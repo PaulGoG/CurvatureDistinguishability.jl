@@ -234,4 +234,25 @@
     @test all(bf_b .<= collect(db.upper) .+ 1e-9)
     diag = optimization_diagnostics(res_b, bf_b, db)
     @test diag isa NamedTuple && haskey(pairs(diag), :converged)
+    # an optimum on the spin bound, reached from the midpoint start of the
+    # sweeps: in whitened coordinates the box is a set of linear constraints,
+    # and both fits end on the bound with the same distance
+    θa = [1.0, 1.5, 2.0, 0.0, 0.995, 0.99]
+    θb = θa .+ [0.0, 1e-4, 2e-3, 0.0, 0.02, 0.02]
+    data_b = map((a, b) -> a .+ b, channel_strain(θa, FIX_FREQS, FIX_WP),
+        channel_strain(θb, FIX_FREQS, FIX_WP))
+    start = clamp.(0.5 .* (θa .+ θb), collect(db.lower), collect(db.upper))
+    start[1] /= 2
+    fits = map((:parameters, :whitened)) do coordinates
+        calculate_numerical_distance(data_b, start, FIX_FREQS, FIX_SN, FIX_DF;
+            iterations = 200, optimizer = :ipnewton, bounds = db, wp = FIX_WP,
+            coordinates)
+    end
+    for (d, bf, res) in fits
+        @test CD.Inference.Optim.converged(res)
+        @test optimization_diagnostics(res, bf, db).at_bound
+        @test all(collect(db.lower) .- 1e-9 .<= bf .<= collect(db.upper) .+ 1e-9)
+    end
+    @test fits[2][1] ≈ fits[1][1] rtol = 1e-9
+    @test fits[2][2] ≈ fits[1][2] rtol = 1e-6
 end

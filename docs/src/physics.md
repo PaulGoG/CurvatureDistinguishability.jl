@@ -162,8 +162,8 @@ which is why sweeps from order 2 on need the fit in whitened coordinates
 ### Convergence in post-Newtonian order
 
 The overlays of `configs/pn_orders/` repeat the quickstart configuration
-(sweeps and maps) and four spin maps of the production configuration at every
-order, with the fit in whitened coordinates. The quickstart source
+(sweeps and maps) and four maps involving the spins on the production grid at
+every order, with the fit in whitened coordinates. The quickstart source
 (``\mathcal{M} = 0.5`` s, ``\eta = 0.2222``, 1 to 16.5 mHz) reaches
 ``v = 0.40`` at the upper band edge, just below the innermost-stable-orbit
 value ``6^{-1/2} = 0.41``. Its spin-plane zone at ``\chi_1 = \chi_2 = 0.8``
@@ -208,6 +208,11 @@ ones in units of ``10^{-3}``:
 | 3.5 | 0.055 | 1.65 | 0.054 | 1.19 | 0.148 | 0.70 |
 | 4 | 0.118 | 2.65 | 0.080 | 0.71 | 0.148 | 0.61 |
 | 4.5 | 0.118 | 2.65 | 0.080 | 0.71 | 0.148 | 0.61 |
+
+Prior-limited marks the zones of rank 5, unbounded along the flat direction
+and ended by the spin prior. Three closed zones (orders 2 to 3) touch the
+prior in at most 0.11 % of the sampling angle, which changes their long
+half-axes by less than ``10^{-4}``.
 
 For the source that stays below ``v = 0.34`` the long half-axis settles at
 0.148 from 3.5PN on (0.158 at 3PN) and the short one changes by 13 % from

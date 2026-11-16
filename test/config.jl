@@ -337,7 +337,14 @@ end
         # a guard left by a reclaimer that was killed is named in the error
         write(path, dead)
         write(path * ".reclaim", dead)
-        @test_throws "run.pid.reclaim" CD.Provenance.acquire_run_lock(dir)
+        msg = try
+            CD.Provenance.acquire_run_lock(dir)
+            ""
+        catch err
+            err isa ArgumentError || rethrow()
+            err.msg
+        end
+        @test occursin(path * " ", msg) && occursin(path * ".reclaim ", msg)
         rm(path * ".reclaim")
         close(CD.Provenance.acquire_run_lock(dir))
         @test CD.Provenance.lock_holder(path) == "unknown"
