@@ -52,6 +52,11 @@ CPU run. `configs/campaigns/` holds the multi-host campaign plans, which
 vary the Hessian chunk and, for the single-sweep overlays, narrow
 `[[sweeps]]` to one case.
 
+`[pipeline].fit_coordinates` selects the coordinates of the fit:
+`"parameters"` (default) or `"whitened"`, which requires
+`optimizer = "ipnewton"`. The whitened fit is the one to use at phase orders
+above 1.5 ([System Architecture](architecture.md)).
+
 ### Supervised runs
 
 `scripts/run_supervised.jl` runs one or more configurations, each in a
@@ -90,7 +95,11 @@ and μ = 10 gives P(N > 20) ≈ 1.6×10⁻³.
 
 Every attempt is recorded in `supervision.toml` in the run directory (verdict,
 exit status or signal, CPU seconds, stall time, work items before and after),
-and its console output in `logs/attempt_<k>.console.log`.
+and its console output in `logs/attempt_<k>.console.log`. The worker and the
+supervisor each hold a lock in the run directory (`run.pid`,
+`supervisor.pid`); a second process on the same directory stops with an
+error, and the lock of a process of this host that no longer exists is
+reclaimed.
 
 ### Keys the shipped configurations leave at their defaults
 

@@ -200,7 +200,8 @@ listed in `metadata.toml`.
 | Component | Status |
 |---|---|
 | Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
-| 2PN phase with the spin–spin coupling (`[physics].phase_pn_order = 2.0`) | off by default; coefficient tested against literature values and the tangent rank against its analytic prediction; maps usable, sweeps limited by the optimizer (Known limitations) |
+| TaylorF2 phase through 4.5PN (`[physics].phase_pn_order`) | 1.5PN by default; every coefficient tested against exact evaluations of the literature forms at five points; tangent rank tested against its analytic prediction; comparison overlays in `configs/pn_orders/` |
+| Fit in whitened coordinates (`[pipeline].fit_coordinates = "whitened"`) | tested against the curvature prediction at 1.5PN and 2PN, and against the full whitened Jacobian on a weakly constrained point |
 | Robson (2019) noise model (per-channel Eq. 12 instrumental + Eq. 14 confusion through the Eq. 9 response, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
@@ -210,17 +211,12 @@ listed in `metadata.toml`.
 
 ## Known limitations
 
-- 2PN phase order: the spin combination that the 2PN term constrains is
-  constrained weakly, and the Hessian of the fit is conditioned at the edge of
-  double precision (condition number about 10¹⁵ on the quickstart grid). With
-  the interior-point Newton optimizer the sweep stage then stalls or stops
-  early at small separations, and the optimized distances lie above the
-  prediction; a larger `max_iterations` (several hundred) recovers the
-  separations above about one Fisher σ only. The maps use the differential
-  geometry alone and are not affected. The spin-plane zone at order 2 is not
-  converged in post-Newtonian order: the 2.5PN spin–orbit term, not included,
-  narrows it by a factor of three at the quickstart base point and closes it
-  at zero spins (documentation, Waveform Physics, Domain of validity).
+- Phase orders above 1.5: the spin combination that the higher orders
+  constrain is constrained weakly, so sweeps need
+  `[pipeline].fit_coordinates = "whitened"` (the fit in the parameters stalls
+  on it). The long axis of the spin-plane confusion zone is not converged in
+  post-Newtonian order for sources that reach high velocities in the band; the
+  documentation (Waveform Physics, §2) compares the orders.
 - Apple GPUs: Metal has no double-precision type and the device path is
   double precision only, so the Metal extension declines and the run uses
   the CPU (`require_gpu = true` stops it instead).
@@ -280,15 +276,15 @@ CurvatureDistinguishability/
 ├── src/
 │   ├── CurvatureDistinguishability.jl  # top module, exports
 │   ├── Backends.jl         # backend registry; CPU fallback; GPU via extensions
-│   ├── Physics.jl          # Robson (2019) noise model; inspiral waveform core (1.5PN phase, 2PN on request)
+│   ├── Physics.jl          # Robson (2019) noise model; inspiral waveform core (TaylorF2 phase to 4.5PN)
 │   ├── Detector.jl         # LISA A/E response on the analytic orbits (fused scalar core)
 │   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
 │   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
 │   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
 │   ├── Fitting.jl          # shared fit statistics: slope, O(δ⁵) fit, floor rule
-│   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel
+│   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel; whitened-coordinate fit
 │   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
-│   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata
+│   ├── Provenance.jl       # config-hash run IDs, snapshots, safesave, metadata; run-directory locks, per-attempt records
 │   ├── Plotting.jl         # CairoMakie figures; family-wide tick policy
 │   ├── Heartbeat.jl        # worker liveness counter and heartbeat file
 │   ├── Supervision.jl      # process watchdog: CPU/progress hang detection, retry budget

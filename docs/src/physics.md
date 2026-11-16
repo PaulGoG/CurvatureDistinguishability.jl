@@ -2,8 +2,8 @@
 
 Equation-level description of the model implemented in `Physics.jl` and
 `Detector.jl`: a frequency-domain aligned-spin inspiral of a massive
-black-hole binary, complete to 1.5PN order in the phase (2PN on request)
-and to 0.5PN order in the amplitude, observed through the long-wavelength
+black-hole binary, to 1.5PN order in the phase by default (to 4.5PN on
+request) and to 0.5PN order in the amplitude, observed through the long-wavelength
 response of the LISA constellation on its analytic orbits. The
 Fourier-transform sign, the
 ecliptic sky frame, the polarization basis and the A, E, T combinations
@@ -40,7 +40,7 @@ as ``M = \mathcal{M}\eta^{-3/5}`` and the mass asymmetry as
 ``\beta``), inclination ``\iota`` and polarization angle ``\psi`` are
 likewise scenario constants.
 
-## 2. Intrinsic phasing (TaylorF2 to 1.5PN or 2PN)
+## 2. Intrinsic phasing (TaylorF2)
 
 In the stationary-phase approximation the harmonic ``k`` of the orbital
 phase radiates at ``f`` when the dominant ``(2,2)`` harmonic radiates at
@@ -48,31 +48,63 @@ phase radiates at ``f`` when the dominant ``(2,2)`` harmonic radiates at
 post-Newtonian phase of the ``(2,2)`` harmonic is
 ```math
 \psi_{\mathrm{PN}}(F) = \frac{3}{128\,\eta\, v^{5}}
-\left[1 + \left(\frac{3715}{756} + \frac{55}{9}\eta\right) v^{2}
-+ \left(4\beta - 16\pi\right) v^{3} + \psi_4\, v^{4}\right],
+\left[1 + \sum_{i=2}^{9}\left(\varphi_i + \varphi_{i,\ell}\ln v
++ \varphi_{i,\ell\ell}\ln^{2} v\right) v^{i}\right],
 ```
-the Newtonian, 1PN, 1.5PN (tail and spin–orbit) and 2PN terms of TaylorF2, with
-the Poisson–Will spin–orbit coefficient [Poisson1995](@cite)
+the TaylorF2 phase of two black holes with aligned spins, truncated at the
+order `[physics].phase_pn_order`: order ``n`` keeps the terms with
+``i \le 2n``. The coefficients are polynomials in ``\eta``, ``\delta_m``,
+``\chi_s`` and ``\chi_a`` (`Physics.phase_coefficients`, which lists them with
+their sources). ``\varphi_5`` alone is a constant phase, absorbed in
+``\phi_c``, but its logarithm ``\varphi_{5,\ell} = 3\varphi_5`` is not; the
+constant ``\varphi_8`` is a shift of ``t_c`` and is set to zero, and
+``\varphi_{8,\ell\ell}`` is the first squared logarithm.
+
+The default order 1.5 keeps the Newtonian, 1PN and 1.5PN terms,
+```math
+\varphi_2 = \frac{3715}{756} + \frac{55}{9}\eta, \qquad
+\varphi_3 = 4\beta - 16\pi,
+```
+the tail ``-16\pi`` and the Poisson–Will spin–orbit coefficient [Poisson1995](@cite)
 ```math
 \beta = \frac{1}{12}\left[(113 - 76\eta)\,\chi_s + 113\,\delta_m\,\chi_a\right],
 \qquad \chi_s = \tfrac{1}{2}(\chi_1 + \chi_2),\quad \chi_a = \tfrac{1}{2}(\chi_1 - \chi_2).
 ```
-The order of the phase is `[physics].phase_pn_order`. At the default order
-1.5 the bracket stops at ``v^3`` (``\psi_4 = 0``). At order 2 it carries the
-2PN coefficient [Poisson1995, Arun2009](@cite)
+Order 2 adds [Poisson1995, Arun2009](@cite)
 ```math
-\psi_4 = \frac{15293365}{508032} + \frac{27145}{504}\eta + \frac{3085}{72}\eta^2 - 10\,\sigma,
+\varphi_4 = \frac{15293365}{508032} + \frac{27145}{504}\eta + \frac{3085}{72}\eta^2 - 10\,\sigma,
 ```
 ```math
 \sigma = \left(\frac{81}{16} - \frac{\eta}{4}\right)\chi_s^2
 + \left(\frac{81}{16} - 20\eta\right)\chi_a^2 + \frac{81}{8}\,\delta_m\,\chi_s\chi_a ,
 ```
 the spin–spin coefficient of two black holes with aligned spins
-(``\psi_4`` in this form is the coefficient ``\varphi_4`` of
+(``\varphi_4`` in this form is the coefficient of the same name in
 [Khan2016](@cite), Appendix B). In terms of the bodies,
 ``\sigma = \tfrac{79}{8}\,\eta\,\chi_1\chi_2 + \tfrac{81}{16}\sum_i (m_i/M)^2\chi_i^2``:
 the spin1–spin2 coupling and, for each body, the quadrupole–monopole and
-self-spin terms, ``5 + 1/16``.
+self-spin terms, ``5 + 1/16``. The higher orders add:
+
+| Order | Terms added | Sources |
+|:------|:------------|:--------|
+| 2.5 | non-spinning; next-to-leading-order spin–orbit; with ``\ln v`` | [Buonanno2009, Blanchet2024, Arun2009](@cite) |
+| 3 | non-spinning, with ``\ln v``; spin–orbit tail; next-to-leading-order spin–spin | [Buonanno2009, Blanchet2024, Bohe2013SpinOrbitFlux, Bohe2015SpinSpin](@cite) |
+| 3.5 | non-spinning; next-to-next-to-leading-order spin–orbit; spin–spin tail; leading cubic in spin | [Buonanno2009, Blanchet2024, Bohe2013SpinOrbitDynamics, Bohe2013SpinOrbitFlux, Cho2022, Marsat2015CubicSpin](@cite) |
+| 4 | non-spinning ``\ln v`` and ``\ln^2 v``; next-to-leading-order spin–orbit tail; next-to-next-to-leading-order spin–spin; leading quartic in spin | [Blanchet2023, Blanchet2024, Marsat2014SpinOrbitTail, Cho2022, Siemonsen2018](@cite) |
+| 4.5 | non-spinning only | [Blanchet2023, Blanchet2024](@cite) |
+
+Through 3.5PN the phase of aligned-spin black holes is complete. The 3.5PN
+spin–spin tail [Cho2022](@cite) is missing from the earlier frequency-domain
+forms, [Khan2016](@cite) among them. At 4PN no frequency-domain form with spins
+has been published: the spin terms follow from the stationary-phase reduction
+of the binding energy and flux of the cited papers, and the spin–spin flux at
+that order rests on a single computation [Cho2022](@cite). At 4.5PN only the
+non-spinning term is known, so with spins that order omits terms of
+``\mathcal{O}(\chi v^9)``. The coefficients are tested against exact rational
+evaluations of the literature forms at five points of ``(\eta, \chi_1, \chi_2)``,
+two of them with ``\chi_s\chi_a \neq 0``.
+
+### Spin directions of the tangent space
 
 At order 1.5 the spins enter the phase only through the single scalar
 ``\beta``, so exactly one spin combination is a flat
@@ -90,15 +122,23 @@ parallel. They are parallel on one line through the origin of that plane,
 \frac{\chi_2}{\chi_1} = \frac{q\,(807 - 713\,q)}{807\,q - 713}, \qquad q = \frac{m_1}{m_2} \ge 1,
 ```
 on which the rank stays 5, as it does at zero spins, where ``\sigma`` is of
-second order. At equal mass the line is ``\chi_2 = \chi_1``: exchanging the
-two bodies leaves the signal unchanged, so the antisymmetric spin enters
-quadratically at every order. For unequal masses the line belongs to the
-truncation at 2PN (``\chi_2 = -1.37\,\chi_1`` at ``\eta = 2/9``); the 2.5PN
-spin–orbit term depends on a third spin combination and removes it. Close to
-the line the second spin combination is constrained only weakly: its
-independent part of the tangent space shrinks in proportion to the distance of
-the base point from the line, and the basis drops it below the Gram–Schmidt
-tolerance.
+second order. For unequal masses the line belongs to the truncation at 2PN
+(``\chi_2 = -1.37\,\chi_1`` at ``\eta = 2/9``). Close to the line the second
+spin combination is constrained only weakly: its independent part of the
+tangent space shrinks in proportion to the distance of the base point from
+the line, and the basis drops it below the Gram–Schmidt tolerance.
+
+From order 2.5 on, ``\varphi_5`` is a second linear function of the spins,
+independent of ``\beta``: the determinant of the gradients of ``\varphi_3``
+and ``\varphi_5`` in ``(\chi_s, \chi_a)`` is
+``-\delta_m\,\eta\,(2086535/567 + 9260\,\eta/9)``, nonzero for every
+unequal-mass binary. The rank is then 6 everywhere in the spin plane, zero
+spins and the 2PN line included. At equal mass, exchanging the two bodies
+leaves the signal unchanged, so ``\chi_a`` enters quadratically at every
+order and the rank is 5 on the line ``\chi_1 = \chi_2``. The second spin
+combination stays the weakest direction of the tangent space at every order,
+which is why sweeps from order 2 on need the fit in whitened coordinates
+([System Architecture](architecture.md)).
 
 The phase of harmonic ``k`` in the ``e^{-2\pi i f t}`` Fourier convention is
 ```math

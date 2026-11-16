@@ -39,8 +39,8 @@ environment setup, usage, component status). This documentation covers:
   GPU path and extension points.
 - [Scientific Context](science.md): the source-confusion problem and the
   geometric formulation.
-- [Waveform Physics](physics.md): the inspiral model (1.5PN phase, 2PN on
-  request), constellation response and noise model.
+- [Waveform Physics](physics.md): the inspiral model (TaylorF2 phase from
+  1.5PN, the default, to 4.5PN), constellation response and noise model.
 - [Run Parameters](parameters.md): the physical rationale of the
   production configuration's sweeps and maps.
 - [Executable Example](generated/quartic_law.md): the law on a miniature

@@ -29,6 +29,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   linear constraints. At 2PN order and above the fit in the parameters stalls
   on the weakly constrained spin combination; the whitened fit converges. The
   default remains `"parameters"`.
+- Run-directory locks: a worker and a supervisor each hold a pid lock in the
+  run directory (`run.pid`, `supervisor.pid`; `Provenance.acquire_run_lock`),
+  and a second process on the same directory stops with an error naming it;
+  the lock of a process of this host that no longer exists is reclaimed. Each
+  attempt of a run records its host, Julia version, package version, git
+  state, backend and manifest hash under `[attempt_records]` in
+  `metadata.toml`, with a warning when they change
+  (`Provenance.record_attempt!`).
 - `Fitting.validity_radius`, `Fitting.angular_fraction`,
   `Provenance.acquire_run_lock`, `Provenance.record_attempt!`,
   `Orchestrator.run_log_logger`, `Backends.GPU_PACKAGES`.
@@ -36,6 +44,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The validity radius of the O(δ⁵) correction fit is the smallest separation
+  at which |c₁δ + c₂δ²| reaches the fraction, with c₁ counted only when it
+  exceeds twice its standard error (`Fitting.validity_radius`). It was
+  fraction/|c₁|, one to three decades too large when c₁ is insignificant; the
+  evaluation point of the residual spectra of the production configuration is
+  unchanged.
+- The tangent basis is orthogonalized twice and the curvature vector projected
+  twice; computed curvatures change at round-off level.
 - The prior-limited and degenerate fractions annotated on the confusion-zone
   maps are fractions of the sampling angle, as the annotation and the
   documentation state. They were fractions of the vertex count, which adaptive

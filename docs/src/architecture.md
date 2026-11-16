@@ -34,9 +34,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   galactic-confusion fit, a two-channel sensitivity-level fit brought to the
   channel level by the Eq. 9 response, with Table-1 coefficients selected by
   observation time (all overridable in `[noise]`). The waveform comprises
-  TaylorF2 phasing to 1.5PN or, with `[physics].phase_pn_order = 2.0`, to
-  2PN with the spin–spin coupling (`pn_phase`, `harmonic_phase`,
-  `spin_beta`, `spin_sigma`), the 0.5PN harmonic amplitudes
+  TaylorF2 phasing to the post-Newtonian order of
+  `[physics].phase_pn_order`, 1.5 to 4.5 (`phase_coefficients`, `pn_phase`,
+  `harmonic_phase`), the 0.5PN harmonic amplitudes
   (`harmonic_amplitudes`), the stationary-phase time and the
   innermost-stable-orbit window. `WaveformParams` carries the
   scenario constants (scales, mass ratio, sky, inclination, polarization,
@@ -62,27 +62,34 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   ``4\pi``, deviations capped at ``\pm\pi``), ray–box crossing distances for
   the polar capping, and interior clamping for the constrained optimizer.
 - **`Geometry.jl`**: the differential-geometry engine. One ForwardDiff
-  Jacobian of the flattened response followed by modified Gram–Schmidt gives
-  the noise-weighted orthonormal tangent basis. Exactly degenerate directions
-  are dropped: at 1.5PN order the spins enter through one scalar ``\beta``,
-  so the basis has rank 5 at every mass ratio; at 2PN order it has rank 6
-  except on one line of the spin plane ([Waveform Physics](physics.md), §2).
-  Directional value/first/second derivatives come from a single fused
-  nested-dual evaluation. Geometry always runs on CPU arrays:
-  `ForwardDiff.jacobian` is incompatible with device arrays, and the map
-  stage costs minutes, not days.
+  Jacobian of the flattened response followed by modified Gram–Schmidt with
+  one re-orthogonalization pass gives the noise-weighted orthonormal tangent
+  basis. Exactly degenerate directions are dropped: at 1.5PN order the spins
+  enter through one scalar ``\beta``, so the basis has rank 5 at every mass
+  ratio; from 2PN on the higher-order spin terms constrain it
+  ([Waveform Physics](physics.md), §2). Directional value/first/second
+  derivatives come from a single fused nested-dual evaluation. Geometry always
+  runs on CPU arrays: `ForwardDiff.jacobian` is incompatible with device
+  arrays, and the map stage costs minutes, not days.
+  `whitened_jacobian_factor` returns the triangular factor of the
+  noise-whitened Jacobian by a blocked QR factorization, for the whitened fit.
 - **`Fitting.jl`**: the fit statistics shared by the sweep stage and the
   display-time regeneration, namely the quartic-law log-log slope with its
-  standard error, the `O(δ⁵)` ratio-correction fit, optimizer-floor
-  detection on the contiguous small-``\delta`` run and the production
-  clean-point rule.
+  standard error, the `O(δ⁵)` ratio-correction fit with its validity radius
+  (`validity_radius`), optimizer-floor detection on the contiguous
+  small-``\delta`` run and the production clean-point rule.
 - **`Inference.jl`**: ``D^2`` minimization within the physical bounds. The
   default optimizer is `IPNewton`, an interior-point Newton method using the
   exact ForwardDiff Hessian (fast convergence, low convergence floor);
-  `Fminbox(LBFGS)` is the alternative. The loss has two equivalent
-  implementations, tested against each other: an allocation-free scalar CPU
-  loop (avoids GC lock contention under 20+ threads) and a single
-  KernelAbstractions kernel.
+  `Fminbox(LBFGS)` is the alternative. With
+  `[pipeline].fit_coordinates = "whitened"` IPNewton runs in the coordinates
+  `z` of `θ = θ₀ + T z`, where `T` (`whitening_transform`) makes the
+  Gauss–Newton Hessian the identity on every constrained direction; the box on
+  `θ` becomes six linear constraints. This keeps the fit converging when a
+  direction is constrained only weakly, as the spins are at phase orders above
+  1.5. The loss has two equivalent implementations, tested against each
+  other: an allocation-free scalar CPU loop (avoids GC lock contention under
+  20+ threads) and a single KernelAbstractions kernel.
 - **`Backends.jl`**: a backend probe registry populated by package
   extensions
   (`ext/CurvatureDistinguishability{CUDA,AMDGPU,Metal,oneAPI}Ext.jl`); no
@@ -103,7 +110,9 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   split and the wall clock never affect identity. The module also writes
   config snapshots into the run directory (the merged table for overlays),
   `metadata.toml` (git state via DrWatson, Julia version, backend, threads,
-  timings) and `safesave`-semantics backups for all output formats.
+  timings) and `safesave`-semantics backups for all output formats. It also
+  takes the run-directory locks (`acquire_run_lock`) and records each
+  attempt's environment (`record_attempt!`).
 - **`Plotting.jl`**: CairoMakie figures under one publication theme
   (Computer Modern, boxed axes, no titles, no minor ticks) and one
   family-wide tick policy: integer power-of-10 log ticks restricted to the
