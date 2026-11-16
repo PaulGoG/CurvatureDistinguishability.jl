@@ -29,6 +29,7 @@ using ..Inference
 using ..Bounds
 using ..Config
 using ..Provenance
+using ..Provenance: acquire_run_lock, record_attempt!
 using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!, HEARTBEAT_FILE
 using ..Checkpoint:
     CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!, CHECKPOINT_FILE
@@ -36,7 +37,7 @@ using ..Plotting
 using ..Plotting: display_scale, map_diagnostic_panel, sweep_diagnostic_panel
 using ..Fitting:
     MIN_FIT_POINTS, above_floor_mask, angular_fraction, loglog_slope, optimizer_floor,
-    perturbative_mask, ratio_correction_fit
+    perturbative_mask, ratio_correction_fit, validity_radius
 
 export run_pipeline
 public ResourceBudgetError,
@@ -658,9 +659,7 @@ function fit_sweep_law(deltas::AbstractVector, D2_num::AbstractVector, K_norm::R
             "        fitted log-log slope over the perturbative window %.4f ± %.4f (%d points)",
             slope_window, slope_window_err, count(perturbative)),
     )
-    delta_valid =
-        (isfinite(c1) && abs(c1) > 1e-12) ?
-        cfg.correction_validity_fraction / abs(c1) : Inf
+    delta_valid = validity_radius(c1, c1_err, c2, cfg.correction_validity_fraction)
     isfinite(c1) &&
         logline(
             log_io,
@@ -1391,7 +1390,8 @@ remaining stages continue. `output_dir` is resolved relative to `project_root`.
 Returns the run directory when every stage completed. When stages failed, the
 run is finished first (metadata written, log closed) and a
 [`PipelineStageError`](@ref) naming them is thrown. `InterruptException` and
-`OutOfMemoryError` are never absorbed by the stage guards.
+`OutOfMemoryError` are never absorbed by the stage guards. A second process
+that targets the same run directory stops with an `ArgumentError`.
 
 Keywords:
 
@@ -1446,21 +1446,27 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
     else
         out_base = unique_run_dir(base_dir, run_id_from_config(config_path))
     end
-    isfile(joinpath(out_base, "config.toml")) || snapshot_config(config_path, out_base)
-    isfile(joinpath(out_base, "Manifest.toml")) || snapshot_manifest(out_base)
-
-    log_stream = open(joinpath(out_base, "run.log"), "a")
-    tee = TeeLogger(global_logger(), run_log_logger(log_stream))
-    beat =
-        heartbeat_period_s > 0 ?
-        start_heartbeat(joinpath(out_base, HEARTBEAT_FILE), heartbeat_period_s) : nothing
+    lock = acquire_run_lock(out_base)
     failures = try
-        with_logger(tee) do
-            _run_pipeline(cfg, project_root, out_base, config_path)
+        isfile(joinpath(out_base, "config.toml")) || snapshot_config(config_path, out_base)
+        isfile(joinpath(out_base, "Manifest.toml")) || snapshot_manifest(out_base)
+
+        log_stream = open(joinpath(out_base, "run.log"), "a")
+        tee = TeeLogger(global_logger(), run_log_logger(log_stream))
+        beat =
+            heartbeat_period_s > 0 ?
+            start_heartbeat(joinpath(out_base, HEARTBEAT_FILE), heartbeat_period_s) :
+            nothing
+        try
+            with_logger(tee) do
+                _run_pipeline(cfg, project_root, out_base, config_path)
+            end
+        finally
+            beat === nothing || stop_heartbeat!(beat)
+            close(log_stream)
         end
     finally
-        beat === nothing || stop_heartbeat!(beat)
-        close(log_stream)
+        close(lock)
     end
     isempty(failures) || throw(PipelineStageError(out_base, failures))
     return out_base
@@ -1515,6 +1521,8 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         optimizer = string(cfg.optimizer),
         n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
         confusion_noise = cfg.noise.confusion_enabled)
+    record_attempt!(out_base, attempt; git = git_state(project_root),
+        backend = backend_name(backend))
     isfile(joinpath(out_base, "hardware.txt")) || write_hardware_fingerprint(out_base;
         device_report = Backends.device_fingerprint(backend))
 

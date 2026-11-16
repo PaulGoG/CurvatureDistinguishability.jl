@@ -10,7 +10,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using ..Config: PipelineSettings, load_and_validate_config
 using ..Provenance: resolve_run_dir, unique_run_dir, run_id_from_config,
     completed_stages, abandoned_stages, read_run_metadata, stage_key, backup_existing!,
-    SUPERVISION_LEDGER
+    acquire_run_lock, SUPERVISION_LEDGER, SUPERVISOR_LOCK
 using ..Supervision: Supervision, SupervisionResult, WorkerSpec, supervise
 using ..Checkpoint: count_items, CHECKPOINT_FILE
 using ..Heartbeat: HEARTBEAT_FILE
@@ -87,6 +87,7 @@ unfinished run exists), `worker_env` (environment overrides of the worker,
 e.g. a device-visibility mask; `nothing` removes a variable).
 
 Configuration errors propagate as `ArgumentError` before anything is launched.
+A second supervisor of the same run directory stops with an `ArgumentError`.
 """
 function supervise_pipeline(config_path::AbstractString, project_root::AbstractString,
     output_dir::AbstractString; worker_script::AbstractString,
@@ -101,29 +102,35 @@ function supervise_pipeline(config_path::AbstractString, project_root::AbstractS
     state === :complete &&
         return run_dir, SupervisionResult(:complete, Supervision.AttemptRecord[], String[])
 
-    stages = requested_stages(cfg)
-    ledger = joinpath(run_dir, SUPERVISION_LEDGER)
-    # a new supervisor session starts a new ledger; stages abandoned by an
-    # earlier session are tried again
-    isfile(ledger) && backup_existing!(ledger)
-    settings = cfg.supervision
-    function command(attempt::Int)
-        cmd = `$julia --startup-file=no --threads=$threads $(heap_flags(cfg.heap_size_hint_gb)) $worker_script --config $config_path --output-dir $output_dir --run-dir $run_dir --heartbeat-period $(settings.poll_interval_s / 2)`
-        return isempty(worker_env) ? cmd : addenv(cmd, worker_env...)
+    # resolve_run_dir and unique_run_dir return an existing directory
+    supervisor_lock = acquire_run_lock(run_dir; name = SUPERVISOR_LOCK)
+    try
+        stages = requested_stages(cfg)
+        ledger = joinpath(run_dir, SUPERVISION_LEDGER)
+        # a new supervisor session starts a new ledger; stages abandoned by an
+        # earlier session are tried again
+        isfile(ledger) && backup_existing!(ledger)
+        settings = cfg.supervision
+        function command(attempt::Int)
+            cmd = `$julia --startup-file=no --threads=$threads $(heap_flags(cfg.heap_size_hint_gb)) $worker_script --config $config_path --output-dir $output_dir --run-dir $run_dir --heartbeat-period $(settings.poll_interval_s / 2)`
+            return isempty(worker_env) ? cmd : addenv(cmd, worker_env...)
+        end
+        function abandon_stalled!()
+            settled = union(completed_stages(run_dir), abandoned_stages(run_dir))
+            k = findfirst(!in(settled), stages)
+            return k === nothing ? nothing : stages[k]
+        end
+        spec = WorkerSpec(; command,
+            console_log = attempt ->
+                joinpath(run_dir, "logs", "attempt_$(attempt).console.log"),
+            heartbeat_path = joinpath(run_dir, HEARTBEAT_FILE),
+            progress_paths = () -> progress_files(run_dir),
+            items_done = () -> finished_items(run_dir),
+            status = () -> run_status(run_dir, stages), abandon_stalled!)
+        return run_dir, supervise(spec, settings; ledger_path = ledger)
+    finally
+        close(supervisor_lock)
     end
-    function abandon_stalled!()
-        settled = union(completed_stages(run_dir), abandoned_stages(run_dir))
-        k = findfirst(!in(settled), stages)
-        return k === nothing ? nothing : stages[k]
-    end
-    spec = WorkerSpec(; command,
-        console_log = attempt ->
-            joinpath(run_dir, "logs", "attempt_$(attempt).console.log"),
-        heartbeat_path = joinpath(run_dir, HEARTBEAT_FILE),
-        progress_paths = () -> progress_files(run_dir),
-        items_done = () -> finished_items(run_dir),
-        status = () -> run_status(run_dir, stages), abandon_stalled!)
-    return run_dir, supervise(spec, settings; ledger_path = ledger)
 end
 
 end # module

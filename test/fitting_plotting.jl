@@ -108,6 +108,21 @@ end
     @test isnan(CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0))
     @test CD.Fitting.optimizer_floor([2.0, 1.0, 3.0], [2.5, 2.2, 1.0], 2.0) == 2.0
     @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.9, 1.1], 1.5) == 1.0
+    # validity radius: smallest positive root of |c₁δ + c₂δ²| = fraction, worked
+    # by hand. c₁ = 0.3, c₂ = −0.1: 0.3δ − 0.1δ² = 0.1 ⇒ δ = (3 − √5)/2
+    @test CD.Fitting.validity_radius(0.3, 0.01, -0.1, 0.1) ≈ (3 - sqrt(5)) / 2 rtol = 1e-14
+    # an insignificant c₁ (below twice its error) is dropped: δ = √(0.1/|c₂|)
+    @test CD.Fitting.validity_radius(1e-6, 3e-4, -3.1e-7, 0.1) ≈ sqrt(0.1 / 3.1e-7) rtol =
+        1e-14
+    @test CD.Fitting.validity_radius(0.2, 0.01, 0.0, 0.1) ≈ 0.5 rtol = 1e-14
+    @test CD.Fitting.validity_radius(0.2, 0.01, NaN, 0.1) ≈ 0.5 rtol = 1e-14
+    @test CD.Fitting.validity_radius(NaN, NaN, -0.4, 0.1) ≈ 0.5 rtol = 1e-14
+    @test CD.Fitting.validity_radius(1e-6, 1.0, 0.0, 0.1) == Inf
+    # c₁ and c₂ of opposite sign that never reach the fraction on one branch:
+    # c₁ = 0.1, c₂ = −0.1, fraction 0.5: 0.1δ − 0.1δ² = −0.5 ⇒ δ = (1 + √21)/2
+    @test CD.Fitting.validity_radius(0.1, 0.001, -0.1, 0.5) ≈ (1 + sqrt(21)) / 2 rtol =
+        1e-14
+    @test_throws ArgumentError CD.Fitting.validity_radius(0.1, 0.01, 0.1, 0.0)
 end
 
 @testset "Plotting utilities" begin

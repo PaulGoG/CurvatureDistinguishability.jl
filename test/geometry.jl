@@ -74,6 +74,18 @@ end
     @test σ[end] < CD.Inference.WHITENING_RTOL * σ[1] # the flat spin combination
     @test count(i -> isapprox(G15[i, i], 1.0; atol = 1e-6), 1:6) == 5
     @test count(j -> isapprox(norm(T15[:, j]), 1.0; rtol = 1e-12), 1:6) >= 1
+    # re-orthogonalization: near the 2PN residual line the sixth tangent column
+    # is weak (independent part ~1e-9 of its norm); the basis stays orthonormal
+    # to round-off and keeps rank 6
+    let θ_near = [1.0, 1.5, 2.0, 0.0, 0.5, 0.5 * (-1238 / 901) + 1e-3]
+        basis_near = compute_tangent_basis(θ_near, FIX_FREQS, FIX_SN, FIX_DF, wp2)
+        @test length(basis_near) == 6
+        gram = [
+            multi_channel_inner_product(a, b, FIX_SN, FIX_DF)
+            for a in basis_near, b in basis_near
+        ]
+        @test maximum(abs.(gram .- Matrix(1.0I, 6, 6))) < 1e-12
+    end
 end
 
 @testset "Geometry A/B against reference fixtures" begin

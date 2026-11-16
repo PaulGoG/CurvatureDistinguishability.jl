@@ -10,8 +10,8 @@ module Fitting
 using DocStringExtensions: TYPEDSIGNATURES
 using Statistics: mean
 
-public loglog_slope, ratio_correction_fit, optimizer_floor, above_floor_mask,
-    angular_fraction, perturbative_mask, MIN_FIT_POINTS
+public loglog_slope, ratio_correction_fit, validity_radius, optimizer_floor,
+    above_floor_mask, angular_fraction, perturbative_mask, MIN_FIT_POINTS
 
 """
 Minimum number of clean points for the log-log slope and the
@@ -67,6 +67,34 @@ function ratio_correction_fit(deltas::AbstractVector, ratio::AbstractVector)
     resid = y .- c1 .* deltas .- c2 .* deltas .^ 2
     c1_err = n > 2 ? sqrt(max(0.0, sum(abs2, resid) / (n - 2)) * s4 / det) : NaN
     return c1, c1_err, c2
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Smallest separation `δ > 0` at which the fitted correction to the quartic law,
+`ratio − 1 ≈ c₁δ + c₂δ²`, reaches `fraction` in magnitude: the smallest
+positive root of `|c₁δ + c₂δ²| = fraction`. `c₁` enters only when it is
+significant, `|c₁| ≥ 2 c₁_err`; otherwise, and when `c₁` or `c₁_err` is not
+finite, the radius follows from `c₂` alone. A non-finite `c₂` counts as zero.
+Returns `Inf` when neither term contributes.
+"""
+function validity_radius(c1::Real, c1_err::Real, c2::Real, fraction::Real)
+    fraction > 0 ||
+        throw(ArgumentError("validity_radius: fraction must be > 0, got $fraction"))
+    a = (isfinite(c1) && isfinite(c1_err) && abs(c1) >= 2 * c1_err) ? Float64(c1) : 0.0
+    b = isfinite(c2) ? Float64(c2) : 0.0
+    a == 0 && b == 0 && return Inf
+    b == 0 && return fraction / abs(a)
+    best = Inf
+    for s in (1.0, -1.0)
+        disc = a^2 + 4 * b * s * fraction
+        disc < 0 && continue
+        for r in ((-a + sqrt(disc)) / (2b), (-a - sqrt(disc)) / (2b))
+            r > 0 && (best = min(best, r))
+        end
+    end
+    return best
 end
 
 """

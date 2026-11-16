@@ -5,6 +5,8 @@ snapshots, backup-before-overwrite semantics and run metadata.
 module Provenance
 
 using DocStringExtensions: TYPEDSIGNATURES
+using Dates: now
+using FileWatching.Pidfile: mkpidlock, PidlockedError
 using SHA: sha256
 using TOML: TOML
 using DrWatson: gitdescribe
@@ -17,6 +19,7 @@ export run_id_from_config, effective_config, identity_config,
     write_hardware_fingerprint, git_state, package_version, check_package_version,
     stage_key, completed_stages, mark_stage_complete!, abandoned_stages,
     note_figure_failure!
+public acquire_run_lock, record_attempt!
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
@@ -32,6 +35,10 @@ const EXECUTION_SECTIONS = ("hardware", "safety", "monitoring", "supervision")
 
 # ledger written by the supervisor into the run directory
 const SUPERVISION_LEDGER = "supervision.toml"
+
+# lock files of a run directory: the pipeline worker and the supervisor
+const RUN_LOCK = "run.pid"
+const SUPERVISOR_LOCK = "supervisor.pid"
 
 """
 $(TYPEDSIGNATURES)
@@ -265,17 +272,24 @@ has no manifest. Never overwrites an existing snapshot.
 function snapshot_manifest(run_dir::AbstractString)
     dest = joinpath(run_dir, "Manifest.toml")
     isfile(dest) && throw(ArgumentError("manifest snapshot already exists: $dest"))
-    project = Base.active_project()
-    if project !== nothing
-        suffix = "-v$(VERSION.major).$(VERSION.minor).toml"
-        for name in ("JuliaManifest" * suffix, "Manifest" * suffix,
-            "JuliaManifest.toml", "Manifest.toml")
-            source = joinpath(dirname(project), name)
-            isfile(source) && return cp(source, dest)
-        end
-    end
+    source = active_manifest()
+    source === nothing || return cp(source, dest)
     @warn "No manifest found for the active project; the run directory carries no " *
-          "dependency snapshot." project
+          "dependency snapshot." project = Base.active_project()
+    return nothing
+end
+
+# manifest of the active project, version-specific names first as in the
+# package loader; `nothing` when there is none
+function active_manifest()
+    project = Base.active_project()
+    project === nothing && return nothing
+    suffix = "-v$(VERSION.major).$(VERSION.minor).toml"
+    for name in ("JuliaManifest" * suffix, "Manifest" * suffix,
+        "JuliaManifest.toml", "Manifest.toml")
+        source = joinpath(dirname(project), name)
+        isfile(source) && return source
+    end
     return nothing
 end
 
@@ -341,12 +355,105 @@ function write_run_metadata(run_dir::AbstractString; kwargs...)
     for (k, v) in kwargs
         meta[String(k)] = v isa Union{Real,Bool,String,Vector{String}} ? v : string(v)
     end
+    return replace_metadata!(path, meta)
+end
+
+# write `meta` to `path` through a temporary file and a rename, so an
+# interrupted update leaves the previous record intact
+function replace_metadata!(path::AbstractString, meta::AbstractDict)
     tmp = path * ".tmp"
     open(tmp, "w") do io
         TOML.print(io, meta; sorted = true)
     end
     mv(tmp, path; force = true)
     return path
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Record the environment of attempt `attempt` of a run under
+`[attempt_records.<attempt>]` in `metadata.toml`: start time, host, Julia
+version, package version, git state, backend and the SHA-256 of the active
+manifest. When the host, the Julia version or the manifest differs from the
+first recorded attempt, a warning names the field: a continued run then mixes
+results computed in two environments.
+"""
+function record_attempt!(run_dir::AbstractString, attempt::Integer; git::AbstractString,
+    backend::AbstractString)
+    meta = read_run_metadata(run_dir)
+    records = get!(meta, "attempt_records", Dict{String,Any}())
+    manifest = active_manifest()
+    sha = manifest === nothing ? "" : bytes2hex(open(sha256, manifest))
+    record = Dict{String,Any}("started" => string(now()), "hostname" => gethostname(),
+        "julia_version" => string(VERSION), "package_version" => package_version(),
+        "git" => String(git), "backend" => String(backend), "manifest_sha256" => sha)
+    records[string(attempt)] = record
+    first_record = get(records, "1", nothing)
+    if attempt > 1 && first_record isa AbstractDict
+        for field in ("hostname", "julia_version", "manifest_sha256")
+            previous = get(first_record, field, nothing)
+            previous == record[field] && continue
+            @warn "Attempt $attempt of $run_dir runs with $field = $(record[field]), " *
+                  "attempt 1 ran with $previous: the continued run mixes results " *
+                  "computed in two environments."
+        end
+    end
+    return replace_metadata!(joinpath(run_dir, "metadata.toml"), meta)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Take the lock `name` in the run directory `dir`: a pid file that excludes a
+second process from the same directory and is released by `close` on the
+returned lock. A lock whose holder ran on this host and no longer exists (a worker killed
+by the supervisor) is reclaimed; an `ArgumentError` names the directory when
+another live process holds it, or a process of another host.
+"""
+function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
+    path = joinpath(dir, name)
+    lock = try_pidlock(path)
+    lock === nothing || return lock
+    holder = lock_holder(path)
+    # the pid lock of the standard library does not reclaim the file of a holder
+    # that was killed (SIGKILL by the supervisor): reclaim it here when the holder
+    # ran on this host and no longer exists
+    if stale_lock(holder)
+        rm(path; force = true)
+        lock = try_pidlock(path)
+        lock === nothing || return lock
+        holder = lock_holder(path)
+    end
+    throw(
+        ArgumentError(
+            "$dir is in use by another process (pid and host: $holder); " *
+            "wait for it to finish or end it before continuing this run",
+        ),
+    )
+end
+
+# the pid lock at `path`, or `nothing` when another holder has it
+function try_pidlock(path::AbstractString)
+    try
+        return mkpidlock(path; wait = false)
+    catch err
+        err isa PidlockedError || rethrow()
+        return nothing
+    end
+end
+
+lock_holder(path::AbstractString) =
+    isfile(path) ? String(strip(read(path, String))) : "unknown"
+
+# true when a pid-lock record "<pid> <host>" names a process of this host that no
+# longer exists; a record of another host is never stale here (no way to check)
+function stale_lock(holder::AbstractString)
+    fields = split(holder)
+    length(fields) == 2 || return false
+    pid = tryparse(Int32, fields[1])
+    (pid === nothing || fields[2] != gethostname()) && return false
+    return ccall(:uv_kill, Cint, (Cint, Cint), pid, 0) == Base.UV_ESRCH
 end
 
 """

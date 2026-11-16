@@ -163,6 +163,8 @@ CurvatureDistinguishability.Provenance.snapshot_manifest
 CurvatureDistinguishability.Provenance.backup_existing!
 CurvatureDistinguishability.Provenance.write_run_metadata
 CurvatureDistinguishability.Provenance.read_run_metadata
+CurvatureDistinguishability.Provenance.record_attempt!
+CurvatureDistinguishability.Provenance.acquire_run_lock
 CurvatureDistinguishability.Provenance.stage_key
 CurvatureDistinguishability.Provenance.completed_stages
 CurvatureDistinguishability.Provenance.mark_stage_complete!
@@ -209,6 +211,7 @@ CurvatureDistinguishability.Plotting.composite_residual_figure
 ```@docs
 CurvatureDistinguishability.Fitting.loglog_slope
 CurvatureDistinguishability.Fitting.ratio_correction_fit
+CurvatureDistinguishability.Fitting.validity_radius
 CurvatureDistinguishability.Fitting.optimizer_floor
 CurvatureDistinguishability.Fitting.above_floor_mask
 CurvatureDistinguishability.Fitting.perturbative_mask

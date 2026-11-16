@@ -300,6 +300,46 @@ end
         @test basename(second_dir) == "run_abc_r2" && isdir(second_dir)
         @test basename(third_dir) == "run_abc_r3"
     end
+    # one process per run directory: a held lock refuses a second holder with the
+    # directory named, and is free again once closed
+    mktempdir() do dir
+        lock = CD.Provenance.acquire_run_lock(dir)
+        @test isfile(joinpath(dir, "run.pid"))
+        @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
+        close(lock)
+        @test !isfile(joinpath(dir, "run.pid"))
+        close(CD.Provenance.acquire_run_lock(dir))
+        # the lock file of a holder that no longer runs on this host (a worker
+        # killed by the supervisor) is reclaimed; one of another host is not
+        write(joinpath(dir, "run.pid"), "2147483646 $(gethostname())")
+        close(CD.Provenance.acquire_run_lock(dir))
+        write(joinpath(dir, "run.pid"), "2147483646 elsewhere-host")
+        @test_throws "in use by another process" CD.Provenance.acquire_run_lock(dir)
+        rm(joinpath(dir, "run.pid"))
+        # supervisor and worker locks are independent
+        s = CD.Provenance.acquire_run_lock(dir; name = "supervisor.pid")
+        w = CD.Provenance.acquire_run_lock(dir)
+        close(w)
+        close(s)
+    end
+    # per-attempt provenance: each attempt is recorded, a change of host, Julia
+    # version or manifest against attempt 1 is reported
+    mktempdir() do dir
+        CD.Provenance.record_attempt!(dir, 1; git = "abc", backend = "CPU")
+        meta = TOML.parsefile(joinpath(dir, "metadata.toml"))
+        rec = meta["attempt_records"]["1"]
+        @test rec["git"] == "abc" && rec["backend"] == "CPU"
+        @test rec["julia_version"] == string(VERSION) && rec["hostname"] == gethostname()
+        @test haskey(rec, "manifest_sha256") && haskey(rec, "started")
+        CD.Provenance.record_attempt!(dir, 2; git = "def", backend = "CPU")
+        meta = TOML.parsefile(joinpath(dir, "metadata.toml"))
+        @test sort(collect(keys(meta["attempt_records"]))) == ["1", "2"]
+        # a different host in attempt 1 is reported for attempt 3
+        meta["attempt_records"]["1"]["hostname"] = "elsewhere"
+        open(io -> TOML.print(io, meta), joinpath(dir, "metadata.toml"), "w")
+        @test_logs (:warn, r"hostname") match_mode = :any CD.Provenance.record_attempt!(dir,
+            3; git = "def", backend = "CPU")
+    end
 end
 
 @testset "Provenance: comment-invariant run identifiers" begin

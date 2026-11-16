@@ -181,7 +181,7 @@ $(TYPEDSIGNATURES)
 
 Noise-weighted orthonormal tangent basis of the signal manifold at `theta_0`,
 via one ForwardDiff Jacobian of [`flat_response`](@ref) followed by modified
-Gram–Schmidt. Directions whose orthogonalized norm falls below
+Gram–Schmidt with one re-orthogonalization pass. Directions whose orthogonalized norm falls below
 [`GS_NORM_TOL`](@ref) (exactly degenerate combinations, e.g. the equal-mass
 spin difference χ_a) are dropped; the returned basis may have fewer than 6
 elements. Each element is an `n_ch`-tuple of complex channel vectors.
@@ -199,7 +199,9 @@ function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
         w = map(c -> collect(ComplexF64, c),
             unflatten_channels(view(J_flat, :, i), n_bins, Val(NCH)))
         norm_w0 = sqrt(multi_channel_inner_product(w, w, Sn_vals, df))
-        for e in basis
+        # two passes ("twice is enough"): the second removes the components
+        # the first leaves behind through cancellation
+        for _ in 1:2, e in basis
             proj = multi_channel_inner_product(w, e, Sn_vals, df)
             for c in 1:NCH
                 w[c] .-= proj .* e[c]
@@ -281,7 +283,8 @@ $(TYPEDSIGNATURES)
 
 Directional extrinsic curvature `K(u) = ‖P⊥ ∂²_u h‖²` and Fisher norm
 `g(u,u) = ‖∂_u h‖²` at `theta_0` along `u_dir`, projecting the directional
-second derivative against the precomputed tangent `basis`. Both first and
+second derivative against the precomputed tangent `basis`, twice, the second
+projection removing the tangential residue of the first. Both first and
 second derivatives come from one fused nested-dual evaluation. `K` and `g`
 are exactly even in `u_dir`. Throws a `DomainError` when `K` or `g` is not
 finite.
@@ -307,6 +310,14 @@ function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
     end
 
     normal_curv = ntuple(c -> raw_curv[c] .- tan_comp[c], Val(NCH))
+    # second projection of the normal part removes the tangential residue
+    # left by cancellation in the first
+    for e in basis
+        coeff = multi_channel_inner_product(normal_curv, e, Sn_vals, df)
+        for c in 1:NCH
+            normal_curv[c] .-= coeff .* e[c]
+        end
+    end
     K_u = multi_channel_inner_product(normal_curv, normal_curv, Sn_vals, df)
 
     dh_u = unflatten_channels(dh_flat, n_bins, Val(NCH))
