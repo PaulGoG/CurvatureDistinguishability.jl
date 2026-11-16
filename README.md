@@ -289,6 +289,7 @@ CurvatureDistinguishability/
 │   ├── Heartbeat.jl        # worker liveness counter and heartbeat file
 │   ├── Supervision.jl      # process watchdog: CPU/progress hang detection, retry budget
 │   ├── Checkpoint.jl       # durable per-separation sweep checkpoints
+│   ├── ZoneSampling.jl     # map sampling geometry: Fisher-scaled directions, refinement, prior walls, mirroring
 │   ├── Orchestrator.jl     # pipeline driver: sweeps, capped mirrored mapping
 │   ├── Campaign.jl         # supervised execution of pipeline configurations
 │   └── RunFigures.jl       # figure regeneration from persisted run CSVs

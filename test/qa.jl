@@ -21,7 +21,7 @@
     # checked on its own
     for submodule in (CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
         CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
-        CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures,
+        CD.Provenance, CD.Plotting, CD.ZoneSampling, CD.Orchestrator, CD.RunFigures,
         CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
         @test ExplicitImports.check_no_stale_explicit_imports(submodule) ===
               nothing
@@ -49,7 +49,7 @@
     if isempty(VERSION.prerelease)
         jet_modules = (CD, CD.Physics, CD.Detector, CD.Residuals, CD.Bounds,
             CD.Geometry, CD.Fitting, CD.Inference, CD.Backends, CD.Config,
-            CD.Provenance, CD.Plotting, CD.Orchestrator, CD.RunFigures,
+            CD.Provenance, CD.Plotting, CD.ZoneSampling, CD.Orchestrator, CD.RunFigures,
             CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
         jet = JET.report_package(CD; target_modules = jet_modules,
             toplevel_logger = nothing)

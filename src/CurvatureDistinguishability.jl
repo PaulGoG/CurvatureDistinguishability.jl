@@ -86,6 +86,7 @@ export publication_theme,
     scaling_panel!, residual_panel!, zone_panel!,
     composite_scaling_figure, composite_zone_figure, composite_residual_figure
 
+include("ZoneSampling.jl")
 include("Orchestrator.jl")
 using .Orchestrator
 using .Orchestrator:

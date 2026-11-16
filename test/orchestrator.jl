@@ -70,7 +70,7 @@
         (phi = π / 2, K = 1e-320, g = 1e-9, wall = 0x00)]
     box = (-1.5, 2.0, -0.5, 0.5)
     r_math_of(K) = K > CD.Geometry.K_UNDERFLOW ? (16.0 / K)^(1 / 4) : Inf
-    polar = CD.Orchestrator.mirror_to_full_circle(entries, box, r_math_of, 1e-6)
+    polar = CD.ZoneSampling.mirror_to_full_circle(entries, box, r_math_of, 1e-6)
     @test polar.angle ≈ [0.0, π / 2, π, 3π / 2]
     @test polar.K_raw == [16.0, 1e-320, 16.0, 1e-320]
     @test polar.r_math[1] == polar.r_math[3] == 1.0 && isinf(polar.r_math[2])
@@ -82,32 +82,32 @@
     # the wall and flagged although r_math sits a hair inside it; the
     # antipode keeps the plain comparison
     entries_w = [(phi = 0.0, K = 16.0 / (2.0 * (1 - 1e-7))^4, g = 1.0,
-        wall = CD.Orchestrator.WALL_SELF)]
-    polar_w = CD.Orchestrator.mirror_to_full_circle(entries_w, box, r_math_of, 1e-6)
+        wall = CD.ZoneSampling.WALL_SELF)]
+    polar_w = CD.ZoneSampling.mirror_to_full_circle(entries_w, box, r_math_of, 1e-6)
     @test polar_w.r_cap[1] == 2.0 && polar_w.prior_limited[1]
     @test polar_w.r_cap[2] ≈ 1.5 && polar_w.prior_limited[2] # r_math ≈ 2 > 1.5 anyway
     # Fisher-normalized sampling: the direction map turns the sampling
     # angle into a parameter-space unit vector, and the mirrored half
     # uses its exact negation
-    aniso = phi -> CD.Orchestrator.unit_direction(phi, 1e-3, 1.0)
+    aniso = phi -> CD.ZoneSampling.unit_direction(phi, 1e-3, 1.0)
     c45, s45 = aniso(π / 4)
     @test hypot(c45, s45) ≈ 1.0 && s45 / c45 ≈ 1e3
     @test all(aniso(π / 4 + π) .≈ (-c45, -s45))
-    polar_a = CD.Orchestrator.mirror_to_full_circle(
+    polar_a = CD.ZoneSampling.mirror_to_full_circle(
         [(phi = π / 4, K = 16.0, g = 1.0, wall = 0x00)], box, r_math_of, 1e-6;
         direction = aniso)
     @test polar_a.dir_cos ≈ [c45, -c45] && polar_a.dir_sin ≈ [s45, -s45]
     @test polar_a.r_box ≈ [0.5 / s45, 0.5 / s45] # the ±y walls at ±0.5 dominate
-    @test CD.Orchestrator.wall_bit(0.5) == CD.Orchestrator.WALL_SELF
-    @test CD.Orchestrator.wall_bit(4.0) == CD.Orchestrator.WALL_ANTIPODE
-    @test CD.Orchestrator.wall_bit(-0.5) == CD.Orchestrator.WALL_ANTIPODE
+    @test CD.ZoneSampling.wall_bit(0.5) == CD.ZoneSampling.WALL_SELF
+    @test CD.ZoneSampling.wall_bit(4.0) == CD.ZoneSampling.WALL_ANTIPODE
+    @test CD.ZoneSampling.wall_bit(-0.5) == CD.ZoneSampling.WALL_ANTIPODE
 
     # box-corner insertion: a ray through a finite box corner that is capped
     # there becomes a boundary vertex; the four corners fold onto two
     # half-circle directions
     entries_c = [(phi = 0.0, K = 1.0, g = 1.0, wall = 0x00),
         (phi = π / 2, K = 1.0, g = 1.0, wall = 0x00)]
-    n_inserted = CD.Orchestrator.insert_box_corner_vertices!(entries_c,
+    n_inserted = CD.ZoneSampling.insert_box_corner_vertices!(entries_c,
         phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> true,
         (-1.0, 1.0, -1.0, 1.0))
     @test n_inserted == 2 && length(entries_c) == 4
@@ -119,7 +119,7 @@
     @test all(e -> e.wall == 0x03, filter(e -> !(e.phi in (0.0, π / 2)), entries_c))
     @test all(e -> e.wall == 0x00, filter(e -> e.phi in (0.0, π / 2), entries_c))
     # an uncapped corner inserts nothing
-    @test CD.Orchestrator.insert_box_corner_vertices!(copy(entries_c),
+    @test CD.ZoneSampling.insert_box_corner_vertices!(copy(entries_c),
         phis -> [(1.0, 1.0) for _ in phis], (alpha, K) -> false, (-1.0, 1.0, -1.0, 1.0),
     ) == 0
 

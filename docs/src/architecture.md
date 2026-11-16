@@ -120,6 +120,12 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   for small linear values (never mixed exponents); single-denominator π
   ticks on phase axes. Figures are drawn by panel functions into a supplied
   layout position, the single figures being one-panel wrappers.
+- **`ZoneSampling.jl`**: the sampling geometry of the maps: directions in a
+  plane whose axes are measured in their Fisher scales, adaptive angular
+  refinement where the capped radius of neighbouring directions jumps, the
+  vertices where the zone boundary crosses the prior box or passes its
+  corners, and the mirroring of the half-circle onto the full circle with
+  the prior cap.
 - **`Orchestrator.jl`**: the driver. A pre-flight memory estimate against
   `[safety].max_ram_gb` (refuses or downscales concurrency; the GPU branch
   additionally enforces the VRAM budget), bounded-concurrency task pools,
