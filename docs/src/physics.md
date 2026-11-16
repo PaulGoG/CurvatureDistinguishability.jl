@@ -191,6 +191,35 @@ convergence, since 4.5PN adds no spin term. For a source that reaches
 fixed by the truncation of the series, not by the signal; its closure, the
 rank 6 of the tangent space, holds at every order from 2.
 
+The production overlays (1 yr, 0.1 to 50 mHz, ``\eta = 0.2222``) compare
+three sources in the spin plane: ``\mathcal{M} = 4`` s at
+``\chi_1 = \chi_2 = 0.8`` and ``\mathcal{M} = 0.25`` s at
+``(\chi_1, \chi_2) = (0.9, 0)``, both of which reach the innermost stable
+orbit in the band, and ``\mathcal{M} = 0.1`` s at ``(0.7, 0.5)``, which stops
+at ``v = 0.34`` at the band edge. Principal half-axes of the zones, the short
+ones in units of ``10^{-3}``:
+
+| Order | ``\mathcal{M} = 4`` s, long | short | ``\mathcal{M} = 0.25`` s, long | short | ``\mathcal{M} = 0.1`` s, long | short |
+|:--|--:|--:|--:|--:|--:|--:|
+| 1.5 | prior-limited | 2.48 | prior-limited | 0.87 | prior-limited | 0.67 |
+| 2 | 0.191 | 5.57 | 0.298 | 3.46 | 0.265 | 2.62 |
+| 2.5 | 0.220 | 1.85 | 0.141 | 0.90 | 0.127 | 2.04 |
+| 3 | 0.236 | 1.30 | 0.128 | 0.74 | 0.158 | 1.46 |
+| 3.5 | 0.055 | 1.65 | 0.054 | 1.19 | 0.148 | 0.70 |
+| 4 | 0.118 | 2.65 | 0.080 | 0.71 | 0.148 | 0.61 |
+| 4.5 | 0.118 | 2.65 | 0.080 | 0.71 | 0.148 | 0.61 |
+
+For the source that stays below ``v = 0.34`` the long half-axis settles at
+0.148 from 3.5PN on (0.158 at 3PN) and the short one changes by 13 % from
+3.5PN to 4PN. For the two sources that reach the innermost stable orbit
+neither axis converges: the long half-axis drops to 0.055 at 3.5PN and
+returns to 0.12 and 0.08 at 4PN. Orders 4 and 4.5 coincide for every map, as
+4.5PN adds no spin term. In the chirp-mass–spin plane of the
+``\mathcal{M} = 4`` s source the short half-axis agrees within 3 % from 2.5PN
+on, and the long one within 4 % from 3.5PN on. The size of the spin-plane
+zone is therefore a converged property of the signal only for sources whose
+signal in the band stays well below the innermost stable orbit.
+
 ## 3. Harmonic amplitudes (0.5PN)
 
 The polarizations are the Blanchet–Iyer–Will–Wiseman amplitudes
