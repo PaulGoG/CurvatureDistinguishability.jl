@@ -50,9 +50,8 @@ Implementation:
 
 The lanes kernel (value + per-partial Float64 stores, see
 src/Inference.jl `loss_bins_lanes!`) is vendor-portable by construction; the
-consumer-GPU bottleneck is FP64 throughput (1/64 rate on recent consumer
-NVIDIA parts, which leaves an end-to-end campaign gain of ~2× over a good
-CPU). On FP64-strong hardware (A100/H100/MI200-class, 10–60× more FP64) the
+consumer-GPU bottleneck is FP64 throughput, 1/64 of the FP32 rate on recent
+consumer NVIDIA parts. On FP64-strong hardware (A100/H100/MI200-class, 10–60× more FP64) the
 sweep stage becomes GPU-dominated; the map stage remains CPU by design
 (`ForwardDiff.jacobian` on host) and then dominates. If the campaign time
 matters, parallelize the maps across CPU cores concurrently with the GPU
