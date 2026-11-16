@@ -29,7 +29,29 @@ Implementation:
 - Validation: the two sweeps of `configs/quickstart_2pn.toml` must reach the
   prediction over the range the 1.5PN sweeps do.
 
-## 2. Inspiral–merger–ringdown realism (IMRPhenomD)
+## 2. 2.5PN spin–orbit phase term
+
+The 2PN phase constrains the spin combination that ``\beta`` leaves flat only
+through ``\sigma``, which is quadratic in the spins. The 2.5PN phase term
+``\left(\tfrac{38645\pi}{756} - \tfrac{65\pi}{9}\eta - \gamma\right)(1 + 3\ln v)\,v^5``
+carries a spin–orbit coefficient ``\gamma`` that is linear in a third spin
+combination [Arun2009](@cite), so for unequal masses it constrains that
+direction at first order, at zero spins included, and removes the line on
+which the 2PN tangent space keeps rank 5. Evaluated on the quickstart grid at
+``\eta = 0.2222``: at base spins ``(0.8, 0.8)`` the half-extents of the
+spin-plane zone go from ``(0.064, 0.157)`` at order 2 to ``(0.063, 0.160)``
+with the term, while the shortest radius drops from ``2.8\times 10^{-3}`` to
+``0.95\times 10^{-3}``; at zero spins the zone runs to the prior at order 2
+and closes at ``(0.15, 0.36)`` with the term.
+
+Implementation:
+- A further value `2.5` of `[physics].phase_pn_order`, with ``\gamma`` and the
+  non-spinning 2.5PN coefficient transcribed from [Arun2009](@cite) and tested
+  against ``\varphi_5`` of [Khan2016](@cite), as the 2PN coefficient is.
+- The logarithm keeps every quantity smooth in the parameters; the constant
+  part of ``1 + 3\ln v`` is absorbed by ``\phi_c``.
+
+## 3. Inspiral–merger–ringdown realism (IMRPhenomD)
 
 The LDC massive-binary catalogues (Sangria, Spritz, Yorsh) are
 generated with IMRPhenomD/HM; the inspiral-only model windows the signal
@@ -50,7 +72,7 @@ Implementation:
 - Validation: SNR and phase agreement against an independent
   implementation (LAL through PythonCall) on the fixture grid.
 
-## 3. Noise-realization study (distribution of the distance statistic)
+## 4. Noise-realization study (distribution of the distance statistic)
 
 The pipeline currently validates the noiseless-baseline geometry.
 The likelihood interpretation (``\Delta \ln \mathcal{L}_{\max} = D^2/2``) invites the
@@ -68,7 +90,7 @@ Implementation:
   effective dimension set by the residual normal space; persist per-realization
   results and a QQ-style figure.
 
-## 4. GPU backends: operational notes
+## 5. GPU backends: operational notes
 
 ### Device sizing
 

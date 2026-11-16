@@ -216,7 +216,10 @@ listed in `metadata.toml`.
   early at small separations, and the optimized distances lie above the
   prediction; a larger `max_iterations` (several hundred) recovers the
   separations above about one Fisher σ only. The maps use the differential
-  geometry alone and are not affected.
+  geometry alone and are not affected. The spin-plane zone at order 2 is not
+  converged in post-Newtonian order: the 2.5PN spin–orbit term, not included,
+  narrows it by a factor of three at the quickstart base point and closes it
+  at zero spins (documentation, Waveform Physics, Domain of validity).
 - Apple GPUs: Metal has no double-precision type and the device path is
   double precision only, so the Metal extension declines and the run uses
   the CPU (`require_gpu = true` stops it instead).
