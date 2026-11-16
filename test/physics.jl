@@ -284,12 +284,12 @@ end
     @test (@inferred pn_phase(1e-3, 1.5, 0.16, 2.0, 30.0)) isa Float64
     @test (@inferred spin_sigma(0.5, 0.3, 0.16)) isa Float64
 
-    # the model switch: 1.5PN by default, 2PN on request, nothing else
+    # the model switch: 1.5PN by default, the listed orders on request
     @test FIX_WP.phase_pn_order == 1.5
     wp_2pn = waveform_params(; FIX_PHYS..., phase_pn_order = 2)
     @test wp_2pn.phase_pn_order == 2.0
     @test isbitstype(typeof(wp_2pn))
-    @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 2.5)
+    @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 2.25)
     @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 1.0)
     @test (@inferred channel_strain(THETA0, FIX_FREQS, wp_2pn)) isa
           NTuple{2,Vector{ComplexF64}}
@@ -356,4 +356,100 @@ end
         @test g_2pn ≈ closed rtol = 1e-9
         @test g_15pn < 1e-18 * g_2pn
     end
+end
+
+@testset "TaylorF2 phase to 4.5PN: coefficients, orders, spin degeneracy" begin
+    # coefficients against exact evaluations of the literature forms at three
+    # points (notes on the sources in the documentation, Waveform Physics §2);
+    # fields: p2, p3, p4, p5, p5L, p6, p6L, p7, p8L, p8L2, p9, p9L
+    reference = Dict(
+        (2 / 9, 0.8, 0.8) => (6.272045855379189, -24.63585282780706,
+            12.14331560041712, -48.26149699618888, -144.7844909885667,
+            705.5777629344754, -326.0952380952381, -3537.735296498236,
+            -6560.388494361212, 620.6955572352398, 1863.297001420149,
+            -2048.916808741229),
+        (2 / 9, 0.3, -0.3) => (6.272045855379189, -46.49881579077003,
+            43.63151004486157, 122.8847650065546, 368.6542950196638,
+            -774.0574789881386, -326.0952380952381, 372.3098396129402,
+            -826.1415395472197, 620.6955572352398, 1863.297001420149,
+            -2048.916808741229),
+        (1 / 4, 0.5, 0.5) => (6.441798941798942, -34.59881579077003,
+            33.74588608591585, 31.94476295303460, 95.83428885910380,
+            -80.84873279886557, -326.0952380952381, -1511.268814396760,
+            -3451.814730053968, 661.7626606198035, 1231.070858379564,
+            -2048.916808741229),
+    )
+    names = (:p2, :p3, :p4, :p5, :p5L, :p6, :p6L, :p7, :p8L, :p8L2, :p9, :p9L)
+    for ((eta, chi1, chi2), ref) in reference
+        c = phase_coefficients(chi1, chi2, eta, 4.5)
+        for (name, value) in zip(names, ref)
+            @test getfield(c, name) ≈ value rtol = 1e-12
+        end
+    end
+    # every order switches on the terms of its own column and nothing else
+    order_of = (p2 = 1.5, p3 = 1.5, p4 = 2.0, p5 = 2.5, p5L = 2.5, p6 = 3.0, p6L = 3.0,
+        p7 = 3.5, p8L = 4.0, p8L2 = 4.0, p9 = 4.5, p9L = 4.5)
+    for order in CD.Physics.PHASE_PN_ORDERS
+        c = phase_coefficients(0.8, 0.8, 2 / 9, order)
+        for name in names
+            @test iszero(getfield(c, name)) == (order_of[name] > order)
+        end
+    end
+    @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 5.0)
+    @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 2.25)
+    # orders 1.5 and 2 through the coefficient set are the existing phase, bit
+    # for bit; each higher order adds its term (3/(128ηv⁵)) Δ v^i
+    Mc, F = 1.5, 3e-3
+    for eta in (0.25, 2 / 9)
+        beta = spin_beta(0.7, -0.2, eta)
+        psi4 = CD.Physics.phase_coefficient_2pn(eta, spin_sigma(0.7, -0.2, eta))
+        @test pn_phase(F, Mc, eta, phase_coefficients(0.7, -0.2, eta, 1.5), 1.5) ==
+              pn_phase(F, Mc, eta, beta)
+        @test pn_phase(F, Mc, eta, phase_coefficients(0.7, -0.2, eta, 2.0), 2.0) ==
+              pn_phase(F, Mc, eta, beta, psi4)
+        c = phase_coefficients(0.7, -0.2, eta, 4.5)
+        v = (π * total_mass(Mc, eta) * F)^(1 / 3)
+        lv = log(v)
+        pref = 3 / (128 * eta * v^5)
+        term = Dict(2.5 => (c.p5 + c.p5L * lv) * v^5, 3.0 => (c.p6 + c.p6L * lv) * v^6,
+            3.5 => c.p7 * v^7, 4.0 => (c.p8L * lv + c.p8L2 * lv^2) * v^8,
+            4.5 => (c.p9 + c.p9L * lv) * v^9)
+        for (lower, upper) in ((2.0, 2.5), (2.5, 3.0), (3.0, 3.5), (3.5, 4.0), (4.0, 4.5))
+            @test pn_phase(F, Mc, eta, c, upper) - pn_phase(F, Mc, eta, c, lower) ≈
+                  pref * term[upper] rtol = 1e-9
+        end
+    end
+    @test (@inferred phase_coefficients(0.5, 0.3, 0.16, 4.5)) isa
+          CD.Physics.PhaseCoefficients{Float64}
+    dual_spin = ForwardDiff.Dual(0.5, 1.0)
+    @test (@inferred phase_coefficients(dual_spin, 0.3, 0.16, 3.5)) isa
+          CD.Physics.PhaseCoefficients{typeof(dual_spin)}
+    @test (@inferred pn_phase(1e-3, 1.5, 0.16,
+        phase_coefficients(0.5, 0.3, 0.16, 4.5), 4.5)) isa Float64
+
+    # Tangent rank. From 2.5PN the spin–orbit coefficient of that order is
+    # linear in a third spin combination, so for unequal masses the rank is 6
+    # also at zero spins and on the 2PN residual line; at equal mass and equal
+    # spins the exchange symmetry keeps rank 5 at every order
+    tangent_rank(theta, wp) =
+        length(compute_tangent_basis(theta, FIX_FREQS, FIX_SN, FIX_DF, wp))
+    on_2pn_line = [1.0, 1.5, 2.0, 0.0, 0.5, 0.5 * (-1238 / 901)]
+    zero_spins = [1.0, 1.5, 2.0, 0.0, 0.0, 0.0]
+    for order in (2.5, 3.0, 3.5, 4.0, 4.5)
+        wp_u =
+            waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = order))...)
+        @test tangent_rank(on_2pn_line, wp_u) == 6
+        @test tangent_rank(zero_spins, wp_u) == 6
+        wp_e = waveform_params(; FIX_PHYS..., phase_pn_order = order)
+        @test tangent_rank(THETA0, wp_e) == 5
+    end
+    # the waveform at the highest order runs through the per-bin core and the
+    # kernel alike
+    wp45 = waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 4.5))...)
+    @test (@inferred channel_strain(THETA0, FIX_FREQS, wp45)) isa
+          NTuple{2,Vector{ComplexF64}}
+    c45 = channel_strain(THETA0, FIX_FREQS, wp45)
+    c15 = channel_strain(THETA0, FIX_FREQS,
+        waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9))...))
+    @test c45[1] != c15[1]
 end

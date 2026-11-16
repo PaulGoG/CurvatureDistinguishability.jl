@@ -366,16 +366,11 @@ the long-wavelength limit of the detector. Consequences:
   Robson roll-off factor, not by the full arm-dependent transfer.
 - The noise is the analytic Robson model, not an LDC noise realization; the
   pipeline validates the noiseless-baseline geometry ([Roadmap](roadmap.md)).
-- Precession, eccentricity, phase terms beyond 2PN and harmonics beyond
-  0.5PN are not included; the stationary-phase times ``t_k`` are Newtonian
-  at either phase order.
-- At order 2 the spin-plane zone is not converged in post-Newtonian order.
-  The 2.5PN spin–orbit term, which is not included, is linear in a third spin
-  combination and constrains the direction that ``\beta`` leaves flat about as
-  strongly as the 2PN spin–spin term does. With it added, the zone of the
-  quickstart source at base spins ``(0.8, 0.8)`` keeps its long axis to
-  ``2\,\%`` and narrows by a factor of three, and at zero spins a zone that
-  order 2 leaves limited by the prior closes ([Roadmap](roadmap.md), §2).
+- Precession, eccentricity, horizon absorption, phase terms beyond 4.5PN
+  (beyond 4PN for the spins) and harmonics beyond 0.5PN are not included;
+  the odd harmonics take the phase of the (2,2) harmonic at their frequency,
+  without their own phase corrections from 2.5PN on, and the
+  stationary-phase times ``t_k`` are Newtonian at every phase order.
 
 The band and the mass scale are campaign choices
 ([Run Parameters](parameters.md)); the geometric law itself makes

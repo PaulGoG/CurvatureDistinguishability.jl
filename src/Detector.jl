@@ -11,7 +11,7 @@ using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics: WaveformParams, ResponseGeometry, SECONDS_PER_YEAR, R_ORBIT_SEC,
     harmonic_amplitudes, harmonic_phase, spa_time, isco_frequency, inspiral_taper,
     observation_window,
-    spin_beta, spin_sigma, phase_coefficient_2pn, total_mass, mass_asymmetry,
+    phase_coefficients, total_mass, mass_asymmetry,
     transfer_frequency
 
 export channel_strain, channel_strain_bin, n_channels
@@ -163,20 +163,16 @@ the CPU loss loop and the GPU kernels.
 @inline function channel_strain_bin(f, distance, chirp_mass, coalescence_time,
     coalescence_phase, chi1, chi2, wp::WaveformParams)
     eta = wp.eta
-    beta = spin_beta(chi1, chi2, eta)
-    # 2PN bracket coefficient; an exact zero leaves the 1.5PN phase
-    psi4 =
-        wp.phase_pn_order == 2 ?
-        phase_coefficient_2pn(eta, spin_sigma(chi1, chi2, eta)) : zero(beta)
+    coeffs = phase_coefficients(chi1, chi2, eta, wp.phase_pn_order)
     f_isco = isco_frequency(total_mass(chirp_mass, eta))
     transfer = 1 / sqrt(1 + 0.6 * (f / transfer_frequency(wp.arm_length))^2)
     geometry = wp.geometry
     hA, hE = harmonic_channel_strain(f, 2, distance, chirp_mass, coalescence_time,
-        coalescence_phase, beta, psi4, f_isco, transfer, geometry, wp)
+        coalescence_phase, coeffs, f_isco, transfer, geometry, wp)
     if mass_asymmetry(eta) > 0
         for k in (1, 3)
             dA, dE = harmonic_channel_strain(f, k, distance, chirp_mass, coalescence_time,
-                coalescence_phase, beta, psi4, f_isco, transfer, geometry, wp)
+                coalescence_phase, coeffs, f_isco, transfer, geometry, wp)
             hA += dA
             hE += dE
         end
@@ -185,7 +181,7 @@ the CPU loss loop and the GPU kernels.
 end
 
 @inline function harmonic_channel_strain(f, k, distance, chirp_mass, coalescence_time,
-    coalescence_phase, beta, psi4, f_isco, transfer, geometry, wp)
+    coalescence_phase, coeffs, f_isco, transfer, geometry, wp)
     F = 2 * f / k
     taper = inspiral_taper(F, f_isco, wp.cutoff_width)
     a_plus, a_cross = harmonic_amplitudes(f, k, chirp_mass, wp.eta, wp.inclination,
@@ -202,7 +198,7 @@ end
     phase =
         doppler_phase(f, cos_alpha, sin_alpha, geometry) -
         harmonic_phase(f, k, chirp_mass, wp.eta, coalescence_time, coalescence_phase,
-            beta, psi4)
+            coeffs, wp.phase_pn_order)
     factor = (window * transfer) * cis(phase)
     return (a_plus * FA_plus - im * a_cross * FA_cross) * factor,
     (a_plus * FE_plus - im * a_cross * FE_cross) * factor

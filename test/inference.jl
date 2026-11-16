@@ -30,6 +30,16 @@
     @test dl2(p) ≈ loop2(p) rtol = 1e-12
     @test ForwardDiff.gradient(dl2, p) ≈ ForwardDiff.gradient(loop2, p) rtol = 1e-12
     @test loop2(p) != loop(p)
+    # and at the highest phase order, whose coefficients carry logarithms
+    wp45 = waveform_params(; merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 4.5))...)
+    data45 = map((a, b) -> a .+ b, channel_strain(THETA0, FIX_FREQS, wp45),
+        channel_strain(θ2, FIX_FREQS, wp45))
+    loop45 = loss_function(data45, FIX_FREQS, FIX_SN, FIX_DF, wp45, CPU())
+    dl45 =
+        q -> CD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data45[1], data45[2],
+            FIX_DF, wp45, CPU())
+    @test dl45(p) ≈ loop45(p) rtol = 1e-12
+    @test ForwardDiff.gradient(dl45, p) ≈ ForwardDiff.gradient(loop45, p) rtol = 1e-10
     # lanes path: nested (Hessian) duals through the same kernel layout
     @test ForwardDiff.hessian(dl, p) ≈ ForwardDiff.hessian(loop, p) rtol = 1e-10
     # chunked Hessians through the lanes layout equal the full 49-lane one on

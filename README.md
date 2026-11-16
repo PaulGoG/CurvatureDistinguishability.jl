@@ -272,8 +272,7 @@ CurvatureDistinguishability/
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
-│   ├── quickstart_2pn.toml # overlay: quickstart with the 2PN phase
-│   ├── production_2pn.toml # overlay: production campaign with the 2PN phase
+│   ├── pn_orders/          # overlays at each phase order: quickstart, production spin maps
 │   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
 │   ├── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
 │   └── figures/

@@ -6,7 +6,7 @@ module Config
 
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Physics
-using ..Physics: N_PARAMS
+using ..Physics: N_PARAMS, PHASE_PN_ORDERS
 using ..Detector: n_channels
 using ..Bounds
 using ..Bounds: PARAM_KEYS
@@ -475,7 +475,8 @@ the response, so the noise model and the signal response share one arm
 length. With `observation_window = true` the observation time of `[grid]`
 becomes the duration of the finite-observation window of the response
 (`Physics.observation_window`); without the key the signal fills the band.
-`phase_pn_order` selects the post-Newtonian order of the phase, `1.5` or `2`.
+`phase_pn_order` selects the post-Newtonian order of the phase, one of
+`PHASE_PN_ORDERS`.
 """
 function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
     phys = get_table(config, "physics")
@@ -492,8 +493,9 @@ function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
         "[grid].T_obs / 8 = $(T_obs / 8) s, or the observation window has no flat top",
     )
     phase_pn_order = number("phase_pn_order", wp_default.phase_pn_order)
-    phase_pn_order in (1.5, 2) || config_error(
-        "[physics].phase_pn_order must be 1.5 or 2, got $phase_pn_order")
+    phase_pn_order in PHASE_PN_ORDERS || config_error(
+        "[physics].phase_pn_order must be one of $(join(PHASE_PN_ORDERS, ", ")), " *
+        "got $phase_pn_order")
     wp = WaveformParams(
         observation_time = windowed ? T_obs : 0.0,
         window_edge_time = window_edge_time,

@@ -8,20 +8,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `[physics].phase_pn_order` (`1.5`, the default, or `2.0`). At order 2 the
-  TaylorF2 phase carries the 2PN term with the spin–spin coupling of two
-  aligned-spin black holes (`Physics.spin_sigma`,
-  `Physics.phase_coefficient_2pn`, and an optional last argument of `pn_phase`
-  and `harmonic_phase`). The spin combination that is exactly flat at 1.5PN
-  order is then constrained, except on one line through the origin of the spin
-  plane (Waveform Physics, §2). The default order reproduces earlier results
-  bit for bit and leaves run identifiers unchanged.
-  `configs/quickstart_2pn.toml` and `configs/production_2pn.toml` are overlays
-  that set the order to 2. At order 2 the maps are complete; the sweep stage
-  is limited by the conditioning of the fit along the weakly constrained spin
-  combination (README, Known limitations).
-- `Fitting.angular_fraction`, `Orchestrator.run_log_logger` and
-  `Backends.GPU_PACKAGES`.
+- `[physics].phase_pn_order` selects the post-Newtonian order of the TaylorF2
+  phase: 1.5 (the default), 2, 2.5, 3, 3.5, 4 or 4.5. The coefficients are
+  those of aligned-spin black holes, complete through 3.5PN including the
+  spin–spin tail term of Cho, Porto & Yang (2022) that the usual ready-to-use
+  forms omit; 4PN with its spin–orbit tail, next-to-next-to-leading spin–spin
+  and quartic-in-spin terms; 4.5PN with its non-spinning term only
+  (`Physics.phase_coefficients`, `Physics.PhaseCoefficients`,
+  `Physics.PHASE_PN_ORDERS`, `Physics.spin_sigma`; new methods of `pn_phase`
+  and `harmonic_phase`). Orders 1.5 and 2 reproduce the earlier phase bit for
+  bit, and run identifiers of existing configurations do not change. From 2PN
+  on, the spin combination that is flat at 1.5PN is constrained; from 2.5PN on
+  for unequal masses also at zero spins (Waveform Physics, §2).
+  `configs/pn_orders/` holds overlays of the quickstart configuration and of
+  four spin maps of the production configuration at every order.
+- `[pipeline].fit_coordinates = "whitened"` fits in the coordinates in which
+  the Gauss–Newton Hessian is the identity, from a blocked QR factorization of
+  the noise-whitened Jacobian (`Geometry.whitened_jacobian_factor`,
+  `Inference.whitening_transform`); the box on the parameters becomes six
+  linear constraints. At 2PN order and above the fit in the parameters stalls
+  on the weakly constrained spin combination; the whitened fit converges. The
+  default remains `"parameters"`.
+- `Fitting.validity_radius`, `Fitting.angular_fraction`,
+  `Provenance.acquire_run_lock`, `Provenance.record_attempt!`,
+  `Orchestrator.run_log_logger`, `Backends.GPU_PACKAGES`.
+- Test groups: `Pkg.test(test_args = ["physics"])` runs one group.
 
 ### Changed
 

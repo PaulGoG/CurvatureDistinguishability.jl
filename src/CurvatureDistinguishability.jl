@@ -36,7 +36,8 @@ export get_best_backend, to_backend, backend_name
 include("Physics.jl")
 using .Physics
 export NoiseParams, robson_confusion_params, analytic_noise_psd, sky_averaged_response,
-    WaveformParams, waveform_params, spin_beta, spin_sigma, pn_phase, harmonic_phase,
+    WaveformParams, waveform_params, spin_beta, spin_sigma, PhaseCoefficients,
+    phase_coefficients, pn_phase, harmonic_phase,
     harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
 

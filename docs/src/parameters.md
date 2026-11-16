@@ -150,13 +150,14 @@ are those the parser enforces.
   45°, constellation phases zero at ``t = 0``. Masses are detector-frame
   masses, as in the LDC catalogues.
 - Phase order: `[physics].phase_pn_order`, 1.5 (the default and the model
-  of the production campaign) or 2.0, which adds the 2PN phase term with the
-  spin–spin coupling ([Waveform Physics](physics.md), §2). The key belongs
-  to the run identity. `configs/quickstart_2pn.toml` and
-  `configs/production_2pn.toml` are overlays that set it to 2.0 and change
-  nothing else. At order 2 the maps are computed as at order 1.5; the sweeps
-  are limited by the conditioning of the fit along the weakly constrained
-  spin combination ([Roadmap](roadmap.md), §1).
+  of the production campaign) or any of 2, 2.5, 3, 3.5, 4, 4.5
+  ([Waveform Physics](physics.md), §2). The key belongs to the run identity.
+  From order 2 on, sweeps need `[pipeline].fit_coordinates = "whitened"`: the
+  spin combination that the higher orders constrain is constrained weakly, and
+  the fit in the parameters stalls on it. `configs/pn_orders/` holds overlays
+  at every order: `quickstart_pn<order>.toml` (the quickstart sweeps and maps,
+  whitened fit) and `production_maps_pn<order>.toml` (four spin maps of the
+  production configuration at 1024 base directions, no sweeps).
 - Domain of validity: the inspiral is windowed out at the innermost stable
   circular orbit, at ``2.2`` mHz for the ``\mathcal{M} = 4`` s base points,
   ``35`` mHz for ``\mathcal{M} = 0.25`` s and above the band for

@@ -2,21 +2,21 @@
 Analytic LISA noise model (Robson et al. 2019, Eq. 10–14, Table 1) and the
 post-Newtonian inspiral model shared by the CPU loss loop and the GPU
 kernels: TaylorF2 phasing for aligned spins and unequal masses to 1.5PN
-order or, on request, to 2PN order with the spin–spin coupling,
-0.5PN-amplitude harmonics, an innermost-stable-orbit taper and the physical
-source parameters (luminosity distance, chirp mass, coalescence time and
-phase, aligned spins).
+order or, on request, to any order through 4.5PN, 0.5PN-amplitude harmonics,
+an innermost-stable-orbit taper and the physical source parameters (luminosity
+distance, chirp mass, coalescence time and phase, aligned spins).
 """
 module Physics
 
 using DocStringExtensions: TYPEDSIGNATURES
 export NoiseParams, robson_confusion_params, analytic_noise_psd, sky_averaged_response,
-    WaveformParams, waveform_params, spin_beta, spin_sigma, pn_phase, harmonic_phase,
+    WaveformParams, waveform_params, spin_beta, spin_sigma, PhaseCoefficients,
+    phase_coefficients, pn_phase, harmonic_phase,
     harmonic_amplitudes, total_mass, isco_frequency, second_source,
     SECONDS_PER_YEAR
 public N_PARAMS, LISA_ARM_LENGTH, GIGAPARSEC_SEC, HARMONICS, C_LIGHT, R_ORBIT_SEC,
     transfer_frequency, mass_asymmetry, phase_coefficient_2pn, spa_time, inspiral_taper,
-    observation_window, ResponseGeometry
+    observation_window, ResponseGeometry, PHASE_PN_ORDERS
 
 """
 Speed of light [m s⁻¹]; converts the arm length and the distance unit to
@@ -86,6 +86,13 @@ Every parameter-count-dependent structure (bounds tuples, kernel parameter
 tuples, work-item validation) is sized from it.
 """
 const N_PARAMS = 6
+
+"""
+Post-Newtonian orders of the phase that `phase_pn_order` accepts. Each order adds
+the terms of the TaylorF2 phase at that order to those of the orders below it;
+1.5 is the default.
+"""
+const PHASE_PN_ORDERS = (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5)
 
 # positive PSD floor returned for non-positive frequencies, so the noise
 # weighting never divides by zero
@@ -282,8 +289,8 @@ observation that starts at `t = 0`: when positive, every harmonic is weighted
 by [`observation_window`](@ref) at its stationary-phase emission time, with
 edges of time scale `window_edge_time` [s]; at the default `0` the signal
 fills the whole frequency band whenever it was emitted. `phase_pn_order` is the
-post-Newtonian order of the phase, `1.5` (default) or `2`; at order 2 the phase carries
-the 2PN coefficient with the spin–spin coupling ([`phase_coefficient_2pn`](@ref)). The
+post-Newtonian order of the phase, one of [`PHASE_PN_ORDERS`](@ref) (default `1.5`);
+the coefficients are those of [`phase_coefficients`](@ref). The
 active channel count (2, or 3 with the identically zero T channel, requested through
 the `include_t_channel` keyword) is carried only as the type parameter `NCH`.
 `geometry` holds the derived response constants.
@@ -339,8 +346,12 @@ function WaveformParams(; mass_scale::Real = 1.0, time_scale::Real = 1.0e6,
     arm_length::Real = LISA_ARM_LENGTH, cutoff_width::Real = 0.1,
     observation_time::Real = 0.0, window_edge_time::Real = 1.0e6,
     phase_pn_order::Real = 1.5, include_t_channel::Bool = false)
-    phase_pn_order in (1.5, 2) || throw(
-        ArgumentError("phase_pn_order must be 1.5 or 2, got $phase_pn_order"))
+    phase_pn_order in PHASE_PN_ORDERS || throw(
+        ArgumentError(
+            "phase_pn_order must be one of $(join(PHASE_PN_ORDERS, ", ")), " *
+            "got $phase_pn_order",
+        ),
+    )
     fields = promote(float(mass_scale), float(time_scale), float(distance_scale),
         float(eta), float(ecliptic_longitude), float(ecliptic_latitude),
         float(inclination), float(polarization), float(orbit_phase),
@@ -462,6 +473,250 @@ Arun et al. 2009).
 end
 
 """
+    PhaseCoefficients{T}
+
+Coefficients of the bracket of the TaylorF2 phase,
+`ψ_PN(F) = (3/(128 η v⁵)) [1 + p2 v² + p3 v³ + p4 v⁴ + (p5 + p5L ln v) v⁵ +
+(p6 + p6L ln v) v⁶ + p7 v⁷ + (p8L ln v + p8L2 ln²v) v⁸ + (p9 + p9L ln v) v⁹]`,
+`v = (π M F)^{1/3}`, from [`phase_coefficients`](@ref). Isbits for real `T`, so it
+passes into GPU kernels.
+"""
+struct PhaseCoefficients{T<:Real}
+    p2::T
+    p3::T
+    p4::T
+    p5::T
+    p5L::T
+    p6::T
+    p6L::T
+    p7::T
+    p8L::T
+    p8L2::T
+    p9::T
+    p9L::T
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+2.5PN coefficient `p5` of the TaylorF2 phase bracket ([`PhaseCoefficients`](@ref))
+for symmetric mass ratio `eta`, mass asymmetry `delta` and the symmetric and
+antisymmetric spins `chi_s`, `chi_a`: the non-spinning term (Buonanno et al. 2009,
+doi:10.1103/PhysRevD.80.084043; Blanchet 2024, doi:10.1007/s41114-024-00050-z) and the
+next-to-leading-order spin–orbit term (Arun et al. 2009, doi:10.1103/PhysRevD.79.104023,
+with its erratum, doi:10.1103/PhysRevD.84.049901). The coefficient of `v⁵ ln v` is
+`p5L = 3 p5`.
+"""
+@inline function phase_coefficient_25pn(eta, delta, chi_s, chi_a)
+    return (
+        38645 * π / 756 - 65 * π * eta / 9
+        + (-732985 / 2268 + 24260 * eta / 81 + 340 * eta^2 / 9) * chi_s
+        + (-732985 / 2268 - 140 * eta / 9) * delta * chi_a
+    )
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+3PN coefficients `(p6, p6L)` of the TaylorF2 phase bracket
+([`PhaseCoefficients`](@ref)), arguments as for [`phase_coefficient_25pn`](@ref): the
+non-spinning terms and their logarithm (Buonanno et al. 2009,
+doi:10.1103/PhysRevD.80.084043; Blanchet 2024, doi:10.1007/s41114-024-00050-z), the
+leading spin–orbit tail (Bohé, Marsat & Blanchet 2013,
+doi:10.1088/0264-9381/30/13/135009) and the next-to-leading-order spin–spin terms
+(Bohé, Faye, Marsat & Porter 2015, doi:10.1088/0264-9381/32/19/195010).
+"""
+@inline function phase_coefficients_3pn(eta, delta, chi_s, chi_a)
+    p6 = (
+        11583231236531 / 4694215680 - 15737765635 * eta / 3048192
+        + 76055 * eta^2 / 1728 - 127825 * eta^3 / 1296
+        -
+        13696 * log(2.0) / 21 - 6848 * Base.MathConstants.eulergamma / 21
+        -
+        640 * π^2 / 3 + 2255 * π^2 * eta / 12
+        + (2270 * π / 3 - 520 * π * eta) * chi_s
+        + (2270 * π / 3) * delta * chi_a
+        + (75515 / 288 - 232415 * eta / 504 + 1255 * eta^2 / 9) * chi_s^2
+        + (75515 / 144 - 8225 * eta / 18) * delta * chi_s * chi_a
+        + (75515 / 288 - 263245 * eta / 252 - 480 * eta^2) * chi_a^2
+    )
+    p6L = -6848 / 21
+    return p6, p6L
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+3.5PN coefficient `p7` of the TaylorF2 phase bracket ([`PhaseCoefficients`](@ref)),
+arguments as for [`phase_coefficient_25pn`](@ref): the non-spinning term (Buonanno et
+al. 2009, doi:10.1103/PhysRevD.80.084043; Blanchet 2024,
+doi:10.1007/s41114-024-00050-z), the next-to-next-to-leading-order spin–orbit terms
+(Bohé, Marsat, Faye & Blanchet 2013, doi:10.1088/0264-9381/30/7/075017; Bohé, Marsat &
+Blanchet 2013, doi:10.1088/0264-9381/30/13/135009), the spin–spin tail (Cho, Porto &
+Yang 2022, doi:10.1103/PhysRevD.106.L101501) and the leading cubic-in-spin terms
+(Marsat 2015, doi:10.1088/0264-9381/32/8/085008).
+"""
+@inline function phase_coefficient_35pn(eta, delta, chi_s, chi_a)
+    return (
+        77096675 * π / 254016 + 378515 * π * eta / 1512 - 74045 * π * eta^2 / 756
+        +
+        (
+            -25150083775 / 3048192 + 10566655595 * eta / 762048
+            -
+            1042165 * eta^2 / 3024 + 5345 * eta^3 / 36
+        ) * chi_s
+        +
+        (
+            -25150083775 / 3048192 + 26804935 * eta / 6048 - 1985 * eta^2 / 48
+        ) * delta * chi_a
+        + (-815 * π / 2 + 30 * π * eta) * chi_s^2
+        + (-815 * π) * delta * chi_s * chi_a
+        + (-815 * π / 2 + 1600 * π * eta) * chi_a^2
+        + (14585 / 24 - 475 * eta / 6 + 100 * eta^2 / 3) * chi_s^3
+        + (14585 / 8 - 215 * eta / 2) * delta * chi_s^2 * chi_a
+        + (14585 / 8 - 7270 * eta + 80 * eta^2) * chi_s * chi_a^2
+        + (14585 / 24 - 2380 * eta) * delta * chi_a^3
+    )
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+4PN coefficients `(p8L, p8L2)` of `v⁸ ln v` and `v⁸ ln²v` in the TaylorF2 phase
+bracket ([`PhaseCoefficients`](@ref)), arguments as for
+[`phase_coefficient_25pn`](@ref): the non-spinning terms (Blanchet, Faye, Henry,
+Larrouturou & Trestini 2023, doi:10.1103/PhysRevLett.131.121402; Blanchet 2024,
+doi:10.1007/s41114-024-00050-z), the next-to-leading-order spin–orbit tail (Marsat et
+al. 2014, doi:10.1088/0264-9381/31/2/025023), the next-to-next-to-leading-order
+spin–spin terms (Cho, Porto & Yang 2022, doi:10.1103/PhysRevD.106.L101501) and the
+leading quartic-in-spin terms for black holes (Siemonsen, Steinhoff & Vines 2018,
+doi:10.1103/PhysRevD.97.124046). The spin–spin flux at this order rests on a single
+computation (Cho, Porto & Yang 2022). The constant 4PN coefficient is a shift of the
+coalescence time and is not carried.
+"""
+@inline function phase_coefficients_4pn(eta, delta, chi_s, chi_a)
+    p8L = (
+        -2550713843998885153 / 276808510218240 + 680712846248317 * eta / 42247941120
+        -
+        7510073635 * eta^2 / 3048192 - 1292395 * eta^3 / 12096 + 5975 * eta^4 / 96
+        + 78975 * log(3.0) / 196 - 78975 * log(3.0) * eta / 49
+        + 1011020 * log(2.0) / 1323 + 9964112 * log(2.0) * eta / 1323
+        + 36812 * Base.MathConstants.eulergamma / 63
+        + 3911888 * Base.MathConstants.eulergamma * eta / 1323
+        + 90490 * π^2 / 189 - 109295 * π^2 * eta / 224 + 11275 * π^2 * eta^2 / 144
+        + (-233915 * π / 56 + 3970375 * π * eta / 756 - 19655 * π * eta^2 / 63) * chi_s
+        + (-233915 * π / 56 + 99185 * π * eta / 84) * delta * chi_a
+        +
+        (
+            4023088585 / 6096384 + 1926964265 * eta / 1524096 + 222955 * eta^2 / 6048
+            -
+            46495 * eta^3 / 216
+        ) * chi_s^2
+        +
+        (
+            4023088585 / 3048192 + 4412285 * eta / 2016 + 31535 * eta^2 / 432
+        ) * delta * chi_s * chi_a
+        +
+        (
+            4023088585 / 6096384 - 62246795 * eta / 36288 - 18751735 * eta^2 / 6048
+            +
+            950 * eta^3 / 3
+        ) * chi_a^2
+        + (12005 / 96 - 245 * eta / 12 + 5 * eta^2 / 6) * chi_s^4
+        + (12005 / 24 - 245 * eta / 6) * delta * chi_s^3 * chi_a
+        + (12005 / 16 - 12005 * eta / 4 + 80 * eta^2) * chi_s^2 * chi_a^2
+        + (12005 / 24 - 1960 * eta) * delta * chi_s * chi_a^3
+        + (12005 / 96 - 980 * eta + 1920 * eta^2) * chi_a^4
+    )
+    p8L2 = 18406 / 63 + 1955944 * eta / 1323
+    return p8L, p8L2
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+4.5PN coefficients `(p9, p9L)` of the TaylorF2 phase bracket
+([`PhaseCoefficients`](@ref)), arguments as for [`phase_coefficient_25pn`](@ref): the
+non-spinning terms (Blanchet, Faye, Henry, Larrouturou & Trestini 2023,
+doi:10.1103/PhysRevLett.131.121402; Blanchet 2024, doi:10.1007/s41114-024-00050-z).
+Only the non-spinning term is known at this order, so at 4.5PN spinning sources carry a
+truncation that omits terms of order χ v⁹; `delta`, `chi_s` and `chi_a` are unused.
+"""
+@inline function phase_coefficients_45pn(eta, delta, chi_s, chi_a)
+    p9 = (
+        105344279473163 * π / 18776862720 - 1492917260735 * π * eta / 134120448
+        + 45293335 * π * eta^2 / 127008 + 10323755 * π * eta^3 / 199584
+        -
+        27392 * π * log(2.0) / 21 - 13696 * π * Base.MathConstants.eulergamma / 21
+        -
+        640 * π^3 / 3 + 2255 * π^3 * eta / 6
+    )
+    p9L = -13696 * π / 21
+    return p9, p9L
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Coefficients of the TaylorF2 phase bracket ([`PhaseCoefficients`](@ref)) for two
+black holes with aligned spins `chi1` (heavier body), `chi2` and symmetric mass
+ratio `eta`, through the post-Newtonian `order` (one of
+[`PHASE_PN_ORDERS`](@ref)); every coefficient above that order is an exact zero.
+Order 1.5 carries the Newtonian and 1PN terms, the 1.5PN tail and the leading
+spin–orbit term ([`spin_beta`](@ref)). Order 2 adds the 2PN term with the spin–spin
+coupling ([`phase_coefficient_2pn`](@ref)). Order 2.5 adds the non-spinning and
+next-to-leading-order spin–orbit terms with their logarithm
+(`phase_coefficient_25pn`). Order 3 adds the non-spinning terms with their
+logarithm, the spin–orbit tail and the next-to-leading-order spin–spin terms
+(`phase_coefficients_3pn`). Order 3.5 adds the non-spinning term, the
+next-to-next-to-leading-order spin–orbit terms, the spin–spin tail and the leading
+cubic-in-spin terms (`phase_coefficient_35pn`). Order 4 adds the `ln v` and
+`ln²v` terms of the non-spinning sector, the spin–orbit tail, the
+next-to-next-to-leading-order spin–spin terms and the leading quartic-in-spin terms,
+the constant being a time shift set to zero (`phase_coefficients_4pn`).
+Order 4.5 adds the non-spinning terms only (`phase_coefficients_45pn`).
+Sources: doi:10.1007/s41114-024-00050-z, doi:10.1103/PhysRevD.80.084043,
+doi:10.1088/0264-9381/30/13/135009, doi:10.1088/0264-9381/30/7/075017,
+doi:10.1088/0264-9381/32/19/195010, doi:10.1088/0264-9381/32/8/085008,
+doi:10.1103/PhysRevD.106.L101501, doi:10.1088/0264-9381/31/2/025023,
+doi:10.1103/PhysRevD.97.124046, doi:10.1103/PhysRevLett.131.121402,
+doi:10.1103/PhysRevD.79.104023 (erratum doi:10.1103/PhysRevD.84.049901).
+"""
+@inline function phase_coefficients(chi1, chi2, eta, order::Real)
+    beta = spin_beta(chi1, chi2, eta)
+    z = zero(beta)
+    T = typeof(z)
+    p2 = T(3715 / 756 + 55 * eta / 9)
+    p3 = 4 * beta - 16 * π
+    p4 = order >= 2 ? T(phase_coefficient_2pn(eta, spin_sigma(chi1, chi2, eta))) : z
+    delta = mass_asymmetry(eta)
+    chi_s = 0.5 * (chi1 + chi2)
+    chi_a = 0.5 * (chi1 - chi2)
+    p5 = order >= 2.5 ? T(phase_coefficient_25pn(eta, delta, chi_s, chi_a)) : z
+    p5L = 3 * p5
+    if order >= 3
+        q6, q6L = phase_coefficients_3pn(eta, delta, chi_s, chi_a)
+        p6, p6L = T(q6), T(q6L)
+    else
+        p6, p6L = z, z
+    end
+    p7 = order >= 3.5 ? T(phase_coefficient_35pn(eta, delta, chi_s, chi_a)) : z
+    if order >= 4
+        q8L, q8L2 = phase_coefficients_4pn(eta, delta, chi_s, chi_a)
+        p8L, p8L2 = T(q8L), T(q8L2)
+    else
+        p8L, p8L2 = z, z
+    end
+    if order >= 4.5
+        q9, q9L = phase_coefficients_45pn(eta, delta, chi_s, chi_a)
+        p9, p9L = T(q9), T(q9L)
+    else
+        p9, p9L = z, z
+    end
+    return PhaseCoefficients{T}(p2, p3, p4, p5, p5L, p6, p6L, p7, p8L, p8L2, p9, p9L)
+end
+
+"""
 $(TYPEDSIGNATURES)
 
 Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency
@@ -481,6 +736,33 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency `F`,
+TaylorF2 in the total-mass velocity `v = (π M F)^{1/3}`, with the bracket of
+[`PhaseCoefficients`](@ref) and the coefficients `c` from
+[`phase_coefficients`](@ref). `order` selects which terms enter: the coefficients
+above it are zero anyway, and the branches skip their arithmetic and the logarithm.
+`F` [Hz], `chirp_mass` [s]; returns the phase [rad].
+"""
+@inline function pn_phase(F, chirp_mass, eta, c::PhaseCoefficients, order::Real)
+    v = (π * total_mass(chirp_mass, eta) * F)^(1 / 3)
+    bracket = 1 + c.p2 * v^2 + c.p3 * v^3
+    if order >= 2
+        bracket += c.p4 * v^4
+    end
+    if order >= 2.5
+        lv = log(v)
+        bracket += (c.p5 + c.p5L * lv) * v^5
+        order >= 3 && (bracket += (c.p6 + c.p6L * lv) * v^6)
+        order >= 3.5 && (bracket += c.p7 * v^7)
+        order >= 4 && (bracket += (c.p8L * lv + c.p8L2 * lv^2) * v^8)
+        order >= 4.5 && (bracket += (c.p9 + c.p9L * lv) * v^9)
+    end
+    return (3 / (128 * eta * v^5)) * bracket
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Stationary-phase phase of harmonic `k` (`k` times the orbital phase) at
 frequency `f`, in the Fourier convention `h̃(f) = ∫ h(t) e^{-2πift} dt`
 (Baghi et al. 2026, Eq. 1), for which `h̃(f) ∝ e^{-iΨ_k(f)}` with
@@ -490,13 +772,22 @@ frequency `f`, in the Fourier convention `h̃(f) = ∫ h(t) e^{-2πift} dt`
 (2,2) phase at coalescence. The arrival-time term is common to all harmonics,
 and at Newtonian order `dΨ₂/df = 2π t(f)` with `t(f) = t_c − 5𝓜/(256 v⁸)`.
 `f` [Hz], `chirp_mass` and `coalescence_time` [s], `coalescence_phase` [rad];
-returns the phase [rad].
+returns the phase [rad]. The method with [`PhaseCoefficients`](@ref) `c` and the
+post-Newtonian `order` evaluates `ψ_PN` with the `pn_phase` method of the same
+arguments, to any order of [`PHASE_PN_ORDERS`](@ref).
 """
 @inline function harmonic_phase(f, k::Integer, chirp_mass, eta, coalescence_time,
     coalescence_phase, beta, psi4 = zero(beta))
     half_k = k / 2
     return 2 * π * f * coalescence_time - half_k * coalescence_phase +
            half_k * pn_phase(f / half_k, chirp_mass, eta, beta, psi4) - π / 4
+end
+
+@inline function harmonic_phase(f, k::Integer, chirp_mass, eta, coalescence_time,
+    coalescence_phase, c::PhaseCoefficients, order::Real)
+    half_k = k / 2
+    return 2 * π * f * coalescence_time - half_k * coalescence_phase +
+           half_k * pn_phase(f / half_k, chirp_mass, eta, c, order) - π / 4
 end
 
 """

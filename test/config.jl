@@ -65,7 +65,7 @@
                 write_cfg(dir, "[physics]\nphase_pn_order = $order\n"),
             ).wp.phase_pn_order == 2.0
         end
-        for bad in ("2.5", "1", "\"2PN\"")
+        for bad in ("2.25", "1", "5.0", "\"2PN\"")
             @test_throws "[physics].phase_pn_order" load_and_validate_config(
                 write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))
         end
