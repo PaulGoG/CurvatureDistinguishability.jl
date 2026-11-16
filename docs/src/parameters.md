@@ -154,7 +154,9 @@ are those the parser enforces.
   spin–spin coupling ([Waveform Physics](physics.md), §2). The key belongs
   to the run identity. `configs/quickstart_2pn.toml` and
   `configs/production_2pn.toml` are overlays that set it to 2.0 and change
-  nothing else.
+  nothing else. At order 2 the maps are computed as at order 1.5; the sweeps
+  are limited by the conditioning of the fit along the weakly constrained
+  spin combination ([Roadmap](roadmap.md), §1).
 - Domain of validity: the inspiral is windowed out at the innermost stable
   circular orbit, at ``2.2`` mHz for the ``\mathcal{M} = 4`` s base points,
   ``35`` mHz for ``\mathcal{M} = 0.25`` s and above the band for

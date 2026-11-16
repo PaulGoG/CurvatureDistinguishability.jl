@@ -199,7 +199,7 @@ listed in `metadata.toml`.
 | Component | Status |
 |---|---|
 | Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
-| 2PN phase with the spin–spin coupling (`[physics].phase_pn_order = 2.0`) | off by default; tested against literature values of the coefficient and the analytic tangent-rank prediction |
+| 2PN phase with the spin–spin coupling (`[physics].phase_pn_order = 2.0`) | off by default; coefficient tested against literature values and the tangent rank against its analytic prediction; maps usable, sweeps limited by the optimizer (Known limitations) |
 | Robson (2019) noise model (per-channel Eq. 12 instrumental + Eq. 14 confusion through the Eq. 9 response, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
@@ -209,6 +209,14 @@ listed in `metadata.toml`.
 
 ## Known limitations
 
+- 2PN phase order: the spin combination that the 2PN term constrains is
+  constrained weakly, and the Hessian of the fit is conditioned at the edge of
+  double precision (condition number about 10¹⁵ on the quickstart grid). With
+  the interior-point Newton optimizer the sweep stage then stalls or stops
+  early at small separations, and the optimized distances lie above the
+  prediction; a larger `max_iterations` (several hundred) recovers the
+  separations above about one Fisher σ only. The maps use the differential
+  geometry alone and are not affected.
 - Apple GPUs: Metal has no double-precision type and the device path is
   double precision only, so the Metal extension declines and the run uses
   the CPU (`require_gpu = true` stops it instead).

@@ -5,7 +5,31 @@ priority, each with the design sketch it would follow. None of them is
 implemented. The last section documents the operational behaviour of the
 GPU backends.
 
-## 1. Inspiral–merger–ringdown realism (IMRPhenomD)
+## 1. Preconditioned fit at 2PN phase order
+
+At 2PN order the second spin combination is constrained, but weakly: on the
+quickstart grid the singular values of the noise-whitened Jacobian span
+``9.5\times 10^{7}`` to ``3.1``, so the Hessian of the fit has a condition
+number near ``10^{15}``. The interior-point Newton optimizer, which works in the
+``\mathcal{O}(1)``-scaled parameters, then resolves its steps along that
+combination poorly: fits stop early or exhaust the iteration cap, and the
+optimized ``D^2`` stays above ``K(u)\delta^4/16``. The law itself holds: the
+same fit in coordinates whitened by the triangular factor of the Jacobian
+reaches the prediction to ``0.5\,\%`` at ``\delta = 0.24`` and to
+``10^{-4}`` at ``\delta = 5.9`` along the chirp-mass/coalescence-time
+direction.
+
+Implementation:
+- Fit in the coordinates ``z`` of ``\theta = \theta_{\mathrm{start}} + R^{-1}z``,
+  with ``R`` the triangular factor of the noise-whitened Jacobian at the
+  starting point (a QR factorization, which keeps the weak direction to the
+  relative accuracy of the Jacobian, where the normal equations lose it). The
+  Gauss–Newton Hessian is the identity there.
+- The box bounds on ``\theta`` become linear inequality constraints on ``z``.
+- Validation: the two sweeps of `configs/quickstart_2pn.toml` must reach the
+  prediction over the range the 1.5PN sweeps do.
+
+## 2. Inspiral–merger–ringdown realism (IMRPhenomD)
 
 The LDC massive-binary catalogues (Sangria, Spritz, Yorsh) are
 generated with IMRPhenomD/HM; the inspiral-only model windows the signal
@@ -26,7 +50,7 @@ Implementation:
 - Validation: SNR and phase agreement against an independent
   implementation (LAL through PythonCall) on the fixture grid.
 
-## 2. Noise-realization study (distribution of the distance statistic)
+## 3. Noise-realization study (distribution of the distance statistic)
 
 The pipeline currently validates the noiseless-baseline geometry.
 The likelihood interpretation (``\Delta \ln \mathcal{L}_{\max} = D^2/2``) invites the
@@ -44,7 +68,7 @@ Implementation:
   effective dimension set by the residual normal space; persist per-realization
   results and a QQ-style figure.
 
-## 3. GPU backends: operational notes
+## 4. GPU backends: operational notes
 
 ### Device sizing
 

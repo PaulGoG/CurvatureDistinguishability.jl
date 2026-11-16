@@ -17,7 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plane (Waveform Physics, §2). The default order reproduces earlier results
   bit for bit and leaves run identifiers unchanged.
   `configs/quickstart_2pn.toml` and `configs/production_2pn.toml` are overlays
-  that set the order to 2.
+  that set the order to 2. At order 2 the maps are complete; the sweep stage
+  is limited by the conditioning of the fit along the weakly constrained spin
+  combination (README, Known limitations).
 - `Fitting.angular_fraction`, `Orchestrator.run_log_logger` and
   `Backends.GPU_PACKAGES`.
 
