@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `[physics].spa_time = "phase"` evaluates the response at the
+  stationary-phase times of the phase of the selected order,
+  `t(F) = t_c + (2π)⁻¹ dψ_PN/dF` (new method of `Physics.spa_time`), instead
+  of the Newtonian times; `"newtonian"` remains the default. Near the
+  innermost stable orbit these times can pass `t_c` (Waveform Physics, §8).
+
 ## [2.3.0] - 2026-11-17
 
 ### Changed

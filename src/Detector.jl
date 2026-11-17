@@ -149,7 +149,8 @@ coalescence time `coalescence_time` [s], coalescence phase and aligned spins
 `h̃_C(f) = Σ_k w_k(f) 𝒯(f) [a₊_k F⁺_C(t_k) − i a×_k F×_C(t_k)] e^{-iΨ_k(f)} e^{+iΔ_D(t_k)}`
 over the harmonics `k` of [`harmonic_amplitudes`](@ref), each with its own
 stationary-phase phase [`harmonic_phase`](@ref), its own emission time
-`t_k = t(2f/k)` ([`spa_time`](@ref)) at which the antenna patterns
+`t_k = t(2f/k)` ([`spa_time`](@ref); Newtonian, or from the phase with
+`wp.pn_spa_time`) at which the antenna patterns
 [`channel_patterns`](@ref) and the Doppler phase [`doppler_phase`](@ref) are
 evaluated, the weight `w_k`, product of the finite-observation window
 ([`observation_window`](@ref), when `wp.observation_time > 0`) and the
@@ -186,7 +187,10 @@ end
     taper = inspiral_taper(F, f_isco, wp.cutoff_width)
     a_plus, a_cross = harmonic_amplitudes(f, k, chirp_mass, wp.eta, wp.inclination,
         distance)
-    t_k = spa_time(F, chirp_mass, coalescence_time)
+    t_k =
+        wp.pn_spa_time ?
+        spa_time(F, chirp_mass, wp.eta, coalescence_time, coeffs, wp.phase_pn_order) :
+        spa_time(F, chirp_mass, coalescence_time)
     # finite observation: the harmonic counts only while it is emitted inside
     # [0, observation_time]; without a window the factor is an exact one
     window =

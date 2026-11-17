@@ -67,6 +67,12 @@
                 write_cfg(dir, "[physics]\nphase_pn_order = $order\n"),
             ).wp.phase_pn_order == value
         end
+        # stationary-phase times: Newtonian by default, from the phase on request
+        @test !load_and_validate_config(write_cfg(dir, "")).wp.pn_spa_time
+        @test load_and_validate_config(
+            write_cfg(dir, "[physics]\nspa_time = \"phase\"\n")).wp.pn_spa_time
+        @test_throws "[physics].spa_time" load_and_validate_config(
+            write_cfg(dir, "[physics]\nspa_time = \"1pn\"\n"))
         for bad in ("2.25", "1", "5.0", "\"2PN\"")
             @test_throws "[physics].phase_pn_order" load_and_validate_config(
                 write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))

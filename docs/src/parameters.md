@@ -116,6 +116,7 @@ are those the parser enforces.
 | `[pipeline.sweep_settings].multi_start_transverse_scale` | ``10^{-3}`` | ≥ 0 | standard deviation of the isotropic extra-start perturbation, in scaled parameter units |
 | `[pipeline.sweep_settings].correction_validity_fraction` | 0.1 | > 0 | relative departure from the leading-order law at which the validity radius ``\delta_{\mathrm{valid}}`` of the ``\mathcal{O}(\delta^5)`` fit is set: the smallest ``\delta`` with ``\lvert c_1\delta + c_2\delta^2\rvert`` equal to it, ``c_1`` counted only when it exceeds twice its standard error |
 | `[pipeline.sweep_settings].residual_spectrum_windows` | 600 | integer ≥ 8 | number of log-uniform decimation windows of the residual spectrum |
+| `[physics].spa_time` | `"newtonian"` | `"newtonian"`, `"phase"` | stationary-phase times of the response: Newtonian, or from the phase of the order `phase_pn_order`, which can pass `t_c` below the innermost stable orbit ([Waveform Physics](physics.md), §2 and §8) |
 | `[mapping].unbounded_cap_factor` | 5.0 | > 1 | radius of unbounded map directions, in multiples of the largest finite capped radius |
 | `[hardware].heap_size_hint_gb` | 0.0 | ≥ 0 GB | `--heap-size-hint` applied by the supervisor to its worker processes only (0 = none) |
 | `[hardware].gc_between_stages` | `true` | none | device-buffer flush and full host garbage collection after every sweep and map |

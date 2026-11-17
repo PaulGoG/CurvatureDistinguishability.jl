@@ -148,7 +148,7 @@ const KNOWN_KEYS = Dict(
     "physics" => ["mass_scale", "time_scale", "distance_scale", "eta",
         "ecliptic_longitude", "ecliptic_latitude", "inclination", "polarization",
         "orbit_phase", "constellation_phase", "cutoff_width", "include_t_channel",
-        "observation_window", "window_edge_time", "phase_pn_order"],
+        "observation_window", "window_edge_time", "phase_pn_order", "spa_time"],
     "noise" => ["confusion_enabled", "confusion_amp", "confusion_alpha",
         "confusion_beta", "confusion_kappa", "confusion_gamma",
         "confusion_knee_freq", "arm_length", "oms_amplitude",
@@ -476,7 +476,8 @@ length. With `observation_window = true` the observation time of `[grid]`
 becomes the duration of the finite-observation window of the response
 (`Physics.observation_window`); without the key the signal fills the band.
 `phase_pn_order` selects the post-Newtonian order of the phase, one of
-`PHASE_PN_ORDERS`.
+`PHASE_PN_ORDERS`; `spa_time = "phase"` takes the stationary-phase times of the
+response from that phase instead of the Newtonian relation.
 """
 function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
     phys = get_table(config, "physics")
@@ -496,6 +497,10 @@ function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
     phase_pn_order in PHASE_PN_ORDERS || config_error(
         "[physics].phase_pn_order must be one of $(join(PHASE_PN_ORDERS, ", ")), " *
         "got $phase_pn_order")
+    spa_time_choice = get_string(phys, "spa_time", "newtonian", "physics")
+    spa_time_choice in ("newtonian", "phase") || config_error(
+        "[physics].spa_time must be one of \"newtonian\", \"phase\", got \"$spa_time_choice\"",
+    )
     wp = WaveformParams(
         observation_time = windowed ? T_obs : 0.0,
         window_edge_time = window_edge_time,
@@ -511,6 +516,7 @@ function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
         constellation_phase = number("constellation_phase", wp_default.constellation_phase),
         cutoff_width = number("cutoff_width", wp_default.cutoff_width),
         phase_pn_order = phase_pn_order,
+        pn_spa_time = spa_time_choice == "phase",
         arm_length = arm_length,
         include_t_channel = get_boolean(
             phys, "include_t_channel", n_channels(wp_default) == 3, "physics"),

@@ -290,7 +290,9 @@ by [`observation_window`](@ref) at its stationary-phase emission time, with
 edges of time scale `window_edge_time` [s]; at the default `0` the signal
 fills the whole frequency band whenever it was emitted. `phase_pn_order` is the
 post-Newtonian order of the phase, one of [`PHASE_PN_ORDERS`](@ref) (default `1.5`);
-the coefficients are those of [`phase_coefficients`](@ref). The
+the coefficients are those of [`phase_coefficients`](@ref). With `pn_spa_time`
+the stationary-phase times at which the response is evaluated follow from that
+phase ([`spa_time`](@ref) with coefficients); by default they are Newtonian. The
 active channel count (2, or 3 with the identically zero T channel, requested through
 the `include_t_channel` keyword) is carried only as the type parameter `NCH`.
 `geometry` holds the derived response constants.
@@ -312,6 +314,7 @@ struct WaveformParams{T<:Real,NCH}
     window_edge_time::T
     phase_pn_order::T
     geometry::ResponseGeometry{T}
+    pn_spa_time::Bool
 end
 
 """
@@ -345,7 +348,8 @@ function WaveformParams(; mass_scale::Real = 1.0, time_scale::Real = 1.0e6,
     orbit_phase::Real = 0.0, constellation_phase::Real = 0.0,
     arm_length::Real = LISA_ARM_LENGTH, cutoff_width::Real = 0.1,
     observation_time::Real = 0.0, window_edge_time::Real = 1.0e6,
-    phase_pn_order::Real = 1.5, include_t_channel::Bool = false)
+    phase_pn_order::Real = 1.5, pn_spa_time::Bool = false,
+    include_t_channel::Bool = false)
     phase_pn_order in PHASE_PN_ORDERS || throw(
         ArgumentError(
             "phase_pn_order must be one of $(join(PHASE_PN_ORDERS, ", ")), " *
@@ -359,7 +363,7 @@ function WaveformParams(; mass_scale::Real = 1.0, time_scale::Real = 1.0e6,
         float(observation_time), float(window_edge_time), float(phase_pn_order))
     T = typeof(fields[1])
     geometry = response_geometry(fields[5], fields[6], fields[8], fields[10], fields[11])
-    return WaveformParams{T,include_t_channel ? 3 : 2}(fields..., geometry)
+    return WaveformParams{T,include_t_channel ? 3 : 2}(fields..., geometry, pn_spa_time)
 end
 
 # keywords accepted by the WaveformParams constructor: every stored parameter
@@ -368,7 +372,7 @@ const WAVEFORM_KEYWORDS = (
     :mass_scale, :time_scale, :distance_scale, :eta, :ecliptic_longitude,
     :ecliptic_latitude, :inclination, :polarization, :orbit_phase,
     :constellation_phase, :arm_length, :cutoff_width, :observation_time,
-    :window_edge_time, :phase_pn_order, :include_t_channel,
+    :window_edge_time, :phase_pn_order, :pn_spa_time, :include_t_channel,
 )
 
 """
@@ -806,6 +810,40 @@ frequency `F` [Hz]: `t_c − 5𝓜/(256 v⁸)` with `v = (π 𝓜 F)^{1/3}`.
 @inline function spa_time(F, chirp_mass, coalescence_time)
     v = (π * chirp_mass * F)^(1 / 3)
     return coalescence_time - 5 * chirp_mass / (256 * v^8)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Stationary-phase time at which the (2,2) harmonic radiates at frequency `F`,
+from the phase of the same order: `t(F) = t_c + (1/2π) dψ_PN/dF` with `ψ_PN`
+of [`pn_phase`](@ref), coefficients `c` and `order` as there. With
+`v = (π M F)^{1/3}` and the bracket `B(v)` of [`PhaseCoefficients`](@ref),
+`dψ_PN/dF = (1/(128 η F v⁵)) (v B′ − 5B)`, so that
+`t(F) = t_c + (v B′ − 5B)/(256 π η v⁵ F)`; with `B = 1` this is the Newtonian
+[`spa_time`](@ref). Below the innermost stable orbit the result can decrease
+with `F` and exceed `coalescence_time` (Waveform Physics, §8). `F` [Hz],
+`chirp_mass` and `coalescence_time` [s]; returns a time [s].
+"""
+@inline function spa_time(F, chirp_mass, eta, coalescence_time, c::PhaseCoefficients,
+    order::Real)
+    v = (π * total_mass(chirp_mass, eta) * F)^(1 / 3)
+    # v B′ − 5B term by term: v^i (a + b ln v + d ln²v) contributes
+    # v^i [(i − 5)(a + b ln v + d ln²v) + b + 2d ln v]
+    s = -5 - 3 * c.p2 * v^2 - 2 * c.p3 * v^3
+    if order >= 2
+        s -= c.p4 * v^4
+    end
+    if order >= 2.5
+        lv = log(v)
+        s += c.p5L * v^5
+        order >= 3 && (s += (c.p6 + c.p6L * lv + c.p6L) * v^6)
+        order >= 3.5 && (s += 2 * c.p7 * v^7)
+        order >= 4 &&
+            (s += (3 * (c.p8L * lv + c.p8L2 * lv^2) + c.p8L + 2 * c.p8L2 * lv) * v^8)
+        order >= 4.5 && (s += (4 * (c.p9 + c.p9L * lv) + c.p9L) * v^9)
+    end
+    return coalescence_time + s / (256 * π * eta * v^5 * F)
 end
 
 """

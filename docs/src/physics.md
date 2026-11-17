@@ -114,9 +114,17 @@ The phase of harmonic ``k`` in the ``e^{-2\pi i f t}`` Fourier convention is
 ```
 so that ``\tilde h_k(f) \propto e^{-i\Psi_k(f)}``; the arrival-time term is
 common to every harmonic, and the stationary-phase time of harmonic ``k``
-is the Newtonian ``t_k = t(2f/k)`` with
-``t(F) = t_c - 5\mathcal{M}/(256\, u^{8})``, ``u = (\pi\mathcal{M}F)^{1/3}``,
-which is where the detector motion of §5 is evaluated. Since harmonic
+is ``t_k = t(2f/k)``, which is where the detector motion of §5 is
+evaluated. By default ``t`` is the Newtonian
+``t(F) = t_c - 5\mathcal{M}/(256\, u^{8})``, ``u = (\pi\mathcal{M}F)^{1/3}``;
+with `[physics].spa_time = "phase"` it follows from the phase of the selected
+order, ``t(F) = t_c + (2\pi)^{-1}\,\mathrm{d}\psi_{\mathrm{PN}}/\mathrm{d}F``
+(`Physics.spa_time`), which adds the post-Newtonian corrections of the
+emission time, the 1.5PN spin–orbit term among them. Below the innermost
+stable orbit this time can decrease with ``F`` (where
+``\mathrm{d}^2\psi_{\mathrm{PN}}/\mathrm{d}F^2 \le 0`` the stationary-phase
+approximation of the truncated phase itself fails) and pass ``t_c``; the
+Newtonian time increases with ``F`` and stays below ``t_c`` (§8). Since harmonic
 ``k`` carries ``-(k/2)\phi_c``, the waveform is ``4\pi``-periodic in
 ``\phi_c``: a ``2\pi`` shift reverses the sign of the odd harmonics, which
 vanish only at equal mass. The confusion maps cap phase deviations at
@@ -481,7 +489,21 @@ the long-wavelength limit of the detector. Consequences:
   the odd harmonics take ``k/2`` times the phase of the (2,2) harmonic at
   their frequency, without the phases of their own post-Newtonian amplitude
   corrections, and the stationary-phase times ``t_k`` are Newtonian at every
-  phase order.
+  phase order unless `[physics].spa_time = "phase"`.
+- With `[physics].spa_time = "phase"` the emission time derived from the
+  truncated phase can leave the inspiral below the innermost stable orbit. It
+  decreases with frequency where
+  ``\mathrm{d}^2\psi_{\mathrm{PN}}/\mathrm{d}F^2 \le 0``: at
+  ``\eta = 0.2222`` and ``\chi_1 = \chi_2 = -0.8`` from 0.69 to 0.95
+  ``f_{\mathrm{ISCO}}``, depending on the order (2.5 to 4.5), and at the
+  default order 1.5 for spins anti-aligned with the orbit (from 0.93
+  ``f_{\mathrm{ISCO}}`` at ``\eta = 0.05``, ``\chi_1 = \chi_2 = -1``). It can
+  pass ``t_c`` earlier: at ``\eta = 0.2222``, ``\chi_1 = \chi_2 = -0.8`` from
+  0.40 to 0.62 ``f_{\mathrm{ISCO}}`` at orders 2.5 to 3.5, and at
+  ``\eta = 1/4`` with zero spins from 0.76 ``f_{\mathrm{ISCO}}`` at order 2.5;
+  from 4PN on, where it does so depends on the constant of the 4PN term, which
+  ``t_c`` absorbs. The detector motion and the observation window are then
+  evaluated after coalescence.
 - The post-Newtonian series converges slowly near the innermost stable
   orbit. For sources that reach ``v \approx 0.4`` in the band the extent of
   the spin-plane zone along its weakest direction changes by factors of two to

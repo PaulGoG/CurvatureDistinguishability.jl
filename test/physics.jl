@@ -418,6 +418,31 @@ end
     end
     # an order outside the set is not checked here and acts as the order below
     @test phase_coefficients(0.5, 0.3, 0.2, 2.25) == phase_coefficients(0.5, 0.3, 0.2, 2.0)
+    # stationary-phase time from the phase of each order: its offset from t_c
+    # is (1/2π) dψ_PN/dF, here by automatic differentiation of pn_phase; with a
+    # unit bracket it is the Newtonian time
+    let Mc = 1.5, eta = 0.16, tc = 200.0
+        for order in CD.Physics.PHASE_PN_ORDERS, F in (1e-4, 3e-3, 2e-2)
+            c = phase_coefficients(0.7, -0.2, eta, order)
+            dψ = ForwardDiff.derivative(x -> pn_phase(x, Mc, eta, c, order), F)
+            @test CD.Physics.spa_time(F, Mc, eta, tc, c, order) - tc ≈ dψ / (2π) rtol =
+                1e-12
+        end
+        unit = CD.Physics.PhaseCoefficients(ntuple(_ -> 0.0, 12)...)
+        @test CD.Physics.spa_time(3e-3, Mc, eta, tc, unit, 4.5) - tc ≈
+              CD.Physics.spa_time(3e-3, Mc, tc) - tc rtol = 1e-13
+    end
+    # the response follows it only on request
+    let wp_n = waveform_params(; FIX_PHYS..., phase_pn_order = 3.5),
+        wp_p = waveform_params(; FIX_PHYS..., phase_pn_order = 3.5, pn_spa_time = true)
+
+        @test !waveform_params(; FIX_PHYS...).pn_spa_time
+        θ = [1.0, 1.5, 2.0, 0.0, 0.7, -0.2]
+        a_n, a_p =
+            channel_strain(θ, FIX_FREQS, wp_n)[1], channel_strain(θ, FIX_FREQS, wp_p)[1]
+        @test a_n != a_p
+        @test maximum(abs, a_n .- a_p) < 0.1 * maximum(abs, a_n)
+    end
     # harmonic k evaluates the (2,2) phase at 2f/k, at every order
     let f = 3e-3, Mc = 1.5, eta = 0.16, tc = 200.0, φc = 0.3
         for order in CD.Physics.PHASE_PN_ORDERS, k in (1, 2, 3)

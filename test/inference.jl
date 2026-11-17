@@ -40,6 +40,16 @@
             FIX_DF, wp45, CPU())
     @test dl45(p) ≈ loop45(p) rtol = 1e-12
     @test ForwardDiff.gradient(dl45, p) ≈ ForwardDiff.gradient(loop45, p) rtol = 1e-10
+    # and with the stationary-phase times taken from the phase
+    wp45t = waveform_params(;
+        merge(FIX_PHYS, (; eta = 2 / 9, phase_pn_order = 4.5, pn_spa_time = true))...)
+    loop45t = loss_function(data45, FIX_FREQS, FIX_SN, FIX_DF, wp45t, CPU())
+    dl45t =
+        q -> CD.Inference.device_loss(q, FIX_FREQS, FIX_SN, data45[1], data45[2],
+            FIX_DF, wp45t, CPU())
+    @test dl45t(p) ≈ loop45t(p) rtol = 1e-12
+    @test loop45t(p) != loop45(p)
+    @test ForwardDiff.gradient(dl45t, p) ≈ ForwardDiff.gradient(loop45t, p) rtol = 1e-10
     # nested duals at 4.5PN with χ_s χ_a ≠ 0, where the mixed spin terms enter
     p_mixed = [2.0, 1.505, 2.01, 0.005, 0.7, -0.2]
     @test ForwardDiff.hessian(dl45, p_mixed) ≈ ForwardDiff.hessian(loop45, p_mixed) rtol =
