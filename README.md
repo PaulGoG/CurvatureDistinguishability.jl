@@ -318,7 +318,7 @@ CurvatureDistinguishability/
 ├── bench/                  # BenchmarkTools scripts (own environment: activate.jl)
 ├── docs/                   # Documenter.jl sources (own environment: activate.jl, make.jl, src/)
 ├── .github/
-│   ├── workflows/CI.yml    # tests on the declared Julia floor and the current stable, strict docs build and deployment
+│   ├── workflows/CI.yml    # tests on the declared Julia floor, the current stable and the lowest compatible dependencies; strict docs build and deployment
 │   ├── workflows/Format.yml # JuliaFormatter check
 │   ├── dependabot.yml      # weekly GitHub Actions and Julia dependency updates
 │   ├── ISSUE_TEMPLATE/     # bug report, feature request

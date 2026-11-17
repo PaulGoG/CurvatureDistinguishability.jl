@@ -14,6 +14,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of the Newtonian times; `"newtonian"` remains the default. Near the
   innermost stable orbit these times can pass `t_c` (Waveform Physics, §8).
 
+### Changed
+
+- CI also runs the test suite at the lowest versions of the dependencies
+  that `[compat]` admits.
+
 ## [2.3.0] - 2026-11-17
 
 ### Changed

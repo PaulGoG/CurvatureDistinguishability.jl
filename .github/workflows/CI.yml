@@ -38,6 +38,27 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+  downgrade:
+    # the lowest versions of the direct dependencies that [compat] admits and
+    # that resolve together, on the declared Julia floor
+    name: Downgraded dependencies - Julia min
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: 'min'
+      - uses: julia-actions/julia-downgrade-compat@v2
+        with:
+          mode: deps
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          allow_reresolve: false
+          force_latest_compatible_version: false
   docs:
     name: Documentation
     runs-on: ubuntu-latest

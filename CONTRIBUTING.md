@@ -26,8 +26,9 @@ julia --threads=auto bench/run_benchmarks.jl
 The test suite includes the static checks (Aqua, JET, ExplicitImports) and the
 physics validation against the committed fixtures; a change of the model
 regenerates them with `test/fixtures/generate_reference.jl`, and the pull
-request says so. CI runs the suite on the declared floor (Julia 1.13) and on
-the current stable release, the formatter check and the strict documentation
+request says so. CI runs the suite on the declared floor (Julia 1.13), on
+the current stable release and at the lowest compatible versions of the
+dependencies, together with the formatter check and the strict documentation
 build.
 
 ## Pull requests
