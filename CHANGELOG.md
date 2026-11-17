@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Julia 1.13 is the oldest supported version (was 1.12).
+
 ## [2.2.0] - 2026-11-17
 
 ### Added

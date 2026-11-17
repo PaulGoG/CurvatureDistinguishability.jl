@@ -66,8 +66,7 @@ The full annotated tree is in [Full file tree](#full-file-tree) below.
 
 ## Environment setup
 
-Julia ≥ 1.12 (`[compat]`), installed through `juliaup`; development and
-verification run on Julia 1.13. `Manifest.toml` is not version-controlled.
+Julia ≥ 1.13 (`[compat]`), installed through `juliaup`. `Manifest.toml` is not version-controlled.
 Each environment resolves on first activation, and every run directory
 receives a copy of the resolved manifest for provenance.
 
