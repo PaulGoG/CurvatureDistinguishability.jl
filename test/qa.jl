@@ -53,7 +53,12 @@
             CD.Heartbeat, CD.Supervision, CD.Checkpoint, CD.Campaign)
         jet = JET.report_package(CD; target_modules = jet_modules,
             toplevel_logger = nothing)
+        reports = JET.get_reports(jet)
+        barrier = (:launch_loss!, :launch_loss_lanes!, :column_sums_via!)
+        at_barrier(r) =
+            any(f -> f.linfo.def isa Method && f.linfo.def.name in barrier, r.vst)
         expected_reports = pkgversion(KernelAbstractions) < v"0.10" ? 3 : 0
-        @test length(JET.get_reports(jet)) == expected_reports
+        @test count(at_barrier, reports) == expected_reports
+        @test count(!at_barrier, reports) == 0
     end
 end
