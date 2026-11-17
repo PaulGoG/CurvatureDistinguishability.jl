@@ -33,17 +33,17 @@
     # JET package analysis with error points restricted to this package's
     # modules (upstream abstract-interpretation artifacts in
     # Base/Optim/Makie internals are out of scope). Under
-    # KernelAbstractions 0.9 exactly three known artifacts remain, all
-    # anchored at the deliberately untyped device-buffer barrier
-    # (launch_loss!/launch_loss_lanes!/column_sums_via!, one per kernel:
-    # loss_bins!, loss_bins_lanes!, partial_column_sums!): the GPU
-    # kernel-call method exists only once a GPU backend package is
-    # loaded, so the GPU branch of the backend union split reports as
-    # missing here while being unreachable by construction
-    # (get_best_backend returns only registered backends). From 0.10 the
-    # CPU backend launches through the same kernel interface as the GPU
-    # backends, the method exists for every backend and no artifact
-    # remains. A change in either count must be triaged.
+    # KernelAbstractions 0.9 the analysis can report, as a method error, the
+    # GPU branch of the backend union split at the deliberately untyped
+    # device-buffer barrier (launch_loss!/launch_loss_lanes!/column_sums_via!,
+    # one per kernel: loss_bins!, loss_bins_lanes!, partial_column_sums!): the
+    # GPU kernel-call method exists only once a GPU backend package is loaded,
+    # while that branch is unreachable by construction (get_best_backend
+    # returns only registered backends). Whether these artifacts appear
+    # depends on the resolved environment (three on a fresh resolution, none
+    # on the lowest one of CI). From 0.10 the CPU backend launches through the
+    # same kernel interface as the GPU backends and none remains. Any other
+    # report fails.
     # JET tracks compiler internals and routinely breaks on pre-release
     # Julia, so the analysis gates stable releases only
     if isempty(VERSION.prerelease)
@@ -55,10 +55,17 @@
             toplevel_logger = nothing)
         reports = JET.get_reports(jet)
         barrier = (:launch_loss!, :launch_loss_lanes!, :column_sums_via!)
-        at_barrier(r) =
-            any(f -> f.linfo.def isa Method && f.linfo.def.name in barrier, r.vst)
-        expected_reports = pkgversion(KernelAbstractions) < v"0.10" ? 3 : 0
-        @test count(at_barrier, reports) == expected_reports
-        @test count(!at_barrier, reports) == 0
+        function barrier_site(r)
+            i = findfirst(f -> f.linfo.def isa Method && f.linfo.def.name in barrier, r.vst)
+            return i === nothing ? nothing : r.vst[i].linfo.def.name
+        end
+        sites = barrier_site.(reports)
+        if pkgversion(KernelAbstractions) < v"0.10"
+            # only the method-error artifacts, at most one per barrier function
+            @test all(r -> r isa JET.MethodErrorReport, reports)
+            @test !any(isnothing, sites) && allunique(sites)
+        else
+            @test isempty(reports)
+        end
     end
 end
