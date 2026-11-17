@@ -10,6 +10,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Julia 1.13 is the oldest supported version (was 1.12).
 
+### Fixed
+
+- `[compat]` lower bounds raised to the oldest releases that work on the
+  supported Julia versions: ProgressMeter 1.5 (the first whose `Progress` and
+  `ProgressUnknown` accept the `enabled` keyword; with 1.0–1.4 the sweeps and
+  maps failed at their first progress meter), MathTeXEngine 0.6.7 (the first
+  to parse `\%`, which the map annotations use; with older releases the map
+  figures were not rendered), CSV 0.10.13 and CairoMakie 0.13.8 (older
+  releases fail to load); LaTeXStrings 1.2 and UnicodePlots 3.0.4, the oldest
+  that install together with MathTeXEngine 0.6.
+
 ## [2.2.0] - 2026-11-17
 
 ### Added
