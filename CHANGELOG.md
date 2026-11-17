@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   figures were not rendered), CSV 0.10.13 and CairoMakie 0.13.8 (older
   releases fail to load); LaTeXStrings 1.2 and UnicodePlots 3.0.4, the oldest
   that install together with MathTeXEngine 0.6.
+- The scientific-context page still described the phase as 1.5PN with an
+  optional 2PN term.
 
 ## [2.2.0] - 2026-11-17
 

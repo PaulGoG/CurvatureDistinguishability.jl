@@ -51,8 +51,8 @@ two-source hypothesis.
 ## 3. Physical model
 
 The pipeline implements a six-parameter frequency-domain inspiral of an
-aligned-spin massive black-hole binary, with TaylorF2 phasing to 1.5PN order
-(2PN with the spin–spin coupling on request), 0.5PN harmonic amplitudes and
+aligned-spin massive black-hole binary, with TaylorF2 phasing at 1.5PN order
+by default and up to 4.5PN on request, 0.5PN harmonic amplitudes and
 an innermost-stable-orbit window, observed
 through the long-wavelength response of the LISA constellation on its
 analytic orbits. The model is documented equation by equation in
