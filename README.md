@@ -247,7 +247,7 @@ Citation metadata is in `CITATION.cff`; a BibTeX entry:
 @software{Gogita_CurvatureDistinguishability,
   author  = {Gogîță, Paul-Adrian},
   title   = {CurvatureDistinguishability.jl},
-  version = {2.2.0},
+  version = {2.3.0},
   year    = {2026},
   url     = {https://github.com/PaulGoG/CurvatureDistinguishability.jl}
 }
