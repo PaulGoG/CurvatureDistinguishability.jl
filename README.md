@@ -12,37 +12,44 @@ Numerical verification of the quartic distinguishability law for space-based
 gravitational-wave interferometry. The squared noise-weighted distance
 between a two-source signal and the best-fit single-source template scales as
 
-D² ≈ (1/16) · K(u) · δ⁴,
+```math
+D^2 \approx \frac{1}{16}\,K(u)\,\delta^4 ,
+```
 
-where δ is the parameter separation and K(u) the extrinsic curvature of the
-signal manifold. The discernibility boundary follows as
-δ_min(u) = (16 ρ²_thr / K(u))^{1/4}. The 2D "zone of confusion" maps are
-the exact intersection of that boundary with the hard physical parameter
-bounds (non-negative distance, chirp mass and coalescence time, |χ| ≤ 1,
-phase deviations within ±π).
+where $`\delta`$ is the parameter separation along the unit direction $`u`$
+and $`K(u)`$ the extrinsic curvature of the signal manifold. The
+discernibility boundary follows as
+
+```math
+\delta_{\min}(u) = \left(\frac{16\,\rho_{\mathrm{thr}}^2}{K(u)}\right)^{1/4} .
+```
+
+The 2D "zone of confusion" maps are the intersection of that boundary with
+the hard physical parameter bounds: non-negative distance, chirp mass and
+coalescence time, $`|\chi| \le 1`$, phase deviations within $`\pm\pi`$.
 
 ## At a glance
 
 Both figures are sweeps of the production configuration
 (`configs/production_cpu.toml`: a one-year observation on a grid of
-1.57 × 10⁶ frequency bins, thirty separations per direction).
+$`1.57\times10^{6}`$ frequency bins, thirty separations per direction).
 `scripts/replot.jl` regenerates them from a run's tables; the minutes-scale
 `configs/quickstart.toml` shows the same law on a short grid.
 
 ![Optimized squared distance against the separation along the six-dimensional diagonal direction of a distant moderate-mass binary, with the ratio to the prediction beneath](docs/src/assets/production_scaling_diagonal.png)
 
 *Quartic law along the six-dimensional diagonal direction of a distant
-moderate-mass binary, every shape parameter displaced at once: the optimized
-D² follows (1/16) K(u) δ⁴ over fifteen decades above the optimizer floor
-(exponent 3.995 ± 0.002); the strip beneath shows the ratio to the prediction
-with its O(δ⁵) correction fit.*
+moderate-mass binary, every shape parameter displaced at once: the optimized*
+$`D^2`$ *follows* $`\tfrac{1}{16}K(u)\,\delta^4`$ *over fifteen decades above
+the optimizer floor (exponent 3.995 ± 0.002); the strip beneath shows the
+ratio to the prediction with its* $`\mathcal{O}(\delta^5)`$ *correction fit.*
 
 ![Optimized squared distance against the separation along the chirp-mass/coalescence-time direction of a massive binary, with the ratio to the prediction beneath](docs/src/assets/production_scaling_mass_time.png)
 
 *The chirp-mass/coalescence-time direction of a massive aligned-spin binary,
 the degeneracy that dominates realistic catalogues: exponent 3.994 ± 0.002,
-discernibility scale δ_min = 55 Fisher σ, and the onset of the crossover to
-resolution at the largest separations.*
+discernibility scale* $`\delta_{\min} = 55`$ *Fisher* $`\sigma`$, *and the
+onset of the crossover to resolution at the largest separations.*
 
 ## File structure
 
@@ -50,7 +57,7 @@ resolution at the largest separations.*
 CurvatureDistinguishability/
 ├── Project.toml        # dependencies, GPU weak dependencies, [compat]
 ├── activate.jl         # activates and instantiates the package environment
-├── configs/            # TOML scenarios: quickstart*, production_*, campaigns/; figures/ layouts
+├── configs/            # TOML scenarios: quickstart*, production_*, pn_orders/, campaigns/; figures/ layouts
 ├── src/                # library: physics, geometry, inference, orchestration, plotting
 ├── ext/                # GPU package extensions (CUDA, AMDGPU, Metal, oneAPI)
 ├── scripts/            # entry points: run_pipeline, run_supervised, launch_run, replot,
@@ -59,7 +66,7 @@ CurvatureDistinguishability/
 ├── bench/              # BenchmarkTools suite (own environment)
 ├── docs/               # Documenter.jl sources (own environment); src/assets/ holds the README figures
 ├── data/               # run outputs, one run_<hash>/ per run (git-ignored)
-└── plots/              # flat PNG browsing view (git-ignored)
+└── plots/              # figure exports of collect_plots and compose_figures (git-ignored)
 ```
 
 The full annotated tree is in [Full file tree](#full-file-tree) below.
@@ -71,9 +78,9 @@ Each environment resolves on first activation, and every run directory
 receives a copy of the resolved manifest for provenance.
 
 Each environment ships a pure-Julia activation script that activates and
-instantiates it silently. Every entry point includes the script of its
-environment, so no `--project` flag is needed. `julia -i` on a script opens
-a REPL in its environment:
+instantiates it silently. Every script that loads the package includes the
+activation script of its environment, so no `--project` flag is needed.
+`julia -i` on a script opens a REPL in its environment:
 
 ```bash
 julia -i activate.jl        # package environment
@@ -91,10 +98,12 @@ Pkg.add(url = "https://github.com/PaulGoG/CurvatureDistinguishability.jl")
 GPU support is optional. Install the vendor package matching the hardware
 (`CUDA`, `AMDGPU` or `oneAPI`) into the default (stacked)
 environment. The pipeline loads it according to `[hardware].gpu_backend`,
-and the matching package extension activates. Without one the pipeline runs on
-the multi-threaded CPU backend (`gpu_backend = "none"` forces this).
-`[hardware].require_gpu = true`, set in every shipped GPU overlay, aborts a
-run before any output when no functional GPU backend resolves.
+and the matching package extension activates. With `gpu_backend = "auto"`
+and no functional GPU the pipeline runs on the multi-threaded CPU backend;
+`"none"` forces the CPU. A backend named explicitly that is not installed or
+not functional stops the run with a configuration error.
+`[hardware].require_gpu = true`, set in every shipped GPU overlay, stops a
+run before any result is written when no functional GPU backend resolves.
 Configuration layering, run identity and the execution defaults are
 described in the documentation page `docs/src/parameters.md`.
 
@@ -119,6 +128,7 @@ julia --threads=auto scripts/run_pipeline.jl --config configs/production_cpu.tom
 julia scripts/replot.jl data/run_<hash> [--rho R] [--refit]
 
 # multi-panel publication composites from persisted run tables, laid out by a TOML file
+# (the example layout reads the quickstart run data/run_027b0820; output in plots/)
 julia scripts/compose_figures.jl configs/figures/quickstart_composites.toml [--output-dir DIR] [--print-width PT]
 
 # render all figures of one or more runs as a flat PNG view (plots/ by default)
@@ -150,30 +160,43 @@ snapshot, `metadata.toml` (git commit, backend, timings), `hardware.txt`, a
 copy of the resolved `Manifest.toml`, per-sweep work-item checkpoints
 (`checkpoint.csv`) and a structured, ANSI-free `run.log`. Reruns get
 suffixed directories and `safesave`-style backups, so results are never
-overwritten. `scripts/run_pipeline.jl` exits with status 0 only when every
-stage completed, 2 on a configuration error and 3 when one or more stages
-failed. In that case the remaining stages still run, and the failures are
-listed in `metadata.toml`.
+overwritten.
+
+`scripts/run_pipeline.jl` exits with status
+
+- 0 when every stage completed;
+- 2 when nothing was computed: a configuration or resource-budget error, a
+  required GPU that is missing, or a run directory that another process
+  holds or another package version produced;
+- 3 when one or more stages failed. The other stages still run and the failed
+  ones are listed under `failed_stages` in `metadata.toml`. If the GPU stops
+  responding after a failed sweep, the remaining sweeps and the maps are left
+  to a new process (`--resume`, or the supervisor);
+- 1 on any other error.
 
 ## Outputs
 
 - 1D sweeps write to `sweeps/<name>/`:
-  - `results.csv`: per-δ D², best-fit parameters, convergence diagnostics,
-    active-bound flags and multi-start gain.
+  - `results.csv`: per-separation $`D^2`$, best-fit parameters, convergence
+    diagnostics, active-bound flags and multi-start gain.
   - `residual_spectrum.csv`: the decimated residual spectrum the residual
     plot is drawn from.
-  - `sweep_meta.toml`: fitted log-log slope ± stderr over all clean points
-    and over the perturbative window (`slope_window`). It also holds the
-    O(δ⁵) correction coefficients c₁/c₂ with a 10%-validity radius, the
-    optimizer floor level, δ* and amp_ratio. The coefficients are fitted on
-    the points within `correction_fit_max_departure` of the law.
-  - `scaling_plot.{pdf,png}`: log–log panel plus a D²_opt/D²_th ratio
-    panel with the correction-fit overlay.
-  - `residual_plot.{pdf,png}`: d(SNR²)/df and d(D²)/df densities for
-    channels A and E. The bottom panel integrates to D².
+  - `sweep_meta.toml`: fitted log-log slope ± standard error over all clean
+    points (`slope`) and over the perturbative window (`slope_window`). It
+    also holds the coefficients $`c_1`$, $`c_2`$ of the
+    $`\mathcal{O}(\delta^5)`$ correction with its 10 % validity radius, the
+    optimizer floor level, $`\delta^*`$ and `amp_ratio`. The coefficients are
+    fitted on the points within `correction_fit_max_departure` of the law.
+  - `scaling_plot.{pdf,png}`: log–log panel plus a
+    $`D^2_{\mathrm{opt}}/D^2_{\mathrm{th}}`$ ratio panel with the
+    correction-fit overlay.
+  - `residual_plot.{pdf,png}`: the densities
+    $`\mathrm{d}\rho^2/\mathrm{d}f`$ and $`\mathrm{d}D^2/\mathrm{d}f`$ for
+    channels A and E. The bottom panel integrates to $`D^2`$.
   - `residual_spectrum_threshold.csv` and
-    `residual_plot_threshold.{pdf,png}`: the same at the threshold
-    separation δ_min, written when it differs from the primary evaluation
+    `residual_plot_threshold.{pdf,png}`: the same at the swept separation
+    whose $`D^2`$ is nearest $`\rho_{\mathrm{thr}}^2`$, close to
+    $`\delta_{\min}`$, written when it differs from the primary evaluation
     point.
   - `sweep.log`: the stage log.
 
@@ -182,7 +205,7 @@ listed in `metadata.toml`.
   by `[pipeline].rng_seed`).
 - 2D maps write to `maps/<name>/`:
   - `confusion_contour.csv`: angle, capped boundary,
-    `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, K and g.
+    `R_Math`/`R_Box`/`Prior_Limited`/`Degenerate` columns, $`K`$ and $`g`$.
   - `confusion_zone.{pdf,png}`: prior-limited boundary segments (wall
     color, active wall values annotated) are visually distinct from
     curvature-limited ones. The uncapped mathematical contour continues
@@ -190,21 +213,21 @@ listed in `metadata.toml`.
   - `mapping.log`: the stage log.
 
   Directions are sampled uniformly in the Fisher-normalized plane (each axis
-  in its own σ), so strongly anisotropic planes are resolved uniformly. K is
-  computed on [0, π) only and mirrored, since K(u) is exactly even. Angular
-  refinement is adaptive near boundary spikes.
+  in its own $`\sigma`$), so strongly anisotropic planes are resolved
+  uniformly. $`K`$ is computed on $`[0, \pi)`$ only and mirrored, since
+  $`K(u) = K(-u)`$. Angular refinement is adaptive near boundary spikes.
 
 ## Status of components
 
 | Component | Status |
 |---|---|
-| Physics / Detector / Geometry / Inference | unit-tested; A/B-locked against committed reference fixtures |
-| TaylorF2 phase through 4.5PN (`[physics].phase_pn_order`) | 1.5PN by default; every coefficient tested against exact evaluations of the literature forms at five points; tangent rank tested against its analytic prediction; comparison overlays in `configs/pn_orders/` |
+| Physics / Detector / Geometry / Inference | unit-tested; regression-locked against the committed reference fixtures |
+| TaylorF2 phase through 4.5PN (`[physics].phase_pn_order`) | 1.5PN by default; every coefficient tested against 60-digit evaluations of the literature forms at five points; tangent rank tested against its analytic prediction; comparison overlays in `configs/pn_orders/` |
 | Fit in whitened coordinates (`[pipeline].fit_coordinates = "whitened"`) | tested against the curvature prediction at 1.5PN and 2PN, and against the full whitened Jacobian on a weakly constrained point |
 | Robson (2019) noise model (per-channel Eq. 12 instrumental + Eq. 14 confusion through the Eq. 9 response, Table 1) | active by default; `[noise].confusion_enabled = false` for instrumental-only studies |
 | Box-constrained optimization (`IPNewton`; `lbfgs_box` fallback) | tested, physical bounds enforced |
 | 2D mapping (mirrored, prior-capped, adaptively refined) | tested end-to-end |
-| GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware: optimized distances agree to 3×10⁻⁴ or better above the optimizer floor, 2×10⁻⁴ away from the near-null spin direction; see Known limitations |
+| GPU path (KernelAbstractions kernel + package extensions) | validated against the CPU reference on CUDA, ROCm and oneAPI hardware: optimized distances agree to $`3\times10^{-4}`$ or better above the optimizer floor, $`2\times10^{-4}`$ away from the near-null spin direction; see Known limitations |
 | Plotting (CairoMakie publication theme, family-wide tick policy) | tested; figures regenerable via `scripts/replot.jl` |
 | Multi-panel composites (TOML layout over persisted run tables) | tested; `scripts/compose_figures.jl` |
 
@@ -217,8 +240,9 @@ listed in `metadata.toml`.
   post-Newtonian order for sources that reach high velocities in the band; the
   documentation (Waveform Physics, §2) compares the orders.
 - Apple GPUs: Metal has no double-precision type and the device path is
-  double precision only, so the Metal extension declines and the run uses
-  the CPU (`require_gpu = true` stops it instead).
+  double precision only, so the Metal extension declines. With
+  `gpu_backend = "auto"` the run uses the CPU; `"metal"` or
+  `require_gpu = true` stops it.
 - ROCm 7.1 on gfx1100/gfx1101 (Radeon PRO W7900, RX 7700 XT): a kernel
   dispatch intermittently never completes; the process stays alive at
   near-zero CPU load with no error. Unresolved upstream; run long GPU
@@ -236,7 +260,7 @@ listed in `metadata.toml`.
   selected; the `backend` line of `metadata.toml` names the device in use.
 - The signal fills the frequency band whatever its emission time unless
   `[physics].observation_window = true`; for light systems the band below
-  the frequency radiated at `t = 0` then holds decades of inspiral from
+  the frequency radiated at $`t = 0`$ then holds decades of inspiral from
   before the observation (documentation, Waveform Physics, Finite observation).
 
 ## How to cite
@@ -261,15 +285,15 @@ Citation metadata is in `CITATION.cff`; a BibTeX entry:
 ```text
 CurvatureDistinguishability/
 ├── Project.toml            # deps, GPU weakdeps + extensions, compat
-├── activate.jl             # silent activation of the package environment (included by every script)
+├── activate.jl             # silent activation of the package environment (included by the scripts)
 ├── configs/
 │   ├── quickstart.toml     # base: minutes-scale demonstration run (the default)
 │   ├── quickstart_gpu.toml # [hardware] overlay: quickstart on the GPU path
 │   ├── production_cpu.toml # base: CPU reference campaign configuration
 │   ├── production_gpu.toml # [hardware] overlay: GPU baseline (auto backend, chunk 2)
 │   ├── pn_orders/          # overlays at each phase order: quickstart, production spin maps
-│   ├── quickstart_maps.toml   # overlay: nine-plane map verification on the quickstart grid
-│   ├── campaigns/          # multi-host benchmark campaign as run (own frozen base, window off)
+│   ├── quickstart_maps.toml   # overlay: nine-map verification on the quickstart grid
+│   ├── campaigns/          # multi-host benchmark campaign as run (own frozen bases)
 │   └── figures/
 │       └── quickstart_composites.toml  # composite-figure layout on the quickstart run
 ├── src/
@@ -278,8 +302,8 @@ CurvatureDistinguishability/
 │   ├── Physics.jl          # Robson (2019) noise model; inspiral waveform core (TaylorF2 phase to 4.5PN)
 │   ├── Detector.jl         # LISA A/E response on the analytic orbits (fused scalar core)
 │   ├── Residuals.jl        # residual-spectrum diagnostics (d(SNR²)/df densities)
-│   ├── Bounds.jl           # physical parameter bounds, deviation boxes, capping
-│   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives
+│   ├── Bounds.jl           # physical parameter bounds, deviation boxes, ray–box crossings
+│   ├── Geometry.jl         # tangent basis (MGS), fused directional derivatives, prior capping
 │   ├── Fitting.jl          # shared fit statistics: slope, O(δ⁵) fit, floor rule
 │   ├── Inference.jl        # box-constrained D² optimization; KA loss kernel; whitened-coordinate fit
 │   ├── Config.jl           # validated TOML configuration (hard-fail guardrails)
@@ -333,7 +357,7 @@ CurvatureDistinguishability/
 ├── data/
 │   ├── run_<hash>/         # provenance-stamped pipeline runs (git-ignored)
 │   └── logs/               # detached-launch console logs (git-ignored)
-└── plots/                  # flat regenerable PNG browsing view (git-ignored)
+└── plots/                  # collect_plots PNG view and compose_figures composites (git-ignored)
 ```
 
 </details>
