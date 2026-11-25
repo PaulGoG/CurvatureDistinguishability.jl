@@ -88,6 +88,13 @@
     @test CD.ZoneSampling.refine_directions!(ring, constant,
         e -> (box_radius(e.phi), box_radius(e.phi + π)); max_levels = 6,
         ratio_tol = 1.5) == 0
+    # the jump across the wrap from 3.0 to 0.5 + π is bisected at (3.5 + π)/2,
+    # the direction pair of angle (3.5 - π)/2 on the half-circle
+    wide = [(phi = 0.5, K = 1.0, g = 1.0, wall = 0x00),
+        (phi = 3.0, K = 1.0, g = 1.0, wall = 0x00)]
+    @test CD.ZoneSampling.refine_directions!(wide, constant, e -> (1.0, 10.0);
+        max_levels = 1, ratio_tol = 2.0) == 1
+    @test [e.phi for e in wide] ≈ [(3.5 - π) / 2, 0.5, 3.0]
 
     # mirroring: K and g are even, r_box is re-evaluated on the negated
     # direction (the box is asymmetric), degenerate and capped flags follow

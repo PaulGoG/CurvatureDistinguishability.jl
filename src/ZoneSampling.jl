@@ -45,10 +45,10 @@ circle; `r_cap_pair(e)` returns the capped radii of a direction and of its
 mirror image (in the Fisher-normalized sampling plane), whose prior-box crossing
 differs when the box is asymmetric. Past the last direction of the half-circle
 the circle continues with the mirror image of the first, so there the two
-halves of the pair are exchanged. A pair with a non-finite radius is not
-compared. Each pass evaluates all midpoints as one batch through
-`eval_angles`. Leaves `entries` sorted by angle and returns the number of
-directions added.
+halves of the pair are exchanged, and a midpoint beyond π is folded onto the
+half-circle. A pair with a non-finite radius is not compared. Each pass
+evaluates all midpoints as one batch through `eval_angles`. Leaves `entries`
+sorted by angle and returns the number of directions added.
 """
 function refine_directions!(entries::Vector, eval_angles, r_cap_pair;
     max_levels::Integer, ratio_tol::Real)
@@ -68,7 +68,8 @@ function refine_directions!(entries::Vector, eval_angles, r_cap_pair;
                 ratio = max(r1, r2) / max(min(r1, r2), RADIUS_UNDERFLOW)
                 ratio > ratio_tol && (jump = true)
             end
-            jump && push!(mids, entries[i].phi + gap / 2)
+            # the midpoint past the wrap names the same direction pair at its angle - π
+            jump && push!(mids, mod(entries[i].phi + gap / 2, π))
         end
         isempty(mids) && break
         curvature_new = eval_angles(mids)

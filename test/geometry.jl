@@ -168,6 +168,15 @@ end
     spec_fine, _ = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0,
         FIX_FREQS, FIX_SN, FIX_DF, FIX_WP; n_windows = 10^6)
     @test nrow(spec_fine) <= length(FIX_FREQS)
+    # the first plotted frequency is the lower band edge also when
+    # 10^log10(f₁) rounds above f₁: with one window per bin the lowest
+    # windows (narrower than df) hold one bin each, the first of them bin 1
+    f_up = collect(0.001000003:FIX_DF:3e-3)
+    @test 10.0^log10(f_up[1]) > f_up[1]
+    spec_up, _ = residual_spectrum(THETA0, u_norm, 1.0, delta, THETA0, f_up,
+        analytic_noise_psd.(f_up; noise = FIX_NOISE_OFF), FIX_DF, FIX_WP;
+        n_windows = 10^6)
+    @test spec_up.f[1] == f_up[1]
 end
 
 @testset "Second source, boundary radius, unbounded cap" begin
