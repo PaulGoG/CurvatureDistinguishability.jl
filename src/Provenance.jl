@@ -19,7 +19,7 @@ export run_id_from_config, effective_config, identity_config,
     write_hardware_fingerprint, git_state, package_version, check_package_version,
     stage_key, completed_stages, mark_stage_complete!, abandoned_stages,
     note_figure_failure!
-public acquire_run_lock, record_attempt!, continuation_config
+public acquire_run_lock, record_attempt!, continuation_config, EXECUTION_SECTIONS
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
@@ -95,8 +95,9 @@ function identity_config(config::AbstractDict)
     return identity
 end
 
-# execution keys that change the computed bits
-const CONTINUATION_HARDWARE_KEYS = ("gpu_backend", "hessian_chunk")
+# execution keys that change the computed bits, or (require_gpu) decide whether
+# gpu_backend = "auto" may fall back to the CPU
+const CONTINUATION_HARDWARE_KEYS = ("gpu_backend", "hessian_chunk", "require_gpu")
 
 """
 $(TYPEDSIGNATURES)
@@ -104,8 +105,9 @@ $(TYPEDSIGNATURES)
 The part of a parsed configuration that a continued run must share with the
 snapshot in its directory: the identity table ([`identity_config`](@ref)) and,
 of the execution sections, `[hardware].gpu_backend` and `hessian_chunk`, which
-change the last bits of the results. The other execution keys (thread and
-memory budgets, monitoring, supervision) may differ between the attempts of
+change the last bits of the results, and `require_gpu`, which decides whether
+`gpu_backend = "auto"` may fall back to the CPU. The other execution keys (thread
+and memory budgets, monitoring, supervision) may differ between the attempts of
 one run.
 """
 function continuation_config(config::AbstractDict)
@@ -225,7 +227,7 @@ Run directory for `config_path` under `base_dir` when an interrupted run is to
 be continued. The siblings `run_<id>`, `run_<id>_r2`, … are searched in order
 for one whose `config.toml` snapshot agrees with the configuration in its
 [`continuation_config`](@ref) (so variants that share an identifier but
-another Hessian chunk or another backend never continue each other, while a
+another Hessian chunk, backend or `require_gpu` never continue each other, while a
 changed thread budget, memory budget or supervision setting does not start a
 new run), and whose outputs were produced by the running package version
 ([`check_package_version`](@ref)); a sibling that matches the configuration
@@ -396,20 +398,23 @@ $(TYPEDSIGNATURES)
 
 Record the environment of attempt `attempt` of a run under
 `[attempt_records.<attempt>]` in `metadata.toml`: start time, host, Julia
-version, package version, git state, backend and the SHA-256 of the active
-manifest. When the host, the Julia version or the manifest differs from the
-first recorded attempt, a warning names the field: a continued run then mixes
-results computed in two environments.
+version, package version, git state, backend, Julia thread count, the SHA-256
+of the active manifest and `execution`, the execution sections of the
+configuration the attempt ran with (they may differ between attempts,
+[`continuation_config`](@ref)). When the host, the Julia version or the
+manifest differs from the first recorded attempt, a warning names the field: a
+continued run then mixes results computed in two environments.
 """
 function record_attempt!(run_dir::AbstractString, attempt::Integer; git::AbstractString,
-    backend::AbstractString)
+    backend::AbstractString, execution::AbstractDict = Dict{String,Any}())
     meta = read_run_metadata(run_dir)
     records = get!(meta, "attempt_records", Dict{String,Any}())
     manifest = active_manifest()
     sha = manifest === nothing ? "" : bytes2hex(open(sha256, manifest))
     record = Dict{String,Any}("started" => string(now()), "hostname" => gethostname(),
         "julia_version" => string(VERSION), "package_version" => package_version(),
-        "git" => String(git), "backend" => String(backend), "manifest_sha256" => sha)
+        "git" => String(git), "backend" => String(backend), "manifest_sha256" => sha,
+        "julia_threads" => Threads.nthreads(), "execution" => execution)
     records[string(attempt)] = record
     first_record = get(records, "1", nothing)
     if attempt > 1 && first_record isa AbstractDict

@@ -42,7 +42,7 @@ backend, host and timings. The identifier hashes the values as written: `2`
 against `2.0`, or a key set to its default against the key left out, give
 two identifiers for the same computation. An interrupted run is continued
 (`--resume`, or a supervised re-run) when the snapshot in its directory has
-the same identity and the same `gpu_backend` and `hessian_chunk`; the other
+the same identity and the same `gpu_backend`, `hessian_chunk` and `require_gpu`; the other
 execution keys may change between attempts. No per-machine configuration files are needed,
 because execution keys left out of a configuration take host-adaptive
 defaults: `[hardware].max_threads` the Julia thread count,

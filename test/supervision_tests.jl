@@ -356,6 +356,19 @@ gpu_backend = "none"
             @test CD.Provenance.resolve_run_dir(joinpath(dir, "a"), retuned) ==
                   (reference, :complete)
             @test run_pipeline(retuned, dir, "a"; run_dir = reference) == reference
+            # the attempt records the execution settings it ran with
+            records = CD.Provenance.read_run_metadata(reference)["attempt_records"]
+            latest = records[string(maximum(parse.(Int, collect(keys(records)))))]
+            @test latest["execution"]["safety"]["max_ram_gb"] == 4.0
+            @test latest["execution"]["supervision"]["busy_stall_s"] == 9000.0
+            @test latest["julia_threads"] == Threads.nthreads()
+            # require_gpu decides whether gpu_backend = "auto" may fall back to the
+            # CPU: a change of it is not continued
+            table = CD.Provenance.effective_config(cfg_path)
+            gpu_required = deepcopy(table)
+            gpu_required["hardware"]["require_gpu"] = true
+            @test CD.Provenance.continuation_config(gpu_required) !=
+                  CD.Provenance.continuation_config(table)
             @test_throws "another configuration" run_pipeline(variant, dir, "a";
                 run_dir = reference)
 

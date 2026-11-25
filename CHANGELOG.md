@@ -21,11 +21,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - An interrupted run is continued when the configuration agrees with the
-  snapshot of its directory in the run identity, `gpu_backend` and
-  `hessian_chunk` (`Provenance.continuation_config`). Thread and memory
-  budgets, monitoring and supervision settings may now change between
-  attempts; until now any such edit started a new `_rN` directory and left the
-  checkpoints of the interrupted run unused.
+  snapshot of its directory in the run identity, `gpu_backend`,
+  `hessian_chunk` and `require_gpu` (`Provenance.continuation_config`). Thread
+  and memory budgets, monitoring and supervision settings may now change
+  between attempts; until now any such edit started a new `_rN` directory and
+  left the checkpoints of the interrupted run unused. Each attempt records its
+  execution settings and thread count under `[attempt_records]` in
+  `metadata.toml`.
 - `[parameter_bounds]` takes numbers only (Booleans were accepted as 0 and 1),
   and a negative lower bound of the distance or of the chirp mass is an
   error; `[noise].confusion_knee_freq` must be positive.

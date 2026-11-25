@@ -29,7 +29,8 @@ using ..Inference
 using ..Bounds
 using ..Config
 using ..Provenance
-using ..Provenance: acquire_run_lock, record_attempt!, continuation_config
+using ..Provenance:
+    acquire_run_lock, record_attempt!, continuation_config, EXECUTION_SECTIONS
 using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!, HEARTBEAT_FILE
 using ..Checkpoint:
     CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!, CHECKPOINT_FILE
@@ -1236,8 +1237,11 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
         optimizer = string(cfg.optimizer),
         n_starts = cfg.n_starts, rng_seed = cfg.rng_seed,
         confusion_noise = cfg.noise.confusion_enabled)
+    effective = effective_config(config_path)
     record_attempt!(out_base, attempt; git = git_state(project_root),
-        backend = backend_name(backend))
+        backend = backend_name(backend),
+        execution = Dict{String,Any}(
+            s => effective[s] for s in EXECUTION_SECTIONS if haskey(effective, s)))
     isfile(joinpath(out_base, "hardware.txt")) || write_hardware_fingerprint(out_base;
         device_report = Backends.device_fingerprint(backend))
 

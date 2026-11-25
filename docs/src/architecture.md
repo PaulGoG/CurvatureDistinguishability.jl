@@ -113,7 +113,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   directories; comments, formatting, execution settings, the base/overlay
   split and the wall clock never affect identity. An interrupted run is
   continued when the snapshot in its directory has the same identity and the
-  same `gpu_backend` and `hessian_chunk` (`continuation_config`); thread and
+  same `gpu_backend`, `hessian_chunk` and `require_gpu` (`continuation_config`); thread and
   memory budgets, monitoring and supervision settings may change between
   attempts. The module also writes
   config snapshots into the run directory (the merged table for overlays),
