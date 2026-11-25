@@ -13,10 +13,10 @@ updates:
       - "/bench"
     schedule:
       interval: "weekly"
-    # standard libraries follow the Julia version; Dependabot proposes
-    # meaningless bounds for them
+    # standard libraries follow the Julia version; their bounds are not updated
     ignore:
       - dependency-name: "Dates"
+      - dependency-name: "FileWatching"
       - dependency-name: "InteractiveUtils"
       - dependency-name: "LinearAlgebra"
       - dependency-name: "Logging"

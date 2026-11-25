@@ -13,6 +13,9 @@ jobs:
     name: JuliaFormatter
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions: # julia-actions/cache deletes the old caches it created
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3

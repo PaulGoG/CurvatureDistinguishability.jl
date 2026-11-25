@@ -13,7 +13,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 Aqua = "0.8"
-CSV = "0.10, 1.1"
+CSV = "0.10.13, 1.1"
 ExplicitImports = "1"
 JET = "0.13"
 DataFrames = "1"
