@@ -1246,11 +1246,6 @@ function zone_panel!(gp, x::AbstractVector, y::AbstractVector,
 
     xlo, xhi = zone_axis_ticks!(layout, ax, :x, px, hx, x_exponent)
     ylo, yhi = zone_axis_ticks!(layout, ax, :y, py, hy, y_exponent)
-    # a tall same-unit zone (needle along a null spin direction) leaves the
-    # x axis narrow: rotate its tick labels so they cannot collide
-    if same_units && !needle && (xhi - xlo) < 0.6 * (yhi - ylo)
-        ax.xticklabelrotation = π / 4
-    end
 
     poly!(ax, Point2f.(xd, yd); color = (ZONE_BLUE, 0.25), strokewidth = 0)
 

@@ -33,16 +33,16 @@ function register_backend!(name::Symbol, probe::Function)
 end
 
 """
-GPU backends a configuration may name. A backend becomes available when its
-package extension loads and registers a probe.
-"""
-const GPU_BACKEND_NAMES = (:cuda, :amdgpu, :metal, :oneapi)
-
-"""
-Package that provides each GPU backend of [`GPU_BACKEND_NAMES`](@ref), in
-the same order.
+Package that provides each GPU backend a configuration may name.
 """
 const GPU_PACKAGES = (cuda = "CUDA", amdgpu = "AMDGPU", metal = "Metal", oneapi = "oneAPI")
+
+"""
+GPU backends a configuration may name, the keys of [`GPU_PACKAGES`](@ref). A
+backend becomes available when its package extension loads and registers a
+probe.
+"""
+const GPU_BACKEND_NAMES = keys(GPU_PACKAGES)
 
 """
 $(TYPEDSIGNATURES)
