@@ -3,8 +3,8 @@
 # This executable example reproduces the package's central statement,
 # ``D^2 \approx K(u)\,\delta^4/16``, end to end on a grid small enough to
 # run in seconds: differential geometry, direct two-source optimization,
-# and the comparison figure. The production pipeline automates exactly
-# this workflow at scale (see the shipped `configs/`).
+# and the comparison figure. The pipeline runs the same steps at scale
+# (see `configs/`).
 
 using CurvatureDistinguishability
 using CairoMakie
@@ -20,8 +20,7 @@ freqs = collect(1e-3:df:2e-2)
 Sn = analytic_noise_psd.(freqs; noise = robson_confusion_params(1 / df))
 length(freqs)
 
-# The reference source and the classic chirp-mass/coalescence-time
-# direction:
+# The reference source and a chirp-mass/coalescence-time direction:
 
 theta0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
 u_raw = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]
