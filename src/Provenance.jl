@@ -1,6 +1,6 @@
 """
-Run identity and safekeeping: canonical configuration hashing, config
-snapshots, backup-before-overwrite semantics and run metadata.
+Run identity and safekeeping: configuration hashing, snapshots, backups,
+run-directory locks and run metadata.
 """
 module Provenance
 
@@ -139,11 +139,10 @@ Deterministic run identifier: the first 8 hex characters of the SHA-256 of
 the canonically serialized identity table of the effective configuration
 ([`effective_config`](@ref) with the [`EXECUTION_SECTIONS`](@ref) removed by
 [`identity_config`](@ref); keys sorted, values only, never the wall
-clock). Identical physical/numerical content therefore maps to identical
-IDs whatever hardware executes it; reruns on other machines land in
-suffixed sibling directories whose `metadata.toml` records backend, host
-and timings. Comments, formatting, execution settings and the split
-between a base file and its overlay do not affect a run's identity.
+clock). Comments, formatting, execution settings and the split between a
+base file and its overlay do not affect it; reruns land in suffixed
+sibling directories whose `metadata.toml` records backend, host and
+timings.
 """
 function run_id_from_config(config_path::AbstractString)
     identity = identity_config(effective_config(config_path))
@@ -432,20 +431,17 @@ Take the lock `name` in the run directory `dir`: a pid file that excludes a
 second process from the same directory and is released by `close` on the
 returned lock. A lock whose holder ran on this host and no longer exists (a
 worker killed by the supervisor) is reclaimed under the guard lock
-`<name>.reclaim`. An `ArgumentError` names the lock file when another live
-process holds it, or a process of another host, whose lock is never reclaimed
-and is removed by hand once that process has ended. A reclaim interrupted by a kill
-leaves the guard behind, and the error then names both files, to be removed by
-hand once no process works on `dir`.
+`<name>.reclaim`. Otherwise an `ArgumentError` names the lock file; the lock
+of a process on another host is never reclaimed and is removed by hand once
+that process has ended. A reclaim interrupted by a kill leaves the guard
+behind; the error then names both files.
 """
 function acquire_run_lock(dir::AbstractString; name::AbstractString = RUN_LOCK)
     path = joinpath(dir, name)
     lock = try_pidlock(path)
     lock === nothing || return lock
     holder = lock_holder(path)
-    # the pid lock of the standard library does not reclaim the file of a holder
-    # that was killed (SIGKILL by the supervisor): reclaim it here when the holder
-    # ran on this host and no longer exists
+    # the standard-library pid lock does not reclaim the file of a killed holder
     if stale_lock(holder)
         lock = reclaim_stale_lock(path, holder)
         lock === nothing || return lock
@@ -569,7 +565,7 @@ end
 $(TYPEDSIGNATURES)
 
 Stages a supervisor gave up on (`abandoned` in the run's `supervision.toml`);
-a resumed run skips them.
+a continued run skips them.
 """
 function abandoned_stages(run_dir::AbstractString)
     path = joinpath(run_dir, SUPERVISION_LEDGER)
@@ -585,8 +581,8 @@ directory: Julia's own `versioninfo` report (Julia/OS/CPU/threads), host
 totals not covered by it (logical CPU threads, total memory, BLAS
 threads), and, when a GPU backend is active, the backend runtime's device
 fingerprint (`device_fingerprint`: driver/runtime versions and device
-inventory). Together with `metadata.toml` (config hash, git state) this
-makes every result attributable to config + commit + hardware.
+inventory). With `metadata.toml` (configuration hash, git state) it ties a
+result to its configuration, commit and hardware.
 """
 function write_hardware_fingerprint(run_dir::AbstractString;
     device_report::AbstractString = "")

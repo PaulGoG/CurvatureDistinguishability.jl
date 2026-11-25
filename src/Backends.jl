@@ -75,7 +75,7 @@ function get_best_backend(; prefer::Symbol = :auto)
             "GPU backend :$prefer was requested but is not available (its package " *
             "is not loaded or its device is not functional); loaded backends: " *
             "$(isempty(BACKEND_PROBES) ? "none" : join(first.(BACKEND_PROBES), ", ")). " *
-            "Use gpu_backend = \"auto\" to fall back to the CPU.",
+            "[hardware].gpu_backend = \"auto\" (`prefer = :auto`) falls back to the CPU.",
         ),
     )
     return CPU()
@@ -92,9 +92,8 @@ to_backend(data::AbstractArray, ::CPU) = Array(data)
 """
 $(TYPEDSIGNATURES)
 
-Human-readable backend description for logs and banners, carrying the exact
-chip model for hardware provenance (timing attribution across heterogeneous
-campaign hosts requires the microarchitecture, not just the vendor).
+Human-readable backend description for logs and banners, with the CPU model
+for hardware provenance.
 """
 function backend_name(::CPU)
     model = cpu_model()
@@ -107,7 +106,7 @@ backend_name(b) = string(nameof(typeof(b)))
 $(TYPEDSIGNATURES)
 
 Host CPU model string from the system information API, or `""` when the
-query yields nothing (exotic platforms).
+query returns no entry.
 """
 function cpu_model()
     info = Sys.cpu_info()

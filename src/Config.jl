@@ -52,13 +52,10 @@ struct MapSpec
 end
 
 """
-Fully parsed and validated pipeline configuration. Construction goes through
-[`load_and_validate_config`](@ref), which fails fast with a descriptive
-error for unusable input, emits warnings for suspicious-but-runnable
-values, and rejects every unknown key (typo protection). Constructed by
-keyword only (every field is required): the per-section parse helpers
-return NamedTuples keyed by field name, so no positional field order exists
-to get wrong.
+Fully parsed and validated pipeline configuration, built by
+[`load_and_validate_config`](@ref). The constructor takes keywords only,
+every field required; the per-section parsers return NamedTuples keyed by
+field name.
 """
 Base.@kwdef struct PipelineSettings
     # pipeline
@@ -123,8 +120,8 @@ Base.@kwdef struct PipelineSettings
 end
 
 """
-Recognized configuration keys per `[section]` context: the whitelist behind
-[`reject_unknown_keys`](@ref)'s typo protection.
+Recognized configuration keys per `[section]` context, the list that
+[`reject_unknown_keys`](@ref) checks against.
 """
 const KNOWN_KEYS = Dict(
     "" => ["base_config", "pipeline", "grid", "physics", "noise", "mapping",
@@ -284,7 +281,7 @@ $(TYPEDSIGNATURES)
 Parse a configuration TOML file, resolving and merging an overlay's
 `base_config` first ([`effective_config`](@ref)), and validate every field
 (types, ranges, name uniqueness, interior base points, unknown keys) with
-descriptive errors; warn on physically suspicious values.
+descriptive errors; warn on runnable but doubtful settings.
 """
 function load_and_validate_config(config_path::AbstractString)
     isfile(config_path) || config_error("Configuration file not found: $config_path")
@@ -298,9 +295,10 @@ end
 
 """
 Validate a parsed configuration table section by section and assemble the
-[`PipelineSettings`](@ref). Sections are parsed in file order by dedicated
-helpers, each returning a NamedTuple whose keys are `PipelineSettings`
-field names; the keyword constructor assembles them.
+[`PipelineSettings`](@ref). Sections are parsed in a fixed order (`[noise]` before
+`[physics]`, which takes its arm length) by dedicated helpers, each returning a
+NamedTuple whose keys are `PipelineSettings` field names; the keyword constructor
+assembles them.
 """
 function settings_from_config(config::AbstractDict)
     reject_unknown_keys(config, "")
@@ -331,7 +329,7 @@ function settings_from_config(config::AbstractDict)
 end
 
 """
-`[pipeline]` stage switches, optimizer choice and RNG seed.
+`[pipeline]` stage switches, optimizer, fit coordinates and RNG seed.
 """
 function parse_pipeline(config::AbstractDict)
     pipeline = get_table(config, "pipeline")
@@ -393,10 +391,9 @@ function parse_sweep_settings(config::AbstractDict)
     n_starts = get_integer(sweep_settings, "n_starts", 1, "pipeline.sweep_settings")
     n_starts >= 1 ||
         config_error("[pipeline.sweep_settings].n_starts must be >= 1, got $n_starts")
-    # Safe-by-default optimizer tolerances: fits at the numerical precision
-    # floor cannot reach very tight gradient norms and would otherwise
-    # exhaust the iteration cap; clean-region fits converge in 16–40 Newton
-    # iterations against the cap of 100.
+    # default tolerances: fits at the numerical precision floor cannot reach
+    # tight gradient norms and would exhaust the iteration cap; clean-region
+    # fits converge in 16–40 Newton iterations against the cap of 100
     g_tol = get_number(sweep_settings, "g_tol", 1e-10, "pipeline.sweep_settings")
     g_tol > 0 || config_error("[pipeline.sweep_settings].g_tol must be > 0, got $g_tol")
     g_tol < 1e-11 &&
@@ -476,13 +473,13 @@ function parse_grid(config::AbstractDict)
 end
 
 """
-`[physics]` into a [`WaveformParams`](@ref); defaults are owned by the
-struct and never restated here. The instrument's `arm_length` (parsed with
+`[physics]` into a [`WaveformParams`](@ref), whose defaults fill absent
+keys. The instrument's `arm_length` (parsed with
 `[noise]`) sets the constellation eccentricity and the transfer frequency of
 the response, so the noise model and the signal response share one arm
 length. With `observation_window = true` the observation time of `[grid]`
 becomes the duration of the finite-observation window of the response
-(`Physics.observation_window`); without the key the signal fills the band.
+(`Physics.observation_window`); otherwise the signal fills the band.
 `phase_pn_order` selects the post-Newtonian order of the phase, one of
 `PHASE_PN_ORDERS`; `spa_time = "phase"` takes the stationary-phase times of the
 response from that phase instead of the Newtonian relation.
@@ -544,8 +541,9 @@ function parse_physics(config::AbstractDict, arm_length::Real, T_obs::Real)
 end
 
 """
-`[noise]` into a [`NoiseParams`](@ref): every numeric field defaults to the
-Robson Table-1 selection for `T_obs` and is overridable individually.
+`[noise]` into a [`NoiseParams`](@ref): the confusion-fit coefficients default to
+the Robson Table 1 column for `T_obs`, the other fields to the `NoiseParams`
+defaults; each is overridable.
 """
 function parse_noise(config::AbstractDict, T_obs::Real)
     noise_cfg = get_table(config, "noise")
@@ -799,8 +797,7 @@ end
 
 """
 Error unless every non-periodic component of `theta0` lies strictly inside
-its physical bounds: the local geometry expansion and the zone capping
-require an interior base point.
+its physical bounds.
 """
 function check_interior(theta0::AbstractVector, b::ParameterBounds, what::String)
     for i in eachindex(theta0)

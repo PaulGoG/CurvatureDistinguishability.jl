@@ -1,6 +1,6 @@
 """
 Sampling geometry of the confusion-zone maps: sampling directions in
-Fisher-scaled planes, adaptive angular refinement, the vertices where the
+Fisher-normalized planes, adaptive angular refinement, the vertices where the
 zone boundary meets the prior box, and the mirroring of the half-circle onto
 the full circle with prior capping.
 """
@@ -12,7 +12,7 @@ using ..Geometry: cap_at_prior
 
 # angular tolerance below which two map directions are the same vertex
 const ANGLE_DEDUPE_TOL = 1e-10
-# boundary-radius floor guarding the neighbour-ratio division of the
+# boundary-radius floor guarding the neighbor-ratio division of the
 # angular refinement against exactly vanishing capped radii
 const RADIUS_UNDERFLOW = 1e-300
 
@@ -42,7 +42,7 @@ known to end on a prior wall): up to `max_levels` passes insert the
 midpoint direction wherever the capped radius of cyclically consecutive
 directions jumps by more than the factor `ratio_tol` on either half of the
 circle; `r_cap_pair(e)` returns the capped radii of a direction and of its
-mirror image (in the normalized sampling plane), whose prior-box crossing
+mirror image (in the Fisher-normalized sampling plane), whose prior-box crossing
 differs when the box is asymmetric. Past the last direction of the half-circle
 the circle continues with the mirror image of the first, so there the two
 halves of the pair are exchanged. A pair with a non-finite radius is not
@@ -124,17 +124,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Exact corner vertices at capping crossovers. The boundary polygon chords
+Corner vertices at capping crossovers, located by bisection. The boundary polygon chords
 over the direction where the mathematical contour pierces a prior wall
 (`r_math = r_box`), chamfering the zone's corners, and the neighbor-ratio
-refinement cannot see it, because the capped radius saturates at `r_box`
+refinement does not detect it, because the capped radius saturates at `r_box`
 on the wall side. Scans the full circle (the box need not be
 mirror-symmetric), brackets every capped/uncapped transition between
 consecutive directions, bisects each bracket on the capping predicate
-`capped_at(alpha, K)` for `iters` iterations (robust to `r_math = Inf` on
-degenerate directions, where a sign-based bisection would hit `Inf - Inf`;
-all active brackets are evaluated as one batch per iteration), folds the
-vertices onto the half-circle, dedupes them and appends them to `entries`
+`capped_at(alpha, K)` for `iters` iterations, all active brackets in one
+batch (the predicate stays defined where `r_math = Inf` on degenerate
+directions, at which a sign-based bisection meets `Inf - Inf`), folds the
+vertices onto the half-circle, removes duplicates and appends them to `entries`
 (kept sorted) with the wall mask of the side that ends on the wall. The
 capping stage flags these vertices prior-limited by construction, since
 their `r_math = r_box` holds only to the bisection resolution. Returns
@@ -168,7 +168,7 @@ function insert_crossover_vertices!(entries::Vector, eval_angles, capped_at, ite
         end
     end
     # fold onto the half-circle (the mirror adds the antipode);
-    # dedupe, since a mirror-symmetric box yields the same φ twice
+    # remove duplicates, since a mirror-symmetric box yields the same φ twice
     phis_new = Float64[]
     walls_new = UInt8[]
     for b in eachindex(lo)
@@ -209,12 +209,12 @@ $(TYPEDSIGNATURES)
 Box-corner vertices: where two walls are simultaneously active,
 consecutive samples sit on different walls and their chord cuts the box
 corner. The corner direction is known analytically; if the ray through a
-finite box corner is capped there (`capped_at`), the true boundary passes
-through that exact corner, which is inserted into `entries` (one K
+finite box corner is capped there (`capped_at`), the boundary passes
+through that corner, which is inserted into `entries` (one K
 evaluation per finite corner, at most four; kept sorted). `corner_angle`
 maps a parameter-space corner `(cx, cy)` to the sampling angle of the
-direction through it (the identity `atan(cy, cx)` unless the plane is
-sampled in normalized coordinates, see [`unit_direction`](@ref)). Returns
+direction through it (the polar angle `atan(cy, cx)` by default; for
+Fisher-normalized sampling the inverse of [`unit_direction`](@ref)). Returns
 the number of corners inserted.
 """
 function insert_box_corner_vertices!(entries::Vector, eval_angles, capped_at,
@@ -261,7 +261,7 @@ direction at the prior box: K and g are exactly even in the direction, so
 exactly negated direction components (the prior box need not be
 symmetric). `direction(phi)` maps a sampling angle to the unit direction
 `(cos, sin)` in parameter units ([`unit_direction`](@ref) for
-Fisher-normalized sampling; the identity by default). Vertices whose wall
+Fisher-normalized sampling; `(cos φ, sin φ)` by default). Vertices whose wall
 mask marks the evaluated side are capped exactly at the wall and flagged
 prior-limited; every other direction goes through [`cap_at_prior`](@ref).
 Directions with `g < g_uu_degenerate` are flagged degenerate. Returns the

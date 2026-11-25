@@ -1,7 +1,7 @@
 """
 Liveness telemetry of a worker process: a monotone tick counter advanced at
-every loss evaluation and finished work item, and a background writer that
-publishes it to a file a supervising process can poll (`Supervision`). A tick
+every loss evaluation, finished work item and stage log line, and a background
+writer that publishes it to a file a supervising process can poll (`Supervision`). A tick
 is one atomic increment; nothing is written unless a writer was started.
 """
 module Heartbeat
@@ -19,9 +19,9 @@ const TICKS = Threads.Atomic{Int}(0)
 const ITEMS = Threads.Atomic{Int}(0)
 
 """
-Advance the tick counter: called once per loss evaluation (every kernel launch
-on a GPU backend), so the interval between ticks is bounded by the duration of
-one launch whatever the duration of a work item.
+Advance the tick counter: called at every loss evaluation (every kernel launch
+on a GPU backend) and stage log line, so the interval between ticks is bounded
+by the duration of one launch whatever the duration of a work item.
 """
 @inline function tick!()
     Threads.atomic_add!(TICKS, 1)

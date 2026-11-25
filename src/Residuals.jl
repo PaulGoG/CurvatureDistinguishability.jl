@@ -43,8 +43,7 @@ function residual_spectrum(theta0::AbstractVector, u_norm::AbstractVector,
     dens(x, i) = 4 * abs2(x) / Sn[i]
     n = length(freqs)
     # log-uniform decimation: equal plotted points per decade, first and last
-    # plotted frequencies at the band ends. Log-sparse low-frequency windows hold
-    # single bins and pass them through unaveraged; empty windows are skipped.
+    # plotted frequencies at the band ends
     nwin = min(n_windows, n)
     edges = 10.0 .^ range(log10(freqs[1]), log10(freqs[end]), nwin + 1)
     window_bounds = [searchsortedfirst(freqs, e) for e in edges]

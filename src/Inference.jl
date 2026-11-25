@@ -45,8 +45,8 @@ end
 # Kernel launches are serialized library-wide and device buffers are cached.
 # Vendor runtimes are not safe under concurrent multi-task access, and
 # allocating device buffers per evaluation (10³–10⁴ per sweep) destabilizes
-# long sessions. The lock is never taken on CPU paths and costs nothing on a
-# GPU, where the device serializes kernels anyway; the cache holds one buffer
+# long sessions. The lock is never taken on CPU paths and adds no wait on a
+# GPU, whose device executes kernels in sequence; the cache holds one buffer
 # per (backend, element type, shape).
 const GPU_LOCK = ReentrantLock()
 const DEVICE_BUFFER_CACHE = Dict{Tuple{UInt,DataType,Dims},Any}()
@@ -300,9 +300,8 @@ $(TYPEDSIGNATURES)
 
 Squared noise-weighted distance between `data_stream` and the single-source
 model, as a closure over the scaled parameter vector. On the CPU backend an
-allocation-free scalar loop is used; on GPU backends a single fused
-KernelAbstractions kernel (2-channel only; disable the T channel, which is
-identically zero, for GPU runs). Differentiable with `ForwardDiff`.
+allocation-free scalar loop is used; on GPU backends a fused
+KernelAbstractions kernel over the A and E channels only. Differentiable with `ForwardDiff`.
 `freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
 """
 function loss_function(data_stream::Tuple, freqs::AbstractVector, Sn_vals::AbstractVector,
@@ -362,8 +361,8 @@ Linear map `T` of the fit in whitened coordinates, `θ = θ₀ + T z`, from the
 triangular factor `R` of the whitened Jacobian
 ([`whitened_jacobian_factor`](@ref)): with the singular value decomposition
 `R = U Σ Vᵀ`, `T = V S` where `Sᵢᵢ = 1/σᵢ` for `σᵢ ≥ rtol σ₁` and `Sᵢᵢ = 1`
-otherwise. In `z` the Gauss–Newton Hessian of the loss is the identity along
-every constrained direction, and a flat direction keeps its parameter scale.
+otherwise. In `z` the Gauss–Newton Hessian of the loss is `2I` along every
+constrained direction, and a flat direction keeps its parameter scale.
 """
 function whitening_transform(R::AbstractMatrix; rtol::Real = WHITENING_RTOL)
     F = svd(R)
@@ -425,12 +424,11 @@ Minimum squared distance `D²` between the composite `data_stream` and the
 single-source manifold, found by box-constrained optimization within the
 physical `bounds`:
 
-- `:ipnewton` (default): interior-point Newton using the exact ForwardDiff
-  Hessian: fast convergence and a much lower convergence floor than L-BFGS.
+- `:ipnewton` (default): interior-point Newton with the ForwardDiff Hessian;
+  its convergence floor lies well below that of L-BFGS.
 - `:lbfgs_box`: `Fminbox(LBFGS())`, gradient-only.
 
-The physical model is passed as a [`WaveformParams`](@ref) via the `wp`
-keyword (default `WaveformParams()`). Returns
+`theta_guess` is the O(1)-scaled start `[D_L, 𝓜, t_c, φ_c, χ₁, χ₂]`. Returns
 `(D², best_fit, optim_result)`, with `best_fit` always in parameter
 coordinates. Throws `DimensionMismatch`/`ArgumentError` on inconsistent
 arguments. `freqs` and `df` [Hz], `Sn_vals` [Hz⁻¹].
@@ -497,13 +495,9 @@ function calculate_numerical_distance(data_stream::Tuple, theta_guess::AbstractV
         throw(ArgumentError("coordinates = :whitened requires optimizer = :ipnewton"))
     loss = loss_function(data_stream, freqs, Sn_vals, df, wp, backend)
 
-    # ForwardDiff configs are constructed once per solve (they depend only on
-    # the parameter length), not on every optimizer callback; per-call
-    # construction allocates fresh dual work arrays thousands of times per
-    # sweep. hessian_chunk = c > 0 sets the ForwardDiff chunk of the outer and
-    # the inner dual: (1+c)² lanes per kernel launch instead of 49, ⌈6/c⌉²
-    # launches per Hessian, for backends whose compiler or per-launch time
-    # limit rejects the full nested-dual kernel.
+    # configs once per solve: per-callback construction would allocate dual
+    # work arrays thousands of times per sweep. hessian_chunk > 0 serves
+    # backends whose compiler or per-launch time limit rejects the 49-lane kernel
     x_proto = collect(Float64, theta_guess)
     g!, h! = derivative_closures(loss, x_proto, hessian_chunk)
 

@@ -1,7 +1,7 @@
 """
     CurvatureDistinguishability
 
-Computational proof of the quartic distinguishability law for space-based
+Numerical verification of the quartic distinguishability law for space-based
 gravitational-wave interferometry: the squared distance between a two-source
 signal and the best-fit single-source template scales as
 `D² ≈ (1/16) K(u) δ⁴`, governed by the extrinsic curvature `K(u)` of the

@@ -1,8 +1,8 @@
 """
 Work-item checkpoint of a sweep: one durable row per fitted separation, so an
 interrupted sweep continues from its finished items. Rows carry the exact
-`Float64` values (shortest round-trip representation); a resumed sweep
-therefore reproduces the table of an uninterrupted one.
+`Float64` values (shortest round-trip representation), so a continued sweep
+reproduces the table of an uninterrupted one.
 """
 module Checkpoint
 

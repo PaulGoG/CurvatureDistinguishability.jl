@@ -88,8 +88,8 @@ end
 $(TYPEDSIGNATURES)
 
 Orbital Doppler phase `2πf n̂·R_c(t)` of a wave from direction `n̂` received
-at the constellation centre `R_c = R(cos α, sin α, 0)`: a wavefront reaches
-the centre `n̂·R_c` light-seconds before the solar-system barycentre, which
+at the constellation center `R_c = R(cos α, sin α, 0)`: a wavefront reaches
+the center `n̂·R_c` light-seconds before the solar-system barycenter, which
 in the `e^{-2πift}` Fourier convention multiplies the barycentric strain by
 `e^{+2πif n̂·R_c}`. `f` [Hz]; returns a phase [rad].
 """
@@ -101,9 +101,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Antenna patterns of the noise-orthogonal channels at time `t` [s]:
-`(F⁺_A, F×_A, F⁺_E, F×_E)`. Each spacecraft `i` synthesizes a Michelson
-interferometer with detector tensor `D_i = ½(â⊗â − b̂⊗b̂)` from its two arm
+Antenna patterns of the noise-orthogonal channels at time `t` [s], `orbit_phase`
+[rad] being the orbital phase at `t = 0`: `(F⁺_A, F×_A, F⁺_E, F×_E, cos α, sin α)`,
+the last two for [`doppler_phase`](@ref). Each spacecraft `i` synthesizes a
+Michelson interferometer with detector tensor `D_i = ½(â⊗â − b̂⊗b̂)` from its two arm
 unit vectors, giving `F⁺_i = D_i : e⁺` and `F×_i = D_i : e×` with the
 wave-frame polarization tensors of [`ResponseGeometry`](@ref); the three
 Michelson responses are combined into `A = (Z − X)/√2` and
@@ -142,9 +143,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Observed strains `(h̃_A, h̃_E)` at frequency `f` [Hz] of a source with
+Observed strains `(h̃_A, h̃_E)` [Hz⁻¹] at frequency `f` [Hz] of a source with
 luminosity distance `distance` [s], chirp mass `chirp_mass` [s],
-coalescence time `coalescence_time` [s], coalescence phase and aligned spins
+coalescence time `coalescence_time` [s], coalescence phase [rad] and aligned spins
 `chi1` (heavier body), `chi2`, in the `e^{-2πift}` Fourier convention:
 `h̃_C(f) = Σ_k w_k(f) 𝒯(f) [a₊_k F⁺_C(t_k) − i a×_k F×_C(t_k)] e^{-iΨ_k(f)} e^{+iΔ_D(t_k)}`
 over the harmonics `k` of [`harmonic_amplitudes`](@ref), each with its own

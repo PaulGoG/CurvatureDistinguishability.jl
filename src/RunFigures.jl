@@ -1,10 +1,8 @@
 """
-Single implementation of display-time figure regeneration from persisted
-run artifacts, consumed by `scripts/replot.jl` and
-`scripts/collect_plots.jl`, and of the layout-driven multi-panel composites
-behind `scripts/compose_figures.jl`. Point classification and refits reuse the
-pipeline's own rules (`Fitting`), so run-time and display-time figures
-cannot diverge.
+Figures rebuilt from the persisted outputs of a run (`scripts/replot.jl`,
+`scripts/collect_plots.jl`) and layout-driven multi-panel composites
+(`scripts/compose_figures.jl`). Point classification and refits use the
+pipeline's rules (`Fitting`).
 """
 module RunFigures
 
@@ -29,9 +27,9 @@ rho_tag(rho) = "_rho" * replace(string(rho), "." => "p")
 """
 $(TYPEDSIGNATURES)
 
-Read a persisted run table. The tables are kilobytes to megabytes, so
-parsing is single-task by construction: the chunked multithreaded parser
-mis-detects row boundaries on the wide residual-spectrum tables.
+Read a persisted run table on one task: the chunked multithreaded parser
+mis-detects row boundaries on the wide residual-spectrum tables, and the
+tables (kilobytes to megabytes) do not need it.
 """
 read_run_table(path::AbstractString) = CSV.read(path, DataFrame; ntasks = 1)
 
@@ -320,10 +318,10 @@ no curvature is recomputed. With `rho` the boundary is rescaled exactly from
 the persisted per-direction curvature (`r_math = (16ρ²/K)^{1/4}`), re-capped
 at the stored prior box; `contour` then holds the rescaled contour table for
 persisting alongside the original (`nothing` otherwise) and `suffix` carries
-the `_rho…` tag. Caveat: the angular refinement was driven by the original
-threshold's prior-box crossover, so segments near a new crossover may be
-under-refined; rerun the map stage for publication-grade maps at a very
-different ρ. The unscaled map is loaded by [`zone_panel_data`](@ref).
+the `_rho…` tag. The angular refinement followed the crossovers of the
+original threshold, so at a very different ρ the segments near a new
+crossover may be under-resolved; the map stage resolves them. The unscaled
+map is loaded by [`zone_panel_data`](@ref).
 """
 function zone_map_figure(run_dir::AbstractString, case::AbstractString;
     rho::Union{Nothing,Real} = nothing)

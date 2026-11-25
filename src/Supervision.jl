@@ -20,7 +20,7 @@ export SupervisionSettings, WorkerSpec, supervise
 public cpu_seconds, AttemptRecord, SupervisionResult, EXIT_CONFIG_ERROR
 
 """
-Exit status by which a worker reports an input it cannot honour; such an
+Exit status by which a worker reports an input it cannot honor; such an
 attempt is never retried.
 """
 const EXIT_CONFIG_ERROR = 2

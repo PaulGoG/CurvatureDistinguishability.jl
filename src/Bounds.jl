@@ -19,7 +19,8 @@ const PHASE_INDEX = 4
 
 """
 Indices of the two aligned spins in the parameter vector; the only pair of
-parameters sharing a unit, and the plane of the exact `χ_a` degeneracy.
+parameters sharing a unit, and the plane of the flat spin direction of the 1.5PN
+phase (`χ_a` at equal mass).
 """
 const SPIN_INDICES = (5, 6)
 
@@ -34,8 +35,8 @@ const PARAM_KEYS = ("luminosity_distance", "chirp_mass", "coalescence_time",
 
 Hard physical bounds on the O(1)-scaled parameter vector
 `θ = [D_L, M_c, t_c, φ_c, χ₁, χ₂]`. `lower`/`upper` are absolute bounds used by
-the constrained optimizer (`±Inf` allowed); `periodic` marks topological axes
-(the phase) with their `period`, and `deviation_cap` limits the deviation
+the constrained optimizer (`±Inf` allowed); `periodic` marks the axes defined
+modulo their `period` (the phase), and `deviation_cap` limits the deviation
 from any base point on those axes to `±deviation_cap` regardless of the
 absolute value (`0 < deviation_cap ≤ period/2`). The four-argument
 constructor sets the cap to half the period, the antipode on the circle.
@@ -187,7 +188,8 @@ $(TYPEDSIGNATURES)
 
 Clamp `theta` strictly inside the finite bounds (interior-point optimizers
 require a strictly feasible start). `margin` is relative to the bound width
-(or absolute where one side is infinite). Periodic axes are left untouched.
+(or relative to `max(1, abs(θᵢ))` where one side is infinite). Periodic axes are
+left untouched.
 """
 function clamp_interior(theta::AbstractVector, b::ParameterBounds; margin::Real = 1e-8)
     out = collect(float.(theta))

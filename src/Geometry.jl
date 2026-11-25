@@ -183,10 +183,11 @@ $(TYPEDSIGNATURES)
 
 Noise-weighted orthonormal tangent basis of the signal manifold at `theta_0`,
 via one ForwardDiff Jacobian of [`flat_response`](@ref) followed by modified
-Gram–Schmidt with one re-orthogonalization pass. Directions whose orthogonalized norm falls below
-[`GS_NORM_TOL`](@ref) (exactly degenerate combinations, e.g. the equal-mass
-spin difference χ_a) are dropped; the returned basis may have fewer than 6
-elements. Each element is an `n_ch`-tuple of complex channel vectors.
+Gram–Schmidt with one re-orthogonalization pass. Directions whose orthogonalized
+norm falls below [`GS_NORM_TOL`](@ref) times their original norm (degenerate
+combinations, e.g. `χ_a` at equal mass and 1.5PN order) are dropped; the returned
+basis may have fewer than 6 elements. Each element is an `n_ch`-tuple of complex
+channel vectors.
 """
 function compute_tangent_basis(theta_0::AbstractVector, freqs::AbstractVector,
     Sn_vals::AbstractVector, df::Real,
@@ -312,8 +313,6 @@ function compute_extrinsic_curvature_from_basis(theta_0::AbstractVector,
     end
 
     normal_curv = ntuple(c -> raw_curv[c] .- tan_comp[c], Val(NCH))
-    # second projection of the normal part removes the tangential residue
-    # left by cancellation in the first
     for e in basis
         coeff = multi_channel_inner_product(normal_curv, e, Sn_vals, df)
         for c in 1:NCH
@@ -337,8 +336,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Convenience wrapper computing the tangent basis and the directional curvature
-in one call. For repeated directions at a fixed base point (2D mapping), use
+Tangent basis and directional curvature in one call. For repeated directions
+at a fixed base point (2D mapping), use
 [`compute_tangent_basis`](@ref) once and
 [`compute_extrinsic_curvature_from_basis`](@ref) per direction instead.
 """

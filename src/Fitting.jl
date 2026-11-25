@@ -26,11 +26,10 @@ $(TYPEDSIGNATURES)
 
 Unweighted least-squares slope of `log10(y)` against `log10(x)` with its
 standard error (`NaN` with fewer than 3 points; the slope itself needs 2).
-Fits the quartic-law exponent of a sweep's clean window; shared with the
-display-time refit in `RunFigures`. The points are deterministic, so the
-standard error measures their scatter about a power law over the fitted
-window, not a statistical uncertainty: the fitted value is an effective
-slope over that window.
+Fits the quartic-law exponent of a sweep's clean window. The points are
+deterministic, so the standard error measures their scatter about a power law
+over the fitted window, not a statistical uncertainty: the fitted value is an
+effective slope over that window.
 """
 function loglog_slope(x::AbstractVector, y::AbstractVector)
     lx, ly = log10.(x), log10.(y)
@@ -47,7 +46,7 @@ $(TYPEDSIGNATURES)
 
 Least-squares fit of `ratio − 1 ≈ c₁δ + c₂δ²` (2×2 normal equations solved in
 closed form), quantifying the leading `O(δ⁵)` correction to the quartic law
-relative to `D²_th`. Returns NaNs with fewer than 3 points.
+relative to `D²_theo`. Returns NaNs with fewer than 3 points.
 `c₁_err` is the unweighted least-squares standard error of `c₁`, a measure of scatter in
 the same sense as that of [`loglog_slope`](@ref).
 """
@@ -142,13 +141,11 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Production clean-point rule, shared by the sweep stage and all display-time
-figure regeneration (`RunFigures`): only points strictly above the optimizer
-floor are clean (all positive points when no floor was detected). Borderline
-points inside the floor band are excluded even when their ratio is close to
-unity, and convergence flags never exclude a point: the iteration and
-tolerance caps are strict enough that flagged points at ratio ≈ 1 are
-genuine optima.
+Production clean-point rule, shared by the sweep stage and `RunFigures`: a
+point is clean when its `D²_num` lies strictly above the optimizer floor
+(any positive point when no floor was detected), whatever its ratio.
+Convergence flags are not consulted: at the iteration and tolerance caps,
+flagged points at ratio ≈ 1 are optima.
 """
 above_floor_mask(D2_num::AbstractVector, floor_level::Real) =
     isnan(floor_level) ? (D2_num .> 0) : (D2_num .> floor_level)
@@ -158,7 +155,7 @@ $(TYPEDSIGNATURES)
 
 Fraction of the full circle subtended by the directions flagged in `mask`.
 Each direction of the cyclic grid `angle` [rad] (any order, spanning one
-turn) carries half the gap to either neighbour, so the result is an angular
+turn) carries half the gap to either neighbor, so the result is an angular
 measure whatever the local sampling density; a plain count over-weights
 refined regions. A gap between a flagged and an unflagged direction counts
 half, so the fraction is resolved to about one sampling gap per transition.

@@ -69,7 +69,7 @@ figure axes; the computation keeps masses in seconds.
 const SOLAR_MASS_SEC = 1.3271244e20 / C_LIGHT^3
 
 """
-Orbital radius of the constellation centre, 1 AU in light-seconds.
+Orbital radius of the constellation center, 1 AU in light-seconds.
 """
 const R_ORBIT_SEC = 499.00478383615643
 
@@ -81,7 +81,7 @@ proportional to the mass asymmetry).
 const HARMONICS = (1, 2, 3)
 
 """
-Dimension of the waveform parameter vector θ = (D_L, 𝓜, t_c, φ_c, χ₁, χ₂).
+Dimension of the waveform parameter vector `θ = (D_L, 𝓜, t_c, φ_c, χ₁, χ₂)`.
 Every parameter-count-dependent structure (bounds tuples, kernel parameter
 tuples, work-item validation) is sized from it.
 """
@@ -166,7 +166,7 @@ two-channel sensitivity curve (their Eq. 1, `S_n = P_n/R + S_c`), so
 [`sky_averaged_response`](@ref) before adding it to the channel noise.
 
 All fields are configurable through the `[noise]` section of the run configuration;
-the defaults reproduce the published Robson et al. (2019) LISA model.
+the defaults reproduce the Robson et al. (2019) LISA model in its arXiv form.
 """
 Base.@kwdef struct NoiseParams
     confusion_enabled::Bool = true
@@ -188,7 +188,7 @@ end
 $(TYPEDSIGNATURES)
 
 Build a [`NoiseParams`](@ref) whose confusion coefficients are the Robson
-et al. (2019) Table 1 column nearest to the observation time `T_obs` [s].
+et al. (2019) Table 1 column nearest in `log T_obs` to the observation time `T_obs` [s].
 """
 function robson_confusion_params(T_obs::Real; enabled::Bool = true,
     confusion_amp::Real = GALACTIC_CONFUSION_AMP)
@@ -275,13 +275,13 @@ gigaparsec) restore the physical values of the O(1) parameter vector. The
 symmetric mass ratio `eta` ∈ (0, 1/4] is fixed per configuration (the
 heavier body carries `chi1`). The source sits at ecliptic longitude
 `ecliptic_longitude` and latitude `ecliptic_latitude` [rad], with
-inclination `inclination` (angle between the propagation direction and the
-orbital angular momentum) and polarization angle `polarization` of the wave-frame
+inclination `inclination` [rad] (angle between the propagation direction and the
+orbital angular momentum) and polarization angle `polarization` [rad] of the wave-frame
 vectors of the LISA science ground segment conventions (Baghi et al. 2026). The
 polarization amplitudes are those of Blanchet et al. (1996), whose vectors lie along
 and across the line of nodes, a quarter turn from those of the conventions: the
-polarization angle of that document is `polarization + π/2`. `orbit_phase` and
-`constellation_phase` are the orbital and cartwheel phases of the constellation
+polarization angle of the conventions is `polarization + π/2`. `orbit_phase` and
+`constellation_phase` are the orbital and cartwheel phases [rad] of the constellation
 at `t = 0`, `arm_length` [m] sets the orbital eccentricity of the spacecraft
 and the transfer frequency, and `cutoff_width` is the relative width of the
 innermost-stable-orbit taper. `observation_time` [s] is the duration of the
@@ -379,8 +379,7 @@ const WAVEFORM_KEYWORDS = (
 $(TYPEDSIGNATURES)
 
 Build a [`WaveformParams`](@ref) from keyword arguments, rejecting unknown
-keys with an `ArgumentError` naming the offending keyword (typo
-protection at the physical-model boundary).
+keys with an `ArgumentError` naming the offending keyword.
 """
 function waveform_params(; kwargs...)
     unknown = setdiff(keys(kwargs), WAVEFORM_KEYWORDS)
@@ -683,8 +682,8 @@ the constant being a time shift set to zero (`phase_coefficients_4pn`).
 Order 4.5 adds the non-spinning terms only (`phase_coefficients_45pn`).
 `order` is not checked here, so that the function stays free of exceptions inside
 GPU kernels: a value outside [`PHASE_PN_ORDERS`](@ref) acts as the highest order
-not above it, or as 1.5 when it is below 1.5 or NaN. Validated orders enter through [`WaveformParams`](@ref) and the
-configuration.
+not above it, or as 1.5 when it is below 1.5 or NaN. Validated orders enter through
+[`WaveformParams`](@ref) and the configuration.
 Sources: doi:10.1007/s41114-024-00050-z, doi:10.1103/PhysRevD.80.084043,
 doi:10.1088/0264-9381/30/13/135009, doi:10.1088/0264-9381/30/7/075017,
 doi:10.1088/0264-9381/32/19/195010, doi:10.1088/0264-9381/32/8/085008,
@@ -749,9 +748,10 @@ $(TYPEDSIGNATURES)
 Post-Newtonian phase of the (2,2) harmonic at gravitational-wave frequency `F`,
 TaylorF2 in the total-mass velocity `v = (π M F)^{1/3}`, with the bracket of
 [`PhaseCoefficients`](@ref) and the coefficients `c` from
-[`phase_coefficients`](@ref). `order` selects which terms enter: the coefficients
-above it are zero anyway, and the branches skip their arithmetic and the logarithm.
-As in [`phase_coefficients`](@ref), `order` is not checked. `F` [Hz], `chirp_mass` [s]; returns the phase [rad].
+[`phase_coefficients`](@ref). `order` selects which terms enter; the coefficients
+above it are zero, and the branches skip their arithmetic and the logarithm.
+As in [`phase_coefficients`](@ref), `order` is not checked. `F` [Hz], `chirp_mass`
+[s]; returns the phase [rad].
 """
 @inline function pn_phase(F, chirp_mass, eta, c::PhaseCoefficients, order::Real)
     v = (π * total_mass(chirp_mass, eta) * F)^(1 / 3)
@@ -780,7 +780,7 @@ frequency `f`, in the Fourier convention `h̃(f) = ∫ h(t) e^{-2πift} dt`
 [`pn_phase`](@ref) of the (2,2) harmonic (to 1.5PN order without `psi4`) and
 `2f/k` the (2,2) frequency at which harmonic `k` radiates at `f`; `φ_c` is the
 (2,2) phase at coalescence. The arrival-time term is common to all harmonics,
-and at Newtonian order `dΨ₂/df = 2π t(f)` with `t(f) = t_c − 5𝓜/(256 v⁸)`.
+and at Newtonian order `dΨ₂/df = 2π t(f)` with `t(f)` the Newtonian [`spa_time`](@ref).
 `f` [Hz], `chirp_mass` and `coalescence_time` [s], `coalescence_phase` [rad];
 returns the phase [rad]. The method with [`PhaseCoefficients`](@ref) `c` and the
 post-Newtonian `order` evaluates `ψ_PN` with the `pn_phase` method of the same
@@ -880,8 +880,8 @@ $(TYPEDSIGNATURES)
 
 Stationary-phase amplitudes `(a₊, a×)` of harmonic `k` at frequency `f` [Hz] for a
 source at luminosity `distance` [s]: the polarization amplitudes of
-Blanchet, Iyer, Will & Wiseman (leading order for `k = 2`, 0.5PN order for
-`k = 1, 3`, both ∝ the mass asymmetry `δ`),
+Blanchet, Iyer, Will & Wiseman (1996, doi:10.1088/0264-9381/13/4/002; leading order
+for `k = 2`, 0.5PN order for `k = 1, 3`, both ∝ the mass asymmetry `δ`),
 `h₊ = (2Mηx/D)[−(1 + c²) cos 2ψ − (sδ/8)((5 + c²) cos ψ − 9(1 + c²) cos 3ψ) x^{1/2}]`,
 `h× = (2Mηx/D)[−2c sin 2ψ − (3/4) s c δ (sin ψ − 3 sin 3ψ) x^{1/2}]`
 (`c = cos ι`, `s = sin ι`, `x = (πMF)^{2/3}`), converted by the stationary

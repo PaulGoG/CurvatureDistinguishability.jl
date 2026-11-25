@@ -1,7 +1,7 @@
 """
 Pipeline driver: resource planning against the [safety] budget, the 1D
 sweep and 2D confusion-mapping stages, structured logging, opt-in
-monitoring and per-stage guardrails.
+monitoring and per-stage error isolation.
 """
 module Orchestrator
 
@@ -74,8 +74,8 @@ Base.showerror(io::IO, e::ResourceBudgetError) = print(io, "ResourceBudgetError:
     PipelineStageError(run_dir, failed_stages)
 
 Thrown by [`run_pipeline`](@ref) once the run has finished when one or more
-stages failed: the remaining stages have run, `metadata.toml` lists the
-failures and `run.log` carries their backtraces.
+stages failed: `metadata.toml` lists the failures and `run.log` carries their
+backtraces. The other stages have run unless the device stopped responding.
 """
 struct PipelineStageError <: Exception
     run_dir::String
@@ -106,8 +106,7 @@ function Base.showerror(io::IO, err::DegenerateDirectionError)
         err.g_uu, " below the degeneracy threshold ", err.threshold)
 end
 
-# prior-limited boundary fraction above which the spin-plane null-direction
-# advisory is logged
+# prior-limited boundary fraction above which the spin-plane note is logged
 const SPIN_PRIOR_NOTE_FRACTION = 0.25
 # simultaneously live whitened-vector buffers per nested-dual evaluation in
 # the plan_resources memory model (value + two derivative work arrays)
@@ -136,7 +135,7 @@ progress_enabled() = stderr isa Base.TTY
 
 """
 Bounded-concurrency parallel foreach: at most `ntasks` of the spawned tasks
-run simultaneously. Exceptions propagate to the caller (per-stage guardrails
+run simultaneously. Exceptions propagate to the caller (the stage guards
 catch them there).
 """
 function parallel_foreach(f, n::Int, ntasks::Int)
@@ -165,11 +164,9 @@ $(TYPEDSIGNATURES)
 
 Pre-flight memory estimate against the `[safety]` budget: refuses to start
 when even a single task exceeds it, downscales concurrency otherwise, and
-applies the VRAM budget on GPU backends. Resource planning is stage-aware:
-the returned `(sweep_tasks, map_tasks, estimated_gb)` distinguishes the
-kernel-dispatch sweep stage (single-task on GPU backends) from the 2D
-mapping stage, which evaluates host-side automatic differentiation on every
-backend and therefore always keeps the multi-threaded CPU concurrency.
+applies the VRAM budget on GPU backends. Returns `(sweep_tasks, map_tasks,
+estimated_gb)`: one sweep task on GPU backends; the mapping stage, which
+launches no kernels, keeps the CPU concurrency.
 """
 function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
     flatlen = 2 * n_ch * n_bins
@@ -186,7 +183,7 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
             ResourceBudgetError(
                 "Estimated memory for a single task ($(round(fixed / 2^30, digits = 2)) GB fixed + " *
                 "$(round(per_task / 2^30, digits = 2)) GB/task) exceeds [safety].max_ram_gb = " *
-                "$(cfg.max_ram_gb) GB. Reduce the frequency grid ([grid]) or raise the budget explicitly.",
+                "$(cfg.max_ram_gb) GB. Reduce the frequency grid ([grid]) or raise the budget.",
             ),
         )
     end
@@ -207,9 +204,8 @@ function plan_resources(cfg::PipelineSettings, n_bins::Int, n_ch::Int, backend)
         # mapping stage never dispatches kernels and keeps its CPU concurrency.
         sweep_tasks = 1
         map_tasks > 1 &&
-            @info "GPU backend active: sweep-stage concurrency pinned to 1 task " *
-                  "(kernels serialize on the device; concurrent driver access is " *
-                  "unsafe); the CPU-only 2D mapping stage keeps $map_tasks tasks."
+            @info "GPU backend: one sweep task; the 2D mapping stage keeps " *
+                  "$map_tasks tasks."
         vram_budget = max(0.0, cfg.max_vram_gb - cfg.os_vram_overhead_gb) * 2^30
         need = n_bins * cfg.bytes_per_bin_per_task_gpu
         need <= vram_budget ||
@@ -233,9 +229,8 @@ $(TYPEDSIGNATURES)
 Inter-stage memory maintenance for long campaigns (`[hardware]
 .gc_between_stages`): flushes the device-buffer cache on GPU backends, runs
 a full host garbage collection (device arrays are freed by their host
-finalizers, so an explicit collection is what actually returns device
-memory between stages), and asks the backend to reclaim pooled device
-memory where an API exists.
+finalizers, so only a collection returns device memory between stages),
+and asks the backend to reclaim pooled device memory where an API exists.
 """
 function maintain_memory!(backend, enabled::Bool)
     enabled || return nothing
@@ -273,8 +268,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Whether `backend` still executes work: a small allocation, a reduction and a
-synchronization. After a context reset or a lost device every one of them
+Whether `backend` still executes work: a small upload, a synchronization and a
+read-back. After a context reset or a lost device every one of them
 throws, and so would every remaining GPU stage of the process. Always `true`
 on the CPU backend.
 """
@@ -294,9 +289,8 @@ end
 """
 Immutable per-run context threaded through the sweep and map stages:
 validated configuration, output base directory, frequency grid and PSD
-(host and device copies), the planned stage concurrencies (the sweep
-stage is pinned to one task on GPU backends; the CPU-only mapping stage is
-not) and the number of the process launch working on the run directory
+(host and device copies), the planned stage concurrencies and the number
+of the process launch working on the run directory
 (`attempt`, above 1 when an interrupted run is continued). Parametric over
 the backend and device-array types so every per-δ solve closure captures
 concrete fields.
@@ -395,7 +389,6 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
                   "not bracket δ_min = $delta_min; the threshold crossing lies outside the sweep."
         end
 
-        # verify the second source stays within the physical bounds at δ_max
         theta_far = second_source(theta0, u_norm, maximum(deltas), amp_ratio)
         for i in 1:N_PARAMS
             cfg.bounds.periodic[i] && continue
@@ -448,8 +441,7 @@ function run_sweep(sweep::SweepSpec, idx::Int, total::Int, ctx::RunContext)
 
         elapsed = format_time(time() - t0)
         logline(log_io, "  [done] sweep '$name' completed in $elapsed")
-        # structured run.log record (detached campaigns tail run.log, which
-        # otherwise carries no per-item timing)
+        # stage timing in run.log, which detached campaigns follow
         @info "Sweep '$name' ($idx/$total) completed in $elapsed."
     finally
         close(log_io)
@@ -482,7 +474,7 @@ function optimize_separations(sweep::SweepSpec, deltas::AbstractVector,
     D2_num = zeros(n)
     best_fits = zeros(n, N_PARAMS)
     # Vector{Bool}, not BitVector: elements are written from concurrent tasks and
-    # neighbouring bits of a BitVector share one machine word
+    # neighboring bits of a BitVector share one machine word
     converged = fill(false, n)
     iteration_counts = zeros(Int, n)
     gradient_norms = zeros(n)
@@ -708,14 +700,10 @@ function persist_sweep_results(out_dir::AbstractString, sweep::SweepSpec,
         Starts = fill(cfg.n_starts, n), MultiStartGain = fits.multi_start_gain)
     CSV.write(backup_existing!(joinpath(out_dir, "results.csv")), results_table)
 
-    # Residual-spectrum evaluation points. Primary δ*: among the clean
-    # separations inside the fitted validity window of the leading-order law
-    # (δ ≤ delta_valid), the one nearest 2 δ_min, where D² ≈ 16 ρ², the top
-    # of the perturbative window the law is meant to describe; on an absolute grid
-    # the largest separation may lie far beyond it. The plotted residual is
-    # then the normal projection the quartic law integrates. Rule-of-thumb
-    # companion: the separation nearest the discernibility threshold on the
-    # swept range. The companion is emitted only when the two points differ.
+    # Residual-spectrum evaluation points. δ*: the clean separation with
+    # δ ≤ delta_valid nearest 2 δ_min (D² ≈ 16 ρ²), the top of the window the
+    # quartic law describes; its residual is the normal projection the law
+    # integrates. Threshold companion: the separation nearest D² = ρ².
     pos = findall(>(0), D2_num)
     idx_thr = isempty(pos) ? n : pos[argmin(abs.(log10.(D2_num[pos] ./ rho_sq)))]
     in_validity = isfinite(delta_valid) ? (deltas .<= delta_valid) : trues(n)
@@ -858,8 +846,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
             (cs = direction(phi); hypot(cs[1] / sigma_x, cs[2] / sigma_y))
 
         n_base_directions = n_angles ÷ 2
-        # milestones count against the base direction budget; refinement and
-        # bisection add a small unknown surplus that the hook simply absorbs
+        # milestones count the base directions; directions added by
+        # refinement and bisection log no further milestones
         note_progress = stage_progress_hook(
             "Map '$name' ($idx/$total): angular sweep", n_base_directions,
             cfg.progress_log_fraction)
@@ -1108,7 +1096,8 @@ input), allocate hardware within the `[safety]` memory budget, snapshot the
 configuration and provenance metadata into a configuration-hashed run
 directory, then execute the sweep and mapping stages. Each sweep and map is
 guarded individually: a failing stage is logged with its backtrace and the
-remaining stages continue. `output_dir` is resolved relative to `project_root`.
+remaining stages continue, unless the device no longer responds, which ends the
+attempt. `output_dir` is resolved relative to `project_root`.
 
 Returns the run directory when every stage completed. When stages failed, the
 run is finished first (metadata written, log closed) and a
@@ -1126,9 +1115,8 @@ Keywords:
     Only runs produced by the same package version are continued.
   - `run_dir = nothing`: use exactly this run directory (created when absent);
     implies `resume`. An `ArgumentError` is thrown when the directory was
-    produced by another package version (`Provenance.check_package_version`).
-    An `ArgumentError` is also thrown when the directory holds the snapshot of
-    a different configuration.
+    produced by another package version (`Provenance.check_package_version`)
+    or holds the snapshot of a different configuration.
   - `heartbeat_period_s = 0`: when positive, publish `heartbeat.toml` in the
     run directory at this period for a supervising process.
 """
@@ -1292,7 +1280,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
                 # this process: end the attempt instead of failing the rest
                 if !device_responds(ctx.backend)
                     device_lost = true
-                    @error "The device no longer responds; the remaining GPU stages " *
+                    @error "The device no longer responds; the remaining stages " *
                            "need a new process."
                     break
                 end
@@ -1303,8 +1291,7 @@ function _run_pipeline(cfg::PipelineSettings, project_root::AbstractString,
     if cfg.run_2d_mapping && !isempty(cfg.maps) && !device_lost
         @info ">>> 2D confusion mapping ($(length(cfg.maps)) configurations)"
         ctx.map_tasks != ctx.sweep_tasks &&
-            @info "2D mapping evaluates host-side automatic differentiation " *
-                  "(no GPU kernels): concurrency restored to $(ctx.map_tasks) tasks."
+            @info "2D mapping: $(ctx.map_tasks) concurrent tasks."
         for (i, m) in enumerate(cfg.maps)
             key = stage_key(:map, m.name)
             skip_stage(key) && continue
