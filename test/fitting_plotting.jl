@@ -108,6 +108,10 @@ end
     @test isnan(CD.Fitting.optimizer_floor([1.0, 2.0], [1.1, 2.5], 2.0))
     @test CD.Fitting.optimizer_floor([2.0, 1.0, 3.0], [2.5, 2.2, 1.0], 2.0) == 2.0
     @test CD.Fitting.optimizer_floor([1.0, 2.0], [1.9, 1.1], 1.5) == 1.0
+    # a fit that returned exactly zero is on the floor, and so are the
+    # floor-dominated separations after it
+    @test CD.Fitting.optimizer_floor([0.0, 1e-13, 1e-12, 1.0], [0.0, 1e5, 1e3, 1.01],
+        2.0) == 1e-12
     # validity radius: smallest positive root of |c₁δ + c₂δ²| = fraction, worked
     # by hand. c₁ = 0.3, c₂ = −0.1: 0.3δ − 0.1δ² = 0.1 ⇒ δ = (3 − √5)/2
     @test CD.Fitting.validity_radius(0.3, 0.01, -0.1, 0.1) ≈ (3 - sqrt(5)) / 2 rtol = 1e-14

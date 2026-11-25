@@ -125,14 +125,15 @@ are the contiguous run of separations, starting from the smallest, whose
 (`[pipeline.sweep_settings].floor_detection_ratio`). A flat floor under a
 `δ⁴` theory makes that ratio decrease monotonically with `δ`, so
 super-threshold ratios at large `δ` mark the breakdown of the leading-order
-law, not the floor. The floor level is the largest floor-dominated
-`D²_num`; `NaN` when the smallest separation is already clean.
+law, not the floor. A non-positive `D²_num` (a fit that returned zero) counts
+as floor-dominated whatever its ratio. The floor level is the largest
+floor-dominated `D²_num`; `NaN` when the smallest separation is already clean.
 """
 function optimizer_floor(
     D2_num::AbstractVector, ratio::AbstractVector, ratio_threshold::Real)
     n_floor = 0
-    for r in ratio
-        r >= ratio_threshold || break
+    for (d, r) in zip(D2_num, ratio)
+        (r >= ratio_threshold || d <= 0) || break
         n_floor += 1
     end
     return n_floor == 0 ? NaN : maximum(view(D2_num, 1:n_floor))

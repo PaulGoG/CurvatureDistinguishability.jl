@@ -48,6 +48,7 @@ function residual_spectrum(theta0::AbstractVector, u_norm::AbstractVector,
     nwin = min(n_windows, n)
     edges = 10.0 .^ range(log10(freqs[1]), log10(freqs[end]), nwin + 1)
     window_bounds = [searchsortedfirst(freqs, e) for e in edges]
+    window_bounds[1] = 1
     window_bounds[end] = n + 1
     windows = [
         window_bounds[i]:(window_bounds[i+1]-1) for
