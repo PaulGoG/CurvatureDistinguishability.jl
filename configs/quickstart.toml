@@ -5,15 +5,16 @@
 [pipeline]
 run_1d_sweeps = true
 run_2d_mapping = true
-# one of: "ipnewton" (box-constrained exact-Hessian interior-point Newton,
-# recommended) | "lbfgs_box" (Fminbox gradient-only fallback)
+# one of: "ipnewton" (box-constrained exact-Hessian interior-point Newton) |
+# "lbfgs_box" (Fminbox, gradient only)
 optimizer = "ipnewton"
 # seed for all stochastic components (multi-start perturbations)
 rng_seed = 42
 
 [pipeline.sweep_settings]
 # log-spaced separations delta in [10^min_log_delta, 10^max_log_delta]
-# (Fisher-normalized units: delta = 1 is one Fisher sigma along the direction)
+# (Fisher-normalized units: delta = 1 is one Fisher sigma along the direction),
+# n_deltas >= 2 and min_log_delta < max_log_delta
 n_deltas = 14
 min_log_delta = -2.0
 max_log_delta = 2.5
@@ -21,9 +22,9 @@ max_log_delta = 2.5
 correction_fit_max_departure = 0.3
 # discernibility threshold rho of the sweeps and maps (per-case override: rho_thresh), > 0
 rho_thresh = 1.0
-# directions with Fisher norm below this are reported as degenerate
+# directions with Fisher norm below this are reported as degenerate, > 0
 g_uu_degenerate = 1e-6
-# optimizer starts per separation (secondary-minimum detection when > 1)
+# optimizer starts per separation (secondary-minimum detection when > 1), integer >= 1
 n_starts = 1
 # optimizer convergence: projected-gradient norm g_tol, or relative change of
 # D² between Newton steps below f_reltol (either triggers), both > 0
@@ -33,7 +34,7 @@ max_iterations = 60
 
 [grid]
 # df = 1/T_obs; the [f_min, f_max] band at that resolution sets the bin count
-# (~7.4k bins here). T_obs in s, frequencies in Hz.
+# (at least 8). T_obs in s, frequencies in Hz.
 T_obs = 4.8e5
 f_min = 1.0e-3
 f_max = 1.65e-2
@@ -51,7 +52,8 @@ eta = 0.2222
 # latitude in [-π/2, π/2]
 ecliptic_longitude = 3.1416
 ecliptic_latitude = 0.5236
-# inclination in [0, π] and polarization angle [rad] (LISA SGS conventions, Baghi et al. 2026)
+# inclination in [0, π] and polarization angle [rad] (LISA SGS conventions,
+# Baghi et al. 2026)
 inclination = 0.5236
 polarization = 0.7854
 # constellation orbital and cartwheel phases at t = 0 [rad]
@@ -70,17 +72,18 @@ confusion_enabled = true
 
 [mapping]
 # directions around the full circle before refinement (even; half is computed
-# and mirrored)
+# and mirrored), integer >= 8, odd counts rounded up
 n_angles = 256
-# adjacent-direction capped-radius ratio that triggers angular refinement
+# adjacent-direction capped-radius ratio that triggers angular refinement, > 1
 neighbor_ratio_tol = 1.25
 max_refine_levels = 4
 # bisection iterations locating exact prior-wall crossover vertices
-# (0 disables the pass)
+# (0 disables the pass), integer in [0, 60]
 corner_bisect_iters = 15
 
 [parameter_bounds]
-# hard physical bounds [lower, upper] on the scaled parameters; inf allowed.
+# hard physical bounds [lower, upper] on the scaled parameters, numbers with lower < upper;
+# inf allowed, and the lower bounds of the distance and of the chirp mass are >= 0.
 # The phase is periodic (period 4π, deviations capped at ±π) regardless of this table.
 luminosity_distance = [0.0, inf]
 chirp_mass = [0.0, inf]
@@ -93,22 +96,20 @@ spin2 = [-1.0, 1.0]
 # "oneapi"; GPU backends require the matching package installed
 gpu_backend = "none"
 max_threads = 8
-# ForwardDiff Hessian chunk for GPU compilers that reject the full 49-lane
-# nested-dual kernel (0 = full chunk)
+# ForwardDiff Hessian chunk: 0 (full 6-parameter chunk) | 1–6; (1+c)² lanes per launch
 hessian_chunk = 0
-# inter-stage memory maintenance: device-buffer flush + full host GC after
-# every sweep/map (recommended for multi-hour campaigns)
+# device-buffer flush and full host GC after every sweep and map (true | false)
 gc_between_stages = true
 # --heap-size-hint of the supervised worker processes, in GB (0 = none)
 heap_size_hint_gb = 0.0
 
 [safety]
 # memory budgets in GB; the pipeline refuses to start (or downscales
-# concurrency) beyond them
+# concurrency) beyond them, > 0 (os_vram_overhead_gb >= 0)
 max_ram_gb = 8.0
 max_vram_gb = 8.0
 os_vram_overhead_gb = 2.0
-# per-bin VRAM footprint of the single GPU optimization task, in bytes
+# per-bin VRAM footprint of the single GPU optimization task, in bytes, integer > 0
 bytes_per_bin_per_task_gpu = 1000
 
 [monitoring]

@@ -83,7 +83,7 @@ D^2 \approx \frac{1}{16} K(u) \delta^4 .
   alternative, `Fminbox(LBFGS)`. With
   `[pipeline].fit_coordinates = "whitened"` IPNewton runs in the coordinates
   `z` of `θ = θ₀ + T z`, where `T` (`whitening_transform`) makes the
-  Gauss–Newton Hessian the identity on every constrained direction; the box on
+  Gauss–Newton Hessian of the loss `2I` on every constrained direction; the box on
   `θ` becomes six linear constraints. This keeps the fit converging when a
   direction is constrained only weakly, as the spins are at phase orders above
   1.5. `T` is computed once, at the start, so the whitened fit relies on a

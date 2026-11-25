@@ -2,11 +2,10 @@
 
 @testset "Static QA" begin
     # the persistent-tasks probe spawns a child precompilation whose
-    # completion marker is flaky on cold macOS/Windows runners and under
+    # completion marker is unreliable on cold macOS/Windows runners and under
     # coverage instrumentation (the instrumented child precompile of the
     # full dependency stack outruns the probe); the verdict is
-    # platform-independent, so the probe is enforced on uninstrumented
-    # Linux, that is, on every local Pkg.test()
+    # platform-independent, so the probe runs on uninstrumented Linux only
     run_probe = Sys.islinux() && Base.JLOptions().code_coverage == 0
     Aqua.test_all(CurvatureDistinguishability; persistent_tasks = run_probe)
     # the qualified-access publicity check is deliberately not enforced:

@@ -55,6 +55,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The README and the architecture page stated that the remaining stages
   always run after a failed one, and that a missing GPU package always
   falls back to the CPU; both now state the conditions.
+- Docstrings whose formulas the API page rendered as broken emphasis.
 
 ## [2.3.0] - 2026-11-17
 

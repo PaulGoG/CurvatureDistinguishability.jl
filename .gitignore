@@ -2,7 +2,7 @@
 data/
 plots/
 *.log
-# generated data and figure formats, except the committed regression fixtures
+# generated data and figure formats, except the regression fixtures and documentation images
 *.csv
 *.h5
 *.jld2

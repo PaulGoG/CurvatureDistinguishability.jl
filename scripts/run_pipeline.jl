@@ -28,9 +28,9 @@ CurvatureDistinguishability pipeline
                         publish heartbeat.toml in the run directory at this
                         period (default 0: no heartbeat)
 
-Exit status: 0 every stage completed; 2 configuration or resource-budget
-error (nothing was computed); 3 one or more stages failed (the others ran;
-see failed_stages in metadata.toml); 1 any other error.
+Exit status: 0 every stage completed; 2 configuration, run-directory or
+resource-budget error (nothing was computed); 3 one or more stages failed
+(see failed_stages in metadata.toml); 1 any other error.
 """
 
 const EXIT_CONFIG_ERROR = CurvatureDistinguishability.Supervision.EXIT_CONFIG_ERROR
@@ -84,8 +84,8 @@ end
 
 # Load a GPU package only when the configuration asks for one and it is
 # installed in this environment; a requested package that is not installed
-# is reported. The package extension activates whichever of the two is loaded
-# last, so the GPU package may follow the package itself.
+# is reported. The extension loads once both packages are loaded, in either
+# order.
 let requested = String(cfg.gpu_backend)
     for (key, pkgname) in pairs(CurvatureDistinguishability.Backends.GPU_PACKAGES)
         (requested == "auto" || String(key) == requested) || continue

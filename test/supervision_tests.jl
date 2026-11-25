@@ -1,5 +1,5 @@
 # Process supervision, heartbeat, work-item checkpoints and run continuation.
-# Fake workers are short Julia processes whose behaviour is fixed by a one-line
+# Fake workers are short Julia processes whose behavior is fixed by a one-line
 # program; thresholds are seconds, so every verdict is reached quickly.
 
 const SUP = CD.Supervision
@@ -17,7 +17,7 @@ fake_worker(program::AbstractString) =
 # reference with --check-bounds=yes (and coverage instrumentation in CI), which
 # changes the vectorized reductions of the geometry stage in the last bits.
 # Optimizer-trajectory columns are excluded, the physical columns are compared
-# to floating-point rounding, the discrete ones exactly.
+# at rtol = 1e-8, the discrete ones exactly.
 const TRAJECTORY_COLUMNS = ("Iterations", "GradNorm", "MultiStartGain")
 function same_sweep_table(a::DataFrame, b::DataFrame; rtol = 1e-8)
     (names(a) == names(b) && nrow(a) == nrow(b)) || return false
@@ -226,7 +226,7 @@ beat_program(
                     ledger_path = ledger)
             @test result.status === :retries_exhausted && length(result.attempts) == 2
 
-            # input the worker cannot honour: never retried
+            # input the worker cannot honor: never retried
             spec =
                 WorkerSpec(; command = _ -> fake_worker("exit(2)"), console_log = log_of,
                     heartbeat_path = beat, status = () -> :incomplete)

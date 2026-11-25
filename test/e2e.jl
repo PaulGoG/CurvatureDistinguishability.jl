@@ -164,8 +164,8 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
         # threshold-rescaled replot from persisted K (no recomputation).
         # Plain binary (not julia_cmd(): --check-bounds would recompile the
         # plotting stack) and a scrubbed environment (Pkg.test exports its
-        # sandbox via JULIA_LOAD_PATH/JULIA_PROJECT, which would poison the
-        # child's package resolution).
+        # sandbox via JULIA_LOAD_PATH/JULIA_PROJECT, which the child would
+        # otherwise resolve against).
         replot_script = joinpath(dirname(@__DIR__), "scripts", "replot.jl")
         jlbin = Base.julia_cmd().exec[1]
         cmd = addenv(`$jlbin --startup-file=no $replot_script $out_base --rho 2.0`,
@@ -191,9 +191,8 @@ theta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]
             joinpath(out_base, "maps", "mini_spin_map", "confusion_zone_rho2p0.png"),
         )
 
-        # unified regeneration API (RunFigures): figures rebuild from the
-        # persisted CSVs alone, and the library rho-rescale reproduces the
-        # replot child's persisted contour exactly
+        # RunFigures: figures rebuild from the persisted CSVs alone, and the
+        # library ρ-rescale reproduces the replot child's contour (below)
         cases = run_cases(out_base)
         @test cases.sweeps == ["mini_sweep", "mini_unequal"]
         @test cases.maps == ["mini_mass_time", "mini_spin_map"]
@@ -320,7 +319,7 @@ case = "mini_sweep"
         @test all(isapprox.(rz.contour.R_Capped, cm2.R_Capped; rtol = 1e-12))
 
         # exit-status contract of the CLI: a configuration the pipeline cannot
-        # honour ends with status 2 before any output exists
+        # honor ends with status 2 before any output exists
         pipeline_script = joinpath(dirname(@__DIR__), "scripts", "run_pipeline.jl")
         bad_cfg = joinpath(dir, "bad_key.toml")
         write(bad_cfg, "[hardware]\nrequire_gp = true\n")

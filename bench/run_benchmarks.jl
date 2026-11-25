@@ -10,7 +10,7 @@ using ForwardDiff
 using KernelAbstractions
 using CurvatureDistinguishability
 
-# Moderate grid: large enough to be representative, small enough to finish fast.
+# 1–2 mHz at df = 1/yr: 31 558 bins
 T_obs = SECONDS_PER_YEAR
 df = 1.0 / T_obs
 freqs = collect(1.0e-3:df:2.0e-3)

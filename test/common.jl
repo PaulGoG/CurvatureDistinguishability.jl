@@ -4,7 +4,6 @@
 const CD = CurvatureDistinguishability
 const FIXDIR = joinpath(@__DIR__, "fixtures", "reference")
 
-# Fixture context: the tiny 201-bin grid the reference values were generated on.
 const FIX_DF = 1e-5
 const FIX_FREQS = collect(1e-3:FIX_DF:3e-3)
 const FIX_PHYS = (mass_scale = 1.0, time_scale = 100.0, eta = 0.25,

@@ -103,10 +103,10 @@
     @test d0l < 1e-2
     @test all(isfinite, bfl)
 
-    # guardrail: a GPU backend with host Arrays must fail loudly, not crash
-    # deep inside a kernel launch (get_best_backend() returns a GPU whenever
-    # one is functional, so the mismatch is easy to hit from the REPL).
-    # A bare Backend subtype: KernelAbstractions.GPU is deprecated in 0.10.
+    # a GPU backend with host Arrays is refused at the interface instead of
+    # failing inside a kernel launch (get_best_backend() returns a GPU
+    # whenever one is functional). A bare Backend subtype:
+    # KernelAbstractions.GPU is deprecated in 0.10.
     struct FakeGPU <: KernelAbstractions.Backend end
     @test_throws ArgumentError loss_function(data, FIX_FREQS, FIX_SN, FIX_DF,
         FIX_WP, FakeGPU())
@@ -146,7 +146,7 @@
     CD.Inference.clear_device_buffers!()
     @test isempty(CD.Inference.DEVICE_BUFFER_CACHE)
 
-    # A/B against the committed reference fixtures on the clean separations
+    # against the committed reference fixtures on the clean separations
     sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
     u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
     K_u, g_uu =

@@ -1,6 +1,6 @@
 # Configuration validation and run provenance. Included by runtests.jl.
 
-@testset "Config validation guardrails" begin
+@testset "Config validation" begin
     function write_cfg(dir, extra)
         path = joinpath(dir, "config.toml")
         base = """
@@ -185,14 +185,14 @@
             @test_logs (:warn, r"odd; rounding up") match_mode = :any load_and_validate_config(
                 write_cfg(dir, "[mapping]\nn_angles = 33\n"))
         @test cfg_odd.map_n_angles == 34
-        @test cfg_odd.corner_bisect_iters == 25 # safe default: corners exact
+        @test cfg_odd.corner_bisect_iters == 25 # default: corner bisection on
         cfg_nb = load_and_validate_config(
             write_cfg(dir, "[mapping]\ncorner_bisect_iters = 0\n"))
         @test cfg_nb.corner_bisect_iters == 0 # explicit opt-out allowed
         @test_throws ArgumentError load_and_validate_config(
             write_cfg(dir, "[mapping]\ncorner_bisect_iters = -1\n"))
 
-        # amp_ratio and multi-start guardrails; an amplitude component in
+        # amp_ratio and multi-start validation; an amplitude component in
         # the sweep direction is rejected (amp_ratio carries it)
         @test_throws ArgumentError load_and_validate_config(
             write_cfg(
@@ -224,7 +224,7 @@
         @test_throws ArgumentError load_and_validate_config(
             write_cfg(dir, "[pipeline.sweep_settings]\ng_tol = 0.0\n"))
 
-        # safe-by-default optimizer tolerances; monitoring opt-in (off)
+        # default optimizer tolerances; monitoring off by default
         cfg_def = load_and_validate_config(write_cfg(dir, ""))
         @test cfg_def.g_tol == 1e-10 && cfg_def.max_iterations == 100
         @test cfg_def.monitoring_enabled == false
@@ -283,7 +283,7 @@
             joinpath(dirname(@__DIR__), "configs", "quickstart.toml"))
         @test length(cfg_quick.sweeps) == 2 && length(cfg_quick.maps) == 2
         @test cfg_quick.monitoring_enabled
-        # work items parse once into typed specs with resolved defaults
+        # sweeps and maps parse once into typed specs with resolved defaults
         @test cfg_quick.sweeps isa Vector{SweepSpec}
         @test cfg_quick.maps isa Vector{MapSpec}
         @test cfg_quick.sweeps[1].rho_thresh == 1.0 # pipeline-wide default
@@ -296,7 +296,7 @@
                     "[[maps]]\nname = \"m\"\nparam_x = 5\nparam_y = 6\n" *
                     "theta_0 = [1,1,1,0,0,0]\nn_angles = 33\n",
                 ))
-        @test cfg_na.maps[1].n_angles == 34 # per-map override resolved even
+        @test cfg_na.maps[1].n_angles == 34 # per-map override rounded up to even
 
         # instrumental-noise overrides thread through to NoiseParams and
         # must be strictly positive
@@ -567,7 +567,7 @@ enabled = true
           2 * length(CD.Physics.PHASE_PN_ORDERS)
     # campaign configurations: every shipped file validates, the Hessian
     # chunk never enters the run identity, and each single-sweep overlay
-    # reproduces exactly one case of the production base
+    # reproduces exactly one case of the campaign base
     campaigns = joinpath(configs, "campaigns")
     campaign_files = filter(f -> endswith(f, ".toml"), readdir(campaigns))
     required = vcat(

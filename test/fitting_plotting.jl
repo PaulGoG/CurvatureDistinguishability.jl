@@ -67,7 +67,7 @@ end
 
     # angular fraction of flagged directions: half-gap weights on the
     # cyclic grid. Three flagged directions clustered at π between coarse
-    # neighbours at π/2 and 3π/2 subtend (π/4 + 0.01 + π/4) of 2π, while
+    # neighbors at π/2 and 3π/2 subtend (π/4 + 0.01 + π/4) of 2π, while
     # they are half of the six directions
     ang = [0.0, π / 2, π - 0.01, π, π + 0.01, 3π / 2]
     flagged = [false, false, true, true, true, false]
@@ -183,7 +183,7 @@ end
 
     # offset ticks: one factored power of 10 with
     # integer mantissas preferring multiples of 5, limits snapped outward
-    # so the frame ends exactly on the outermost labelled ticks
+    # so the frame ends exactly on the outermost labeled ticks
     ot = CD.Plotting.offset_ticks(-1.32e-3, 1.32e-3)
     @test ot !== nothing
     ovals, olabels, e10, lo_s, hi_s = ot
@@ -295,7 +295,7 @@ end
     @test ax_round.aspect[] isa CD.Plotting.DataAspect
     # display units: coordinates and frame follow the display_scale
     # factors and the labels carry the units; the computation's rescaled
-    # coordinates stay unlabelled (above)
+    # coordinates stay unlabeled (above)
     scale = CD.Plotting.display_scale(CD.Physics.WaveformParams())
     @test scale[2] ≈ 1 / 4.925490947e-6 rtol = 1e-9
     @test scale[3] == 1.0e6

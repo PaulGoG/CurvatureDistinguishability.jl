@@ -1,9 +1,9 @@
 # Collect every figure of one or more pipeline runs as PNGs into a single
 # flat, human-browsable folder (plots/ by default), rendered fresh from the
 # persisted CSVs with the current plotting code: slope and correction
-# coefficients are refitted for display, persisted run metadata is never
-# modified, and the source run directories are not touched. All rebuild
-# logic lives in src/RunFigures.jl (shared with replot.jl).
+# coefficients are refitted for display, and the run directories are not
+# touched. All rebuild logic lives in src/RunFigures.jl (shared with
+# replot.jl).
 #
 #   julia scripts/collect_plots.jl [dest_dir] [run ...]
 #

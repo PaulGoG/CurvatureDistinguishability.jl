@@ -7,8 +7,8 @@
 #
 # With --rho R the discernibility threshold is changed without recomputation:
 # the boundary radius is r = (16ρ²/K)^{1/4} and K is persisted per direction,
-# so maps (and the scaling-plot threshold markers) are rescaled exactly and
-# written to *_rho<R> files, leaving the originals untouched.
+# so map radii (and the scaling-plot threshold markers) rescale exactly and
+# are written to *_rho<R> files, leaving the originals untouched.
 #
 # With --refit the slope, window slope and correction coefficients are
 # refitted from the persisted results table with the current fitting code

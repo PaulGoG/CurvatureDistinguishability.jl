@@ -1,4 +1,5 @@
-# Noise model, waveform, post-Newtonian phase and detector response. Included by runtests.jl.
+# Noise model, waveform, post-Newtonian phase and detector response.
+# Included by runtests.jl.
 
 @testset "Noise PSD (Robson 2019)" begin
     # instrumental part must reproduce the reference values to 1e-14 relative
@@ -25,7 +26,7 @@
     @test sc > 0
     @test 0 < R < 0.3
     @test sky_averaged_response(0.0, np.arm_length) == 0.3
-    # the confusion bump must actually contribute in the mHz band
+    # the confusion term more than doubles the PSD at 1 mHz
     @test analytic_noise_psd(1e-3) > 2 * analytic_noise_psd(1e-3; noise = FIX_NOISE_OFF)
 
     # closure at the sensitivity level: the per-channel PSD divided by R(f)
@@ -59,9 +60,9 @@
     @test analytic_noise_psd(0.0) == 1e-30
     @test analytic_noise_psd(-1.0) == 1e-30
 
-    # instrumental parameters (Eq. 10-12) are configurable; defaults are
-    # bit-identical to the published model (fixture test above), and the
-    # OMS term must respond quadratically where it dominates (high f)
+    # instrumental parameters (Eq. 10-12) are configurable; defaults
+    # reproduce the fixture PSD (test above), and the OMS term must respond
+    # quadratically where it dominates (high f)
     f_hi = 2e-2
     s_def = analytic_noise_psd(f_hi; noise = FIX_NOISE_OFF)
     s_oms = analytic_noise_psd(f_hi;
@@ -177,7 +178,7 @@ end
 @testset "Detector: orbits, patterns, channels" begin
     arm_sec = FIX_WP.arm_length / CD.Physics.C_LIGHT
     # analytic orbits: equal arms to O(e²) at every orbital phase, the
-    # constellation centre on the 1 AU circle, the plane tilted by 60°
+    # constellation center on the 1 AU circle, the plane tilted by 60°
     for alpha in (0.0, 1.0, 2.5, 4.0)
         r1, r2, r3 = CD.Detector.spacecraft_positions(cos(alpha), sin(alpha),
             FIX_WP.geometry)
@@ -454,7 +455,7 @@ end
     end
     @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 5.0)
     @test_throws ArgumentError waveform_params(; FIX_PHYS..., phase_pn_order = 2.25)
-    # orders 1.5 and 2 through the coefficient set are the existing phase, bit
+    # orders 1.5 and 2 through the coefficient set reproduce the β/ψ₄ form, bit
     # for bit; each higher order adds its term (3/(128ηv⁵)) Δ v^i
     Mc, F = 1.5, 3e-3
     for eta in (0.25, 2 / 9)

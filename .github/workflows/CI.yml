@@ -13,7 +13,7 @@ jobs:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
+    permissions: # julia-actions/cache deletes the old caches it created
       actions: write
       contents: read
     strategy:

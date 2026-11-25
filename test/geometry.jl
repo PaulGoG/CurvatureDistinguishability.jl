@@ -1,4 +1,5 @@
-# Tangent basis, curvature, residuals, bounds and the observation window. Included by runtests.jl.
+# Tangent basis, curvature, residuals, bounds and the observation window.
+# Included by runtests.jl.
 
 @testset "Geometry: basis, fused derivatives" begin
     basis = @inferred compute_tangent_basis(THETA0, FIX_FREQS, FIX_SN, FIX_DF, FIX_WP)
@@ -101,7 +102,7 @@ end
     end
 end
 
-@testset "Geometry A/B against reference fixtures" begin
+@testset "Geometry against the reference fixtures" begin
     # 1D sweep geometry
     sweep_fix = CSV.read(joinpath(FIXDIR, "sweep.csv"), DataFrame)
     u_raw = [0.0, 0.707, 0.5, 0.3, 0.3, -0.2]
