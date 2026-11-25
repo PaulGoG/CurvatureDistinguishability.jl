@@ -337,6 +337,18 @@ gpu_backend = "none"
             @test run_id_from_config(variant) == run_id_from_config(cfg_path)
             fresh_dir, state = CD.Provenance.resolve_run_dir(joinpath(dir, "a"), variant)
             @test state === :fresh && fresh_dir == reference * "_r2"
+            # thread, memory, monitoring and supervision settings may change
+            # between the attempts of one run: it is continued, not restarted
+            retuned = joinpath(dir, "retuned.toml")
+            write(retuned,
+                read(cfg_path, String) * "max_threads = 2\n[safety]\nmax_ram_gb = 4.0\n" *
+                "[monitoring]\nprogress_log_fraction = 0.5\n" *
+                "[supervision]\nbusy_stall_s = 9000.0\n")
+            @test CD.Provenance.resolve_run_dir(joinpath(dir, "a"), retuned) ==
+                  (reference, :complete)
+            @test run_pipeline(retuned, dir, "a"; run_dir = reference) == reference
+            @test_throws "another configuration" run_pipeline(variant, dir, "a";
+                run_dir = reference)
 
             # a degenerate direction is a failed stage with a named error, and
             # concurrent launches never share a run directory

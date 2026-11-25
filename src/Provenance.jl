@@ -19,7 +19,7 @@ export run_id_from_config, effective_config, identity_config,
     write_hardware_fingerprint, git_state, package_version, check_package_version,
     stage_key, completed_stages, mark_stage_complete!, abandoned_stages,
     note_figure_failure!
-public acquire_run_lock, record_attempt!
+public acquire_run_lock, record_attempt!, continuation_config
 
 # top-level key naming the base file an overlay configuration is merged onto
 const BASE_CONFIG_KEY = "base_config"
@@ -93,6 +93,28 @@ function identity_config(config::AbstractDict)
         delete!(identity, section)
     end
     return identity
+end
+
+# execution keys that change the computed bits
+const CONTINUATION_HARDWARE_KEYS = ("gpu_backend", "hessian_chunk")
+
+"""
+$(TYPEDSIGNATURES)
+
+The part of a parsed configuration that a continued run must share with the
+snapshot in its directory: the identity table ([`identity_config`](@ref)) and,
+of the execution sections, `[hardware].gpu_backend` and `hessian_chunk`, which
+change the last bits of the results. The other execution keys (thread and
+memory budgets, monitoring, supervision) may differ between the attempts of
+one run.
+"""
+function continuation_config(config::AbstractDict)
+    table = identity_config(config)
+    hardware = get(config, "hardware", nothing)
+    table["hardware"] = Dict{String,Any}(
+        key => hardware[key] for key in CONTINUATION_HARDWARE_KEYS if
+        hardware isa AbstractDict && haskey(hardware, key))
+    return table
 end
 
 """
@@ -202,10 +224,11 @@ $(TYPEDSIGNATURES)
 
 Run directory for `config_path` under `base_dir` when an interrupted run is to
 be continued. The siblings `run_<id>`, `run_<id>_r2`, … are searched in order
-for one whose `config.toml` snapshot equals the effective configuration,
-execution sections included (so variants that share an identifier, such as
-another Hessian chunk or another backend, never continue each other), and
-whose outputs were produced by the running package version
+for one whose `config.toml` snapshot agrees with the configuration in its
+[`continuation_config`](@ref) (so variants that share an identifier but
+another Hessian chunk or another backend never continue each other, while a
+changed thread budget, memory budget or supervision setting does not start a
+new run), and whose outputs were produced by the running package version
 ([`check_package_version`](@ref)); a sibling that matches the configuration
 only is skipped with a warning. Returns `(directory, state)` with `state`
 
@@ -215,12 +238,12 @@ only is skipped with a warning. Returns `(directory, state)` with `state`
 """
 function resolve_run_dir(base_dir::AbstractString, config_path::AbstractString)
     run_id = run_id_from_config(config_path)
-    config = effective_config(config_path)
+    config = continuation_config(effective_config(config_path))
     k = 1
     dir = joinpath(base_dir, run_id)
     while isdir(dir)
         snapshot = joinpath(dir, "config.toml")
-        if isfile(snapshot) && effective_config(snapshot) == config
+        if isfile(snapshot) && continuation_config(effective_config(snapshot)) == config
             if same_package_version(dir)
                 meta = read_run_metadata(dir)
                 finished =

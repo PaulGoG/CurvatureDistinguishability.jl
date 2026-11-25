@@ -29,7 +29,7 @@ using ..Inference
 using ..Bounds
 using ..Config
 using ..Provenance
-using ..Provenance: acquire_run_lock, record_attempt!
+using ..Provenance: acquire_run_lock, record_attempt!, continuation_config
 using ..Heartbeat: tick!, note_item!, start_heartbeat, stop_heartbeat!, HEARTBEAT_FILE
 using ..Checkpoint:
     CheckpointRow, SweepCheckpoint, open_checkpoint, record_item!, CHECKPOINT_FILE
@@ -1152,13 +1152,17 @@ function run_pipeline(config_path::AbstractString, project_root::AbstractString,
         out_base = String(run_dir)
         check_package_version(out_base)
         snapshot = joinpath(out_base, "config.toml")
-        (isfile(snapshot) && effective_config(snapshot) != effective_config(config_path)) &&
-            throw(
-                ArgumentError(
-                    "$out_base holds the run of another configuration: its config.toml " *
-                    "differs from $config_path",
-                ),
-            )
+        (
+            isfile(snapshot) &&
+            continuation_config(effective_config(snapshot)) !=
+            continuation_config(effective_config(config_path))
+        ) && throw(
+            ArgumentError(
+                "$out_base holds the run of another configuration: its config.toml " *
+                "differs from $config_path in more than thread, memory, monitoring " *
+                "or supervision settings",
+            ),
+        )
         mkpath(out_base)
     elseif resume
         out_base, state = resolve_run_dir(base_dir, config_path)
