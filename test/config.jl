@@ -25,6 +25,21 @@
             write_cfg(dir, "[pipeline.sweep_settings]\nn_deltas = 1\n"))
         @test_throws ArgumentError load_and_validate_config(
             write_cfg(dir, "[parameter_bounds]\nspin1 = [2.0, 1.0]\n"))
+        # bounds are numbers, and the waveform is not defined for a negative
+        # distance or chirp mass
+        for bad in ("spin1 = [false, true]", "spin1 = [\"a\", 1.0]", "spin1 = [nan, 1.0]")
+            @test_throws "[parameter_bounds].spin1 must be" load_and_validate_config(
+                write_cfg(dir, "[parameter_bounds]\n$bad\n"))
+        end
+        for key in ("chirp_mass", "luminosity_distance")
+            @test_throws "[parameter_bounds].$key: the lower bound" load_and_validate_config(
+                write_cfg(dir, "[parameter_bounds]\n$key = [-1.0, 5.0]\n"))
+        end
+        @test load_and_validate_config(
+            write_cfg(dir, "[parameter_bounds]\ncoalescence_time = [-1.0, inf]\n"),
+        ).bounds.lower[3] == -1.0
+        @test_throws "[noise].confusion_knee_freq" load_and_validate_config(
+            write_cfg(dir, "[noise]\nconfusion_knee_freq = -5.0\n"))
         # require_gpu contradicts a forced CPU backend; with a GPU request
         # it is a plain flag
         @test_throws ArgumentError load_and_validate_config(
@@ -78,6 +93,16 @@
                 write_cfg(dir, "[physics]\nphase_pn_order = $bad\n"))
         end
         @test load_and_validate_config(write_cfg(dir, "")).fit_coordinates === :parameters
+        # sweeps above order 1.5 with the fit in the parameters load with a warning;
+        # the whitened fit, or a configuration without sweeps, does not warn
+        sweep =
+            "[[sweeps]]\nname = \"s\"\ntheta_0 = [1.0, 1.5, 2.0, 0.0, 0.8, 0.8]\n" *
+            "u_dir = [0.0, 1.0, 0.5, 0.0, 0.0, 0.0]\n"
+        order2 = "[physics]\nphase_pn_order = 2.0\n[pipeline]\nrun_2d_mapping = false\n"
+        @test_logs (:warn, r"stalls on the weakly constrained spin combination") load_and_validate_config(
+            write_cfg(dir, order2 * sweep))
+        @test_logs load_and_validate_config(
+            write_cfg(dir, order2 * "fit_coordinates = \"whitened\"\n" * sweep))
         @test load_and_validate_config(
             write_cfg(dir, "[pipeline]\nfit_coordinates = \"whitened\"\n"),
         ).fit_coordinates === :whitened

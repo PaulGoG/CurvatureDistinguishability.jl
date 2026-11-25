@@ -88,9 +88,10 @@ $(TYPEDSIGNATURES)
 
 Build bounds from a `[parameter_bounds]` TOML table mapping parameter names
 (`luminosity_distance`, `chirp_mass`, `coalescence_time`, `coalescence_phase`,
-`spin1`, `spin2`) to `[lower, upper]` pairs (`inf`/`-inf` allowed). Missing
-keys keep the defaults. The phase axis is periodic: a finite interval for
-`coalescence_phase` is an `ArgumentError`.
+`spin1`, `spin2`) to `[lower, upper]` pairs of numbers (`inf`/`-inf` allowed)
+with `lower < upper`; the lower bounds of the distance and of the chirp mass are
+non-negative. Missing keys keep the defaults. The phase axis is periodic: a
+finite bound for `coalescence_phase` is an `ArgumentError`.
 """
 function bounds_from_config(cfg::AbstractDict)
     b = default_bounds()
@@ -99,14 +100,25 @@ function bounds_from_config(cfg::AbstractDict)
     for (i, key) in enumerate(PARAM_KEYS)
         if haskey(cfg, key)
             pair = cfg[key]
-            (pair isa AbstractVector && length(pair) == 2) ||
+            (
+                pair isa AbstractVector && length(pair) == 2 &&
+                all(v -> v isa Real && !(v isa Bool) && !isnan(v), pair)
+            ) ||
                 throw(
-                    ArgumentError("[parameter_bounds].$key must be a [lower, upper] pair"),
+                    ArgumentError(
+                        "[parameter_bounds].$key must be a [lower, upper] pair of numbers",
+                    ),
                 )
             lower[i] = Float64(pair[1])
             upper[i] = Float64(pair[2])
             lower[i] < upper[i] ||
                 throw(ArgumentError("[parameter_bounds].$key: lower must be < upper"))
+            (key in ("luminosity_distance", "chirp_mass") && lower[i] < 0) && throw(
+                ArgumentError(
+                    "[parameter_bounds].$key: the lower bound must be >= 0, got " *
+                    "$(lower[i]); the waveform is not defined below it",
+                ),
+            )
             (b.periodic[i] && (isfinite(lower[i]) || isfinite(upper[i]))) && throw(
                 ArgumentError(
                     "[parameter_bounds].$key is periodic and takes no finite bounds; " *

@@ -317,6 +317,14 @@ function settings_from_config(config::AbstractDict)
         mapping.map_n_angles, pipeline.run_1d_sweeps, pipeline.run_2d_mapping)
     monitoring = parse_monitoring(config)
     supervision = parse_supervision(config)
+    (
+        pipeline.run_1d_sweeps && !isempty(work_items.sweeps) &&
+        physics.wp.phase_pn_order > 1.5 && pipeline.fit_coordinates === :parameters
+    ) &&
+        @warn "[physics].phase_pn_order = $(physics.wp.phase_pn_order) with " *
+              "[pipeline].fit_coordinates = \"parameters\": above order 1.5 the fit " *
+              "in the parameters stalls on the weakly constrained spin combination; " *
+              "set fit_coordinates = \"whitened\" for the sweeps."
     return PipelineSettings(; pipeline..., sweep_settings..., grid..., physics...,
         noise..., mapping..., hardware..., safety..., bounds..., work_items...,
         monitoring..., supervision...)
@@ -554,7 +562,7 @@ function parse_noise(config::AbstractDict, T_obs::Real)
         confusion_enabled = get_boolean(noise_cfg, "confusion_enabled", true, "noise"),
         noise_values...)
     for field in (:arm_length, :oms_amplitude, :oms_reddening_freq,
-        :acc_amplitude, :acc_knee_low, :acc_knee_high)
+        :acc_amplitude, :acc_knee_low, :acc_knee_high, :confusion_knee_freq)
         getfield(noise, field) > 0 ||
             config_error("[noise].$field must be > 0, got $(getfield(noise, field))")
     end
@@ -704,13 +712,6 @@ function parse_work_items(config::AbstractDict, bounds::ParameterBounds,
         amp_ratio = get_number(s, "amp_ratio", 1.0, "sweeps[]")
         amp_ratio > 0 ||
             config_error("[[sweeps]] '$name'.amp_ratio must be > 0, got $amp_ratio")
-        if amp_ratio != 1.0 && u[1] != 0
-            config_error(
-                "[[sweeps]] '$name': amp_ratio ≠ 1 requires u_dir[1] = 0; amplitude " *
-                "separation is expressed via amp_ratio, not via the " *
-                "sweep direction.",
-            )
-        end
         u[1] == 0 || config_error(
             "[[sweeps]] '$name'.u_dir must have a zero amplitude component: the " *
             "second source's amplitude is set by amp_ratio, so an amplitude " *
@@ -792,12 +793,7 @@ function parse_supervision(config::AbstractDict)
             ))
     end
     # the defaults and bounds live in the constructor, which names the offending key
-    supervision = try
-        SupervisionSettings(; given...)
-    catch err
-        err isa ArgumentError || rethrow()
-        config_error(err.msg)
-    end
+    supervision = SupervisionSettings(; given...)
     return (; supervision)
 end
 
