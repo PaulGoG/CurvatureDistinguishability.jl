@@ -64,6 +64,31 @@
     @test stream(42, "sweep", 2) != stream(42, "map", 2)
     @test stream(42, "sweep", 2) != stream(43, "sweep", 2)
 
+    # refinement compares neighbours on the circle. The neighbour of the last
+    # direction of the half-circle is the mirror image of the first: with
+    # radii 1, 1, 10, 10 at 0, π/2, π, 3π/2 the only jumps are π/2 → π and
+    # 3π/2 → 2π, both folded onto the midpoint 3π/4
+    constant(phis) = [(1.0, 1.0) for _ in phis]
+    two = [(phi = 0.0, K = 1.0, g = 1.0, wall = 0x00),
+        (phi = π / 2, K = 1.0, g = 1.0, wall = 0x00)]
+    @test CD.ZoneSampling.refine_directions!(two, constant, e -> (1.0, 10.0);
+        max_levels = 1, ratio_tol = 2.0) == 1
+    @test [e.phi for e in two] ≈ [0.0, π / 2, 3π / 4]
+    # a constant-curvature zone in the box (−2, 0.2) × (−1, 1): the capped radius
+    # is continuous around the circle, |d ln r/dφ| ≤ 5 (at the corner where
+    # tan φ = 5), so 64 directions on the half-circle (step π/64) stay below a
+    # ratio of exp(5π/64) = 1.28 and nothing is added at a tolerance of 1.5
+    function box_radius(phi)
+        c, s = cos(phi), sin(phi)
+        tx = c > 1e-14 ? 0.2 / c : c < -1e-14 ? -2.0 / c : Inf
+        ty = s > 1e-14 ? 1.0 / s : s < -1e-14 ? -1.0 / s : Inf
+        return min(tx, ty)
+    end
+    ring = [(phi = (k - 1) * π / 64, K = 1.0, g = 1.0, wall = 0x00) for k in 1:64]
+    @test CD.ZoneSampling.refine_directions!(ring, constant,
+        e -> (box_radius(e.phi), box_radius(e.phi + π)); max_levels = 6,
+        ratio_tol = 1.5) == 0
+
     # mirroring: K and g are even, r_box is re-evaluated on the negated
     # direction (the box is asymmetric), degenerate and capped flags follow
     entries = [(phi = 0.0, K = 16.0, g = 1.0, wall = 0x00),

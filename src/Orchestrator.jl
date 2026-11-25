@@ -907,7 +907,8 @@ function run_map(map_spec::MapSpec, idx::Int, total::Int, ctx::RunContext)
                 min(r_math_of(e.K), r_box_of(e.phi + π)) * scale)
         end
 
-        added = refine_directions!(entries, eval_angles, r_cap_pair, cfg)
+        added = refine_directions!(entries, eval_angles, r_cap_pair;
+            max_levels = cfg.max_refine_levels, ratio_tol = cfg.neighbor_ratio_tol)
         logline(
             log_io,
             "        refinement added $added directions " *

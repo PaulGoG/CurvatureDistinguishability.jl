@@ -9,7 +9,6 @@ module ZoneSampling
 using DocStringExtensions: TYPEDSIGNATURES
 using ..Bounds: ray_box_crossing
 using ..Geometry: cap_at_prior
-using ..Config: PipelineSettings
 
 # angular tolerance below which two map directions are the same vertex
 const ANGLE_DEDUPE_TOL = 1e-10
@@ -39,31 +38,35 @@ $(TYPEDSIGNATURES)
 
 Adaptive angular refinement of the half-circle `entries` (NamedTuples
 `(phi, K, g, wall)`, `wall` the `WALL_SELF`/`WALL_ANTIPODE` mask of directions
-known to end on a prior wall): up to `cfg.max_refine_levels` passes insert the
+known to end on a prior wall): up to `max_levels` passes insert the
 midpoint direction wherever the capped radius of cyclically consecutive
-directions jumps by more than `cfg.neighbor_ratio_tol` on either half of the
+directions jumps by more than the factor `ratio_tol` on either half of the
 circle; `r_cap_pair(e)` returns the capped radii of a direction and of its
 mirror image (in the normalized sampling plane), whose prior-box crossing
-differs when the box is asymmetric. Each pass evaluates all midpoints as one
-batch through `eval_angles`. Leaves `entries` sorted by angle and returns the
-number of directions added.
+differs when the box is asymmetric. Past the last direction of the half-circle
+the circle continues with the mirror image of the first, so there the two
+halves of the pair are exchanged. A pair with a non-finite radius is not
+compared. Each pass evaluates all midpoints as one batch through
+`eval_angles`. Leaves `entries` sorted by angle and returns the number of
+directions added.
 """
-function refine_directions!(entries::Vector, eval_angles, r_cap_pair,
-    cfg::PipelineSettings)
+function refine_directions!(entries::Vector, eval_angles, r_cap_pair;
+    max_levels::Integer, ratio_tol::Real)
     added = 0
-    for _ in 1:cfg.max_refine_levels
+    for _ in 1:max_levels
         sort!(entries, by = e -> e.phi)
         rcaps = [r_cap_pair(e) for e in entries]
         mids = Float64[]
         for i in 1:length(entries)
             j = mod1(i + 1, length(entries))
-            gap = (j == 1 ? π + entries[1].phi : entries[j].phi) - entries[i].phi
+            wraps = j == 1
+            gap = (wraps ? π + entries[1].phi : entries[j].phi) - entries[i].phi
             jump = false
             for half in (1, 2)
-                r1, r2 = rcaps[i][half], rcaps[j][half]
+                r1, r2 = rcaps[i][half], rcaps[j][wraps ? 3 - half : half]
                 (isfinite(r1) && isfinite(r2)) || continue
                 ratio = max(r1, r2) / max(min(r1, r2), RADIUS_UNDERFLOW)
-                ratio > cfg.neighbor_ratio_tol && (jump = true)
+                ratio > ratio_tol && (jump = true)
             end
             jump && push!(mids, entries[i].phi + gap / 2)
         end
