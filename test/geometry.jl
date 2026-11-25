@@ -187,6 +187,12 @@ end
     @test cap_unbounded_radii!(r, 5.0) == (2, 10.0)
     @test r == [1.0, 10.0, 2.0, 10.0]
     @test isequal(cap_unbounded_radii!(r, 5.0), (0, NaN))
+    # the cap follows the largest finite radius also when every radius is below 1,
+    # and falls back to the factor itself only when no radius is finite
+    r = [0.1, Inf, 0.2]
+    @test cap_unbounded_radii!(r, 5.0) == (1, 1.0)
+    @test r == [0.1, 1.0, 0.2]
+    @test cap_unbounded_radii!([Inf, Inf], 5.0) == (2, 5.0)
 end
 
 @testset "Bounds and polar capping" begin

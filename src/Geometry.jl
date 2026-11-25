@@ -80,14 +80,16 @@ $(TYPEDSIGNATURES)
 
 Close the boundary polygon of a map with unbounded directions (no curvature
 limit and no finite prior wall): every non-finite entry of `r_cap` is
-replaced by `cap_factor` times the largest finite capped radius. Returns
-`(n_capped, polygon_cap)`, with `polygon_cap = NaN` when nothing was capped.
+replaced by `cap_factor` times the largest finite capped radius, or by
+`cap_factor` itself when no entry is finite. Returns `(n_capped, polygon_cap)`,
+with `polygon_cap = NaN` when nothing was capped.
 """
 function cap_unbounded_radii!(r_cap::AbstractVector, cap_factor::Real)
     unbounded = .!isfinite.(r_cap)
     n_capped = count(unbounded)
     n_capped == 0 && return 0, NaN
-    polygon_cap = cap_factor * maximum(filter(isfinite, r_cap); init = 1.0)
+    finite = filter(isfinite, r_cap)
+    polygon_cap = cap_factor * (isempty(finite) ? 1.0 : maximum(finite))
     r_cap[unbounded] .= polygon_cap
     return n_capped, polygon_cap
 end
