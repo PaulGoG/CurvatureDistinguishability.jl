@@ -122,6 +122,15 @@ beat_program(
                 @test isequal(getfield(again.rows[r.index], f), getfield(r, f)) # bit-exact
             end
             @test CKPT.count_items(path) == 2
+            # a last row cut before its newline is dropped even when the fields
+            # written so far parse, and the rows appended afterwards stay readable
+            cut = joinpath(dir, "cut.csv")
+            CKPT.open_checkpoint(cut, "sig")
+            open(io -> print(io, CKPT.encode(rows[1])), cut, "a")
+            reopened = CKPT.open_checkpoint(cut, "sig")
+            @test isempty(reopened.rows)
+            foreach(r -> CKPT.record_item!(reopened, r), rows)
+            @test sort(collect(keys(CKPT.open_checkpoint(cut, "sig").rows))) == [1, 3]
             # a write cut short by a kill: the partial last line is dropped and
             # the file is left appendable
             open(io -> print(io, "2,1.0e-5,0.1;0.2"), path, "a")

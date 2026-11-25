@@ -85,6 +85,11 @@ function sync_to_disk(io::IOStream)
     return nothing
 end
 
+ends_with_newline(path::AbstractString) = open(path) do io
+    seekend(io)
+    position(io) > 0 && (skip(io, -1); read(io, UInt8) == UInt8('\n'))
+end
+
 function write_all(path::AbstractString, signature::AbstractString, rows)
     tmp = path * ".tmp"
     open(tmp, "w") do io
@@ -104,8 +109,8 @@ Open the checkpoint at `path`, creating it when absent or empty. `signature`
 identifies the problem the rows belong to (grid, direction, base point,
 optimizer settings, seed); a file written under another signature is refused
 with an `ArgumentError`. An incomplete last line (a write cut short when the
-process was killed) is dropped; an unreadable line anywhere else is an
-error.
+process was killed) is dropped, and so is a last line without its newline,
+whose final field may be cut; an unreadable line anywhere else is an error.
 """
 function open_checkpoint(path::AbstractString, signature::AbstractString)
     rows = Dict{Int,CheckpointRow}()
@@ -121,9 +126,10 @@ function open_checkpoint(path::AbstractString, signature::AbstractString)
         ),
     )
     body = lines[3:end]
+    unterminated = !isempty(body) && !ends_with_newline(path)
     truncated = false
     for (k, line) in enumerate(body)
-        row = decode(line)
+        row = (unterminated && k == length(body)) ? nothing : decode(line)
         if row === nothing
             k == length(body) || throw(
                 ArgumentError("checkpoint $path: unreadable row $(k + 2): '$line'"),
