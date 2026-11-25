@@ -10,14 +10,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `[physics].spa_time = "phase"` evaluates the response at the
   stationary-phase times of the phase of the selected order,
-  `t(F) = t_c + (2π)⁻¹ dψ_PN/dF` (new method of `Physics.spa_time`), instead
-  of the Newtonian times; `"newtonian"` remains the default. Near the
-  innermost stable orbit these times can pass `t_c` (Waveform Physics, §8).
+  `t(F) = t_c + (2π)⁻¹ dψ_PN/dF` (new method of `Physics.spa_time`; keyword
+  and field `pn_spa_time` of `WaveformParams`), instead of the Newtonian
+  times; `"newtonian"` remains the default. Near the innermost stable orbit
+  these times can pass `t_c` (Waveform Physics, §8).
+- A configuration that sweeps at a phase order above 1.5 with the fit in the
+  parameters loads with a warning: that fit stalls on the weakly constrained
+  spin combination.
 
 ### Changed
 
+- An interrupted run is continued when the configuration agrees with the
+  snapshot of its directory in the run identity, `gpu_backend` and
+  `hessian_chunk` (`Provenance.continuation_config`). Thread and memory
+  budgets, monitoring and supervision settings may now change between
+  attempts; until now any such edit started a new `_rN` directory and left the
+  checkpoints of the interrupted run unused.
+- `[parameter_bounds]` takes numbers only (Booleans were accepted as 0 and 1),
+  and a negative lower bound of the distance or of the chirp mass is an
+  error; `[noise].confusion_knee_freq` must be positive.
+- `ZoneSampling.refine_directions!` takes `max_levels` and `ratio_tol` as
+  keywords instead of the pipeline settings.
 - CI also runs the test suite at the lowest versions of the dependencies
   that `[compat]` admits.
+
+### Fixed
+
+- Map directions that neither the curvature nor the prior box bounds were
+  closed at `unbounded_cap_factor` itself when every finite radius was below
+  one, instead of at that factor times the largest finite radius. No shipped
+  map has such a direction.
+- The angular refinement compared the last direction of the half-circle with
+  the first instead of with its mirror image. With a prior box that is not
+  symmetric about the base point this added directions next to the first axis
+  at every refinement level and could miss a jump there; the radii of the
+  sampled directions are unchanged.
+- A sweep checkpoint whose last row was cut before its newline is repaired on
+  opening; the next row was appended to the cut one, and both were lost or
+  the file became unreadable.
+- A fit that returns a distance of exactly zero at the smallest separations
+  no longer hides the optimizer floor of the separations after it.
+- The first frequency bin could be missing from the decimated residual
+  spectrum when `10^log10(f_min)` rounds above `f_min`.
+- The README and the architecture page stated that the remaining stages
+  always run after a failed one, and that a missing GPU package always
+  falls back to the CPU; both now state the conditions.
 
 ## [2.3.0] - 2026-11-17
 

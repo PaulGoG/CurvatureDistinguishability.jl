@@ -7,7 +7,7 @@ separation sweeps and seven two-dimensional confusion maps.
 
 ## 0. Configuration files
 
-Two runnable base files ship: `configs/quickstart.toml` (minutes-scale
+Two base files ship for general use: `configs/quickstart.toml` (minutes-scale
 demonstration, the pipeline default) and `configs/production_cpu.toml`
 (the reference campaign documented below). The GPU variants,
 `quickstart_gpu.toml` and `production_gpu.toml`, are thin overlays. Each
@@ -38,15 +38,21 @@ The run identifier hashes only the identity of a run: every section except
 how a run executes rather than what it computes. One physical case
 therefore carries one identifier on every machine; reruns land in `_r2`,
 `_r3`, … sibling directories, and `metadata.toml`/`hardware.txt` record
-backend, host and timings. No per-machine configuration files are needed,
+backend, host and timings. The identifier hashes the values as written: `2`
+against `2.0`, or a key set to its default against the key left out, give
+two identifiers for the same computation. An interrupted run is continued
+(`--resume`, or a supervised re-run) when the snapshot in its directory has
+the same identity and the same `gpu_backend` and `hessian_chunk`; the other
+execution keys may change between attempts. No per-machine configuration files are needed,
 because execution keys left out of a configuration take host-adaptive
 defaults: `[hardware].max_threads` the Julia thread count,
 `[safety].max_ram_gb` 80 % of system memory, and `[safety].max_vram_gb` /
 `os_vram_overhead_gb` the fixed defaults 8 GB / 1 GB, which are not queried
 from the device. The production base sets none of them, so it runs
 unmodified on any host. `[hardware].require_gpu = true` (default `false`)
-aborts a run before any output is written when no functional GPU backend
-resolves for the requested `gpu_backend`. Every shipped GPU overlay sets
+stops a run before any result is written when no functional GPU backend
+resolves for the requested `gpu_backend` (under `scripts/run_supervised.jl`
+the run directory then holds only the supervisor's attempt log and ledger). Every shipped GPU overlay sets
 it, so a missing vendor package can never turn a GPU campaign into a silent
 CPU run. `configs/campaigns/` holds the multi-host campaign plans, which
 vary the Hessian chunk and, for the single-sweep overlays, narrow
@@ -55,7 +61,9 @@ vary the Hessian chunk and, for the single-sweep overlays, narrow
 `[pipeline].fit_coordinates` selects the coordinates of the fit:
 `"parameters"` (default) or `"whitened"`, which requires
 `optimizer = "ipnewton"`. The whitened fit is the one to use at phase orders
-above 1.5 ([System Architecture](architecture.md)).
+above 1.5 ([System Architecture](architecture.md)); a configuration that
+sweeps at a higher order with the fit in the parameters loads with a
+warning.
 
 ### Supervised runs
 
@@ -136,7 +144,8 @@ are those the parser enforces.
   production configuration sets it; the quickstart configurations, whose
   coarse grids use ``T_{\mathrm{obs}}`` as a resolution only, leave it out.
   `configs/campaigns/` holds the multi-host benchmark campaign on its own
-  base without the window (`benchmark_base.toml`);
+  bases without the window (`benchmark_base.toml`, and
+  `gpu_stress_benchmark.toml`, a two-year single-sweep timing benchmark);
   `windowed_low_mass_maps.toml` there recomputes with the window the two
   maps whose base points radiate in band before ``t = 0``.
 - Frequency range: ``10^{-4}`` Hz to ``0.05`` Hz.
@@ -156,8 +165,9 @@ are those the parser enforces.
   ``\delta \approx 0.08`` σ, and it moves to smaller ``\delta`` for quieter
   sources. A sweep whose grid does not bracket ``\delta_{\mathrm{min}}``
   logs a warning; the residual spectrum is evaluated at the clean
-  separation nearest ``2\,\delta_{\mathrm{min}}``.
-- Scenario constants: ``\eta = 2/9`` (mass ratio 2:1), source at
+  separation nearest ``2\,\delta_{\mathrm{min}}`` inside the validity radius
+  of the ``\mathcal{O}(\delta^5)`` fit.
+- Scenario constants: ``\eta = 0.2222`` (mass ratio 2:1), source at
   ecliptic longitude 180° and latitude 30°, inclination 30°, polarization
   45°, constellation phases zero at ``t = 0``. Masses are detector-frame
   masses, as in the LDC catalogues.
@@ -169,9 +179,9 @@ are those the parser enforces.
   the fit in the parameters stalls on it. `configs/pn_orders/` holds overlays
   at every order: `quickstart_pn<order>.toml` (the quickstart sweeps and maps,
   whitened fit) and `production_maps_pn<order>.toml` (four maps on the
-  production grid at 1024 base directions, no sweeps: the two maps of the
-  production configuration that involve the spins, and the spin plane at the
-  low-mass and seed base points of its sweeps).
+  production grid with `n_angles = 1024`, no sweeps: the spin plane and the
+  chirp-mass–spin plane of the massive base point, and the spin plane at the
+  low-mass and seed base points of the sweeps).
 - Domain of validity: the inspiral is windowed out at the innermost stable
   circular orbit, at ``2.2`` mHz for the ``\mathcal{M} = 4`` s base points,
   ``35`` mHz for ``\mathcal{M} = 0.25`` s and above the band for
@@ -285,8 +295,9 @@ plane like ``t_c`` against ``\phi_c``, whose axes differ by
 ``10^{4}``–``10^{5}`` in ``\sigma``, is resolved uniformly rather than only
 along its axes. The solver computes half the directions and mirrors (``K``
 is exactly even), refines adaptively near boundary spikes, and caps every
-direction at the physical prior box. The CSV carries `Prior_Limited` flags,
-and the quoted prior-limited fraction is a fraction of sampling angle.
+direction at the physical prior box. The CSV carries `Prior_Limited` flags.
+The prior-limited fraction annotated in the figure is a fraction of sampling
+angle; the percentages in the logs are fractions of the sampled directions.
 Wherever consecutive directions straddle a capping transition, the solver
 also bisects for the crossover direction
 ``r_{\mathrm{math}}(\varphi) = r_{\mathrm{box}}(\varphi)`` and inserts it as
@@ -296,11 +307,11 @@ being chamfered by a polygon chord. The neighbor-ratio refinement alone
 cannot resolve them, because the capped radius saturates at
 ``r_{\mathrm{box}}`` on the wall side. `replot.jl --rho` reuses the stored
 directions, so corner vertices lie on the walls only for the original
-threshold; rerun the map stage for publication-grade corners at a very
-different ``\rho``.
+threshold; at a very different ``\rho`` the map stage has to be rerun to
+place them.
 
 1. Mass against time (`mass_vs_time_degeneracy`, axes 2 and 3): the
-   classic chirp-rate / arrival-time degeneracy; base
+   chirp-rate/arrival-time degeneracy; base
    ``\theta_0 = [5.0, 4.0, 20.0, 0.0, 0.8, 0.8]``.
 2. Spin 1 against spin 2 (`spin1_vs_spin2_coupling`, axes 5 and 6): at
    1.5PN order the phase sees the spins only through ``\beta``, so the line

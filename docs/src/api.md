@@ -1,6 +1,7 @@
 # API Reference
 
-Public symbols of `CurvatureDistinguishability.jl`, by module.
+Public symbols of `CurvatureDistinguishability.jl` by module, with the
+internal names the other pages refer to.
 
 ```@docs
 CurvatureDistinguishability

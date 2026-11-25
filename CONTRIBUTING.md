@@ -18,7 +18,7 @@ file and the relevant part of `run.log`. A run directory's `metadata.toml`,
 julia -i activate.jl                                    # package environment
 julia -e 'include("activate.jl"); using Pkg; Pkg.test()'
 julia -e 'include("activate.jl"); using Pkg; Pkg.test(test_args = ["physics"])'  # one group
-julia -e 'using JuliaFormatter; format(".")'            # .JuliaFormatter.toml
+julia -e 'using JuliaFormatter; format(".")'            # JuliaFormatter 2, default environment
 julia docs/make.jl                                      # strict documentation build
 julia --threads=auto bench/run_benchmarks.jl
 ```
@@ -39,7 +39,9 @@ build.
   `test:`, `refactor:`, `perf:`, `chore:`), with a body stating what changed
   and why.
 - Public functions and structs carry a docstring; configuration keys are
-  validated on load and documented in `docs/src/parameters.md`.
+  validated on load, described by a comment in the shipped configurations,
+  and listed in `docs/src/parameters.md` when no shipped configuration sets
+  them.
 - A change that alters numerical results names the run identifiers it
   affects (the run id is the hash of the configuration).
 - `Manifest.toml` is not tracked and stays out of pull requests.

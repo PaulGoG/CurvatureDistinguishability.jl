@@ -28,10 +28,10 @@ Implementation:
 
 ## 2. Noise-realization study (distribution of the distance statistic)
 
-The pipeline currently validates the noiseless-baseline geometry.
-The likelihood interpretation (``\Delta \ln \mathcal{L}_{\max} = D^2/2``) invites the
-follow-up question: how is ``\hat D^2`` distributed under real noise, and how
-sharp is the confusion boundary operationally?
+The pipeline validates the noiseless geometry. With the likelihood
+interpretation ``\Delta \ln \mathcal{L}_{\max} = D^2/2``, the open question is
+how ``\hat D^2`` is distributed under noise and how sharp the confusion
+boundary then is.
 
 Implementation:
 - New pipeline stage (config-gated, e.g. `[noise_study] n_realizations`,
@@ -49,7 +49,7 @@ Implementation:
 ### Device sizing
 
 The lanes kernel (value + per-partial Float64 stores, see
-src/Inference.jl `loss_bins_lanes!`) is vendor-portable by construction; the
+src/Inference.jl `loss_bins_lanes!`) is vendor-portable; the
 consumer-GPU bottleneck is FP64 throughput, 1/64 of the FP32 rate on recent
 consumer NVIDIA parts. On FP64-strong hardware (A100/H100/MI200-class, 10–60× more FP64) the
 sweep stage becomes GPU-dominated; the map stage remains CPU by design
@@ -61,11 +61,11 @@ allocation.
 ### Launch serialization and device-buffer cache
 
 Kernel launches are serialized through a library-wide lock and
-`plan_resources` pins a GPU run to a single task, because the vendor
+`plan_resources` pins the sweep stage of a GPU run to a single task, because the vendor
 runtimes are not safe under concurrent multi-task access. Device output
 buffers are cached per backend, element type
 and shape, because allocating them per evaluation destabilizes long sessions;
-the cache reduces device allocations by ~10³. A run interrupted at any point
+a sweep evaluates the loss 10³ to 10⁴ times on one cached buffer. A run interrupted at any point
 continues from its completed stages and work-item checkpoints
 (`scripts/run_pipeline.jl --resume`).
 
@@ -83,7 +83,7 @@ parameter tuple enters the kernel as an argument of
 6 × 49 × 8 = 2352 bytes, exceeding the device's 2048-byte kernel-argument
 limit. IGC reports "Total size of kernel arguments exceeds limit" and fails
 the module build (`ZE_RESULT_ERROR_MODULE_BUILD_FAILURE`). Value (1-lane)
-and gradient (7-lane) kernels fit comfortably; chunk 3 carries 16 lanes =
+and gradient (7-lane) kernels fit; chunk 3 carries 16 lanes =
 768 bytes. Meteor Lake Xe-LPG executes FP64 natively
 (`ZE_DEVICE_MODULE_FLAG_FP64` is reported without emulation flags). On the
 production grid a 16-lane launch takes about 4.3 s on the Meteor Lake iGPU,

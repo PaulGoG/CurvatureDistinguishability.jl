@@ -5,9 +5,9 @@ overlapping gravitational-wave signals and maps the physically capped
 "zone of confusion" for a LISA-like detector.
 
 When data contain two closely overlapping signals with a small parameter
-separation ``\delta``, a single-source fit absorbs the linear and quadratic
-differences; the unabsorbable residual is governed by the extrinsic
-curvature ``K(u)`` of the signal manifold:
+separation ``\delta``, a single-source fit absorbs the first-order difference
+and the tangential part of the second-order one. What it cannot absorb is
+governed by the extrinsic curvature ``K(u)`` of the signal manifold:
 
 ```math
 D^2 \approx \frac{1}{16} K(u)\, \delta^4,
@@ -15,7 +15,7 @@ D^2 \approx \frac{1}{16} K(u)\, \delta^4,
 \delta_{\mathrm{min}}(u) = \left(\frac{16\,\rho_{\mathrm{thr}}^2}{K(u)}\right)^{1/4}.
 ```
 
-The published zone-of-confusion maps are the exact intersection of this
+The zone-of-confusion maps are the intersection of this
 mathematical boundary with the hard physical parameter bounds
 (``D_L, \mathcal{M}, t_c \ge 0``, ``|\chi| \le 1``, phase deviations
 within ``\pm\pi``). Along degenerate directions, such as the spin combination
@@ -52,5 +52,4 @@ environment setup, usage, component status). This documentation covers:
 
 The quickest start is `julia --threads=auto scripts/run_pipeline.jl`, which
 runs the minutes-scale `configs/quickstart.toml` scenario end to end and
-demonstrates the scaling law, the optimizer floor, and the prior-limited
-spin wedge.
+shows the scaling law, the optimizer floor and the prior-limited spin zone.

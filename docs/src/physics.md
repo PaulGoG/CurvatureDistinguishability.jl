@@ -36,7 +36,7 @@ The symmetric mass ratio ``\eta \in (0, 1/4]`` is a fixed property of the
 scenario (`[physics].eta`), not a fitted parameter: the total mass follows
 as ``M = \mathcal{M}\eta^{-3/5}`` and the mass asymmetry as
 ``\delta_m = (m_1 - m_2)/M = \sqrt{1 - 4\eta}``. The production campaign uses
-``\eta = 2/9`` (mass ratio 2:1). Sky position (ecliptic longitude ``\lambda`` and latitude
+``\eta = 0.2222`` (mass ratio 2:1, ``\eta = 2/9``). Sky position (ecliptic longitude ``\lambda`` and latitude
 ``\beta``), inclination ``\iota`` and polarization angle ``\psi`` are
 likewise scenario constants.
 
@@ -55,7 +55,7 @@ the TaylorF2 phase of two black holes with aligned spins, truncated at the
 order `[physics].phase_pn_order`: order ``n`` keeps the terms with
 ``i \le 2n``. The coefficients are polynomials in ``\eta``, ``\delta_m``,
 ``\chi_s`` and ``\chi_a`` (`Physics.phase_coefficients`, which lists them with
-their sources). ``\varphi_5`` alone is a constant phase, absorbed in
+their sources). ``\varphi_5`` alone is a constant phase, degenerate with
 ``\phi_c``, but its logarithm ``\varphi_{5,\ell} = 3\varphi_5`` is not; the
 constant ``\varphi_8`` is a shift of ``t_c`` and is set to zero, and
 ``\varphi_{8,\ell\ell}`` is the first squared logarithm.
@@ -104,7 +104,7 @@ follow here from the stationary-phase reduction of the binding energy and
 flux of the cited papers; the spin–spin flux at that order rests on a single
 computation [Cho2022](@cite). At 4.5PN only the
 non-spinning term is known, so with spins that order omits terms of
-``\mathcal{O}(\chi v^9)``. The coefficients are tested against exact rational
+``\mathcal{O}(\chi v^9)``. The coefficients are tested against 60-digit
 evaluations of the literature forms at five points of ``(\eta, \chi_1, \chi_2)``,
 two of them with ``\chi_s\chi_a \neq 0``.
 
@@ -274,7 +274,7 @@ with relative width ``\sigma`` (`[physics].cutoff_width`, 0.1 in the
 shipped configurations): unity below ISCO, one half at ISCO, and
 ``< 10^{-4}`` beyond ``1.5\,f_{\mathrm{ISCO}}``. The window keeps every
 quantity a smooth function of ``\vec\theta`` and of ``f``, which the
-differential-geometry engine requires, while removing the unphysical
+differential geometry requires, while removing the unphysical
 extrapolation of the PN phase past the plunge. Merger and ringdown are not
 modelled ([Roadmap](roadmap.md)).
 
@@ -382,8 +382,9 @@ stationary-phase image of ``h_\times \propto \sin k\varphi`` against
 The frequency-domain signal contains every frequency of the band, whenever
 it was emitted: harmonic ``k`` at frequency ``f`` left the source at
 ``t_k(f) = t_c - \tau(2f/k)`` with
-``\tau(F) = 5\mathcal{M}/[256\,(\pi\mathcal{M}F)^{8/3}]``, which for a light
-system lies far before the observation. At the lower band edge
+``\tau(F) = 5\mathcal{M}/[256\,(\pi\mathcal{M}F)^{8/3}]`` (Newtonian; with
+`spa_time = "phase"` the time of §2), which for a light system lies far before
+the observation. At the lower band edge
 ``\tau(10^{-4}\,\mathrm{Hz})`` is 0.13 yr for ``\mathcal{M} = 4`` s, 14 yr for
 ``\mathcal{M} = 0.25`` s and 63 yr for ``\mathcal{M} = 0.1`` s. With
 `[physics].observation_window = true` each harmonic is weighted by the window
