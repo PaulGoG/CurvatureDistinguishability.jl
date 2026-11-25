@@ -359,18 +359,32 @@ gpu_backend = "none"
             # the attempt records the execution settings it ran with
             records = CD.Provenance.read_run_metadata(reference)["attempt_records"]
             latest = records[string(maximum(parse.(Int, collect(keys(records)))))]
+            @test latest["execution"]["hardware"]["max_threads"] == 2
             @test latest["execution"]["safety"]["max_ram_gb"] == 4.0
+            @test latest["execution"]["monitoring"]["progress_log_fraction"] == 0.5
             @test latest["execution"]["supervision"]["busy_stall_s"] == 9000.0
             @test latest["julia_threads"] == Threads.nthreads()
-            # require_gpu decides whether gpu_backend = "auto" may fall back to the
-            # CPU: a change of it is not continued
-            table = CD.Provenance.effective_config(cfg_path)
-            gpu_required = deepcopy(table)
-            gpu_required["hardware"]["require_gpu"] = true
-            @test CD.Provenance.continuation_config(gpu_required) !=
-                  CD.Provenance.continuation_config(table)
             @test_throws "another configuration" run_pipeline(variant, dir, "a";
                 run_dir = reference)
+            # require_gpu decides whether gpu_backend = "auto" may fall back to the
+            # CPU: a run made with it is not continued without it. The snapshot is
+            # edited, so no GPU is needed; without require_gpu no backend is probed.
+            gpu_base = joinpath(dir, "g")
+            gpu_run = joinpath(gpu_base, basename(reference))
+            mkpath(gpu_base)
+            cp(reference, gpu_run)
+            auto_cfg(extra) = replace(read(cfg_path, String),
+                "gpu_backend = \"none\"" => "gpu_backend = \"auto\"" * extra)
+            write(joinpath(gpu_run, "config.toml"), auto_cfg("\nrequire_gpu = true"))
+            gpu_cfg = joinpath(dir, "auto_required.toml")
+            write(gpu_cfg, auto_cfg("\nrequire_gpu = true"))
+            fallback_cfg = joinpath(dir, "auto.toml")
+            write(fallback_cfg, auto_cfg(""))
+            @test CD.Provenance.resolve_run_dir(gpu_base, gpu_cfg) == (gpu_run, :complete)
+            @test CD.Provenance.resolve_run_dir(gpu_base, fallback_cfg) ==
+                  (gpu_run * "_r2", :fresh)
+            @test_throws "another configuration" run_pipeline(fallback_cfg, dir, "g";
+                run_dir = gpu_run)
 
             # a degenerate direction is a failed stage with a named error, and
             # concurrent launches never share a run directory
